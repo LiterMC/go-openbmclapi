@@ -1,0 +1,9 @@
+{
+	"debug": true,
+	"host": "kpnm.waerba.com",
+	"port": 80,
+	"public_port": 30080,
+	"cluster_id": "",
+	"cluster_secret": "",
+	"version": "0.6.0"
+}

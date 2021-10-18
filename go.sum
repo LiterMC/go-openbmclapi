@@ -1,0 +1,4 @@
+github.com/KpnmServer/go-util v0.0.0-20210918230454-6dd48583efa9 h1:LyU67yR1rC+0A4mhLswKhDiA7DD2T9imvD6vr47BsoY=
+github.com/KpnmServer/go-util v0.0.0-20210918230454-6dd48583efa9/go.mod h1:JTFdrUnCWJ015ks16Ajs7xvmd1X9KtbphWIPN3NTghU=
+github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
+github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=

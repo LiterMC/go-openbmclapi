@@ -9,7 +9,12 @@ import (
 	fmt "fmt"
 	time "time"
 	sync "sync"
+
+	ufile "github.com/KpnmServer/go-util/file"
 )
+
+var logdir string = "logs"
+var logfile *os.File
 
 var logLock sync.Mutex
 var logTimeFormat string = "15:04:05.000"
@@ -20,7 +25,8 @@ func logX(x string, args ...interface{}){
 		sa[i] = fmt.Sprint(args[i])
 	}
 	c := strings.Join(sa, " ")
-	buf := bytes.NewBuffer(make([]byte, 6 + len(logTimeFormat) + len(x) + len(c))) // (1 + len(x) + 2 + len(logTimeFormat) + 3)
+	buf := bytes.NewBuffer(nil)
+	buf.Grow(6 + len(logTimeFormat) + len(x) + len(c)) // (1 + len(x) + 2 + len(logTimeFormat) + 3)
 	buf.WriteString("[")
 	buf.WriteString(x)
 	buf.WriteString("][")
@@ -30,11 +36,16 @@ func logX(x string, args ...interface{}){
 	logLock.Lock()
 	defer logLock.Unlock()
 	fmt.Fprintln(os.Stderr, buf.String())
+	if logfile != nil {
+		logfile.Write(buf.Bytes())
+		logfile.Write([]byte{'\n'})
+	}
 }
 
 func logXf(x string, format string, args ...interface{}){
 	c := fmt.Sprintf(format, args...)
-	buf := bytes.NewBuffer(make([]byte, 6 + len(logTimeFormat) + len(x) + len(c))) // (1 + len(x) + 2 + len(logTimeFormat) + 3)
+	buf := bytes.NewBuffer(nil)
+	buf.Grow(6 + len(logTimeFormat) + len(x) + len(c)) // (1 + len(x) + 2 + len(logTimeFormat) + 3)
 	buf.WriteString("[")
 	buf.WriteString(x)
 	buf.WriteString("][")
@@ -44,41 +55,72 @@ func logXf(x string, format string, args ...interface{}){
 	logLock.Lock()
 	defer logLock.Unlock()
 	fmt.Fprintln(os.Stderr, buf.String())
+	if logfile != nil {
+		logfile.Write(buf.Bytes())
+		logfile.Write([]byte{'\n'})
+	}
 }
 
 func logDebug(args ...interface{}){
 	if DEBUG {
-		go logX("DBUG", args...)
+		logX("DBUG", args...)
 	}
 }
 
 func logDebugf(format string, args ...interface{}){
 	if DEBUG {
-		go logXf("DBUG", format, args...)
+		logXf("DBUG", format, args...)
 	}
 }
 
 func logInfo(args ...interface{}){
-	go logX("INFO", args...)
+	logX("INFO", args...)
 }
 
 func logInfof(format string, args ...interface{}){
-	go logXf("INFO", format, args...)
+	logXf("INFO", format, args...)
 }
 
 func logWarn(args ...interface{}){
-	go logX("WARN", args...)
+	logX("WARN", args...)
 }
 
 func logWarnf(format string, args ...interface{}){
-	go logXf("WARN", format, args...)
+	logXf("WARN", format, args...)
 }
 
 func logError(args ...interface{}){
-	go logX("ERRO", args...)
+	logX("ERRO", args...)
 }
 
 func logErrorf(format string, args ...interface{}){
-	go logXf("ERRO", format, args...)
+	logXf("ERRO", format, args...)
+}
+
+func flushLogfile(){
+	if ufile.IsNotExist(logdir){
+		ufile.CreateDir(logdir)
+	}
+	lfile, err := os.OpenFile(ufile.JoinPath(logdir, time.Now().Format("20060102.log")),
+		os.O_WRONLY | os.O_APPEND | os.O_CREATE, 0666)
+	if err != nil {
+		logError("Create new log file error:", err)
+		return
+	}
+	logLock.Lock()
+	defer logLock.Unlock()
+	logfile = lfile
+}
+
+func init(){
+	flushLogfile()
+	go func(){
+		for{
+			select{
+			case <-time.After(time.Duration((time.Now().Unix() / (60 * 60 * 24) + 1) * (60 * 60 * 24) - time.Now().Unix()) * time.Second):
+				flushLogfile()
+			}
+		}
+	}()
 }
 

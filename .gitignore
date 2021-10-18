@@ -4,6 +4,7 @@
 
 # runtime
 /cache
+/logs
 
 # binarys
 /build

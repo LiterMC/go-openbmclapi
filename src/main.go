@@ -89,11 +89,13 @@ func main(){
 	{
 		fl := cluster.GetFileList()
 		if fl == nil {
+			logError("Filelist nil, exit")
 			return
 		}
 		cluster.SyncFiles(fl)
 	}
 	if !cluster.Enable() {
+		logError("Can not enable, exit")
 		return
 	}
 

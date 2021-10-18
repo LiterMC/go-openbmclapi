@@ -2,6 +2,7 @@
 package main
 
 import (
+	fmt "fmt"
 	time "time"
 	strings "strings"
 
@@ -43,3 +44,25 @@ func httpToWs(origin string)(string){
 	}
 	return origin
 }
+
+func bytesToUnit(size float32)(string){
+	unit := "Byte"
+	if size >= 1000 {
+		size /= 1024
+		unit = "KB"
+		if size >= 1000 {
+			size /= 1024
+			unit = "MB"
+			if size >= 1000 {
+				size /= 1024
+				unit = "GB"
+				if size >= 1000 {
+					size /= 1024
+					unit = "TB"
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("%.1f", size) + unit
+}
+

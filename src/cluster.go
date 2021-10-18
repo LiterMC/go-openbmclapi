@@ -18,6 +18,12 @@ import (
 	websocket "github.com/gorilla/websocket"
 )
 
+func init(){
+	websocket.DefaultDialer.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: true, // Skip verify because the author was lazy
+	}
+}
+
 type Cluster struct{
 	host string
 	public_port uint16
@@ -37,6 +43,7 @@ type Cluster struct{
 	socket *websocket.Conn
 	wshandlers map[string]func(id string, args json.JsonArr)
 	wsid string
+	esid string
 	keepalive func()(bool)
 
 	client *http.Client
@@ -59,16 +66,15 @@ func newCluster(
 		cachedir: "cache",
 		hits: 0,
 		hbytes: 0,
-		max_conn: 200,
+		max_conn: 400,
 
 		connecting: false,
 		enabled: false,
 		socket: nil,
 		wshandlers: make(map[string]func(id string, args json.JsonArr)),
-		wsid: "",
 
 		client: &http.Client{
-			Timeout: time.Second * 60,
+			Timeout: time.Minute * 60,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: true, // Skip verify because the author was lazy
@@ -96,6 +102,7 @@ func init(){
 	PACKET_TYPE0["PONG"] = "3";
 	PACKET_TYPE0["4"] = "MESSAGE";
 	PACKET_TYPE0["MESSAGE"] = "4";
+
 	PACKET_TYPE["0"] = "CONNECT";
 	PACKET_TYPE["CONNECT"] = "0";
 	PACKET_TYPE["1"] = "DISCONNECT";
@@ -121,9 +128,14 @@ func (cr *Cluster)runMsgHandler(id string, obj json.JsonArr){
 	}
 }
 
-func (cr *Cluster)sendMsg(id string, objs ...interface{})(error){
+func (cr *Cluster)sendMsg(msg string)(error){
+	logDebug("Sending msg:", msg)
+	return cr.socket.WriteMessage(websocket.TextMessage, ([]byte)(PACKET_TYPE0["MESSAGE"] + msg))
+}
+
+func (cr *Cluster)sendEvent(id string, objs ...interface{})(error){
 	jarr := (json.JsonArr)(append([]interface{}{id}, objs...))
-	return cr.socket.WriteMessage(websocket.TextMessage, ([]byte)(PACKET_TYPE0["MESSAGE"] + PACKET_TYPE["EVENT"] + jarr.String()))
+	return cr.sendMsg(PACKET_TYPE["EVENT"] + jarr.String())
 }
 
 func (cr *Cluster)onWsMessage(t string, data []byte){	
@@ -134,22 +146,31 @@ func (cr *Cluster)onWsMessage(t string, data []byte){
 		arr json.JsonArr
 	)
 	switch t {
+	case "CONNECT":
+		err = json.DecodeJson(data, &obj)
+		if err == nil {
+			cr.wsid = obj.GetString("sid")
+			logDebug("socket.io connected id:", cr.wsid)
+			cr._enable()
+		}
+	case "DISCONNECT":
+		cr.Disable()
 	case "CONNECT_ERROR":
 		err = json.DecodeJson(data, &obj)
 		if err == nil {
 			logErrorf("Cannot connect to server:", obj)
-			panic(obj)
 		}else if err = json.DecodeJson(data, &str); err == nil {
 			logErrorf("Cannot connect to server:", str)
-			panic(str)
 		}
+		panic((string)(data))
 	case "EVENT", "BINARY_EVENT":
 		err = json.DecodeJson(data, &arr)
 		logDebug("got event:", string(data))
 		cr.runMsgHandler(arr.GetString(0), arr[1:])
 	// case "ACK", "BINARY_ACK":
 	// 	err = json.DecodeJson(data, &arr)
-	default: return
+	default:
+		logError("Unknown socket.io package name:", t)
 	}
 	if err != nil {
 		logError("Error when decode message:", err)
@@ -213,8 +234,8 @@ func (cr *Cluster)Enable()(bool){
 				logError("Error when reading websocket:", err)
 				return
 			}
-			logDebug("got msg:", string(buf))
 			if code == websocket.TextMessage {
+				logDebug("got msg:", string(buf))
 				if t, ok = PACKET_TYPE0[(string)(buf[0:1])]; !ok {
 					logError("Unknown packet type:", (string)(buf[0:1]))
 					continue
@@ -223,9 +244,9 @@ func (cr *Cluster)Enable()(bool){
 				case "OPEN":
 					err = json.DecodeJson(buf[1:], &obj)
 					if err == nil {
-						cr.wsid = obj.GetString("sid")
-						logDebug("connected:", cr.wsid)
-						cr._enable()
+						cr.esid = obj.GetString("sid")
+						logDebug("engine.io connected id:", cr.esid)
+						cr.sendMsg(PACKET_TYPE["CONNECT"])
 					}
 				case "CLOSE":
 					err = nil
@@ -235,9 +256,11 @@ func (cr *Cluster)Enable()(bool){
 					}
 					return
 				case "PING":
-					cr.socket.WriteMessage(websocket.TextMessage, ([]byte)(PACKET_TYPE0["PONG"] + (string)(buf[1:])))
+					cr.socket.WriteMessage(websocket.TextMessage, ([]byte)(PACKET_TYPE0["PONG"]))
 				case "MESSAGE":
 					cr.onWsMessage(PACKET_TYPE[(string)(buf[1:2])], buf[2:])
+				default:
+					logError("Unknown engine.io packet name:", t)
 				}
 			}
 		}
@@ -246,15 +269,15 @@ func (cr *Cluster)Enable()(bool){
 }
 
 func (cr *Cluster)_enable(){
-	cr.enabled = true
-	cr.sendMsg("enable", json.JsonObj{
+	cr.sendEvent("enable", json.JsonObj{
 		"host": cr.host,
 		"port": cr.public_port,
 		"version": cr.version,
 	})
+	cr.enabled = true
 	cr.keepalive = createInterval(func(){
 		cr.KeepAlive()
-	}, time.Second * 60)
+	}, time.Second * 30)
 }
 
 func (cr *Cluster)KeepAlive()(ok bool){
@@ -269,18 +292,27 @@ func (cr *Cluster)KeepAlive()(ok bool){
 	var (
 		err error
 	)
-	err = cr.sendMsg("keep-alive", json.JsonObj{
-		"time": time.Now().UTC().Format("2007-01-02T15:04:05Z"),
+	err = cr.sendEvent("keep-alive", json.JsonObj{
+		"time": time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits": cr.hits,
 		"bytes": cr.hbytes,
 	})
+	if err != nil {
+		logError("Error when keep-alive:", err)
+	}
 	ok = err == nil
 	return
 }
 
 func (cr *Cluster)Disable(){
-	cr.enabled = false
-	cr.socket.WriteMessage(websocket.TextMessage, ([]byte)(PACKET_TYPE["DISCONNECT"]))
+	if cr.enabled {
+		cr.enabled = false
+		cr.sendEvent("disable")
+	}
+	if cr.connecting {
+		cr.connecting = false
+		cr.sendMsg(PACKET_TYPE["DISCONNECT"])
+	}
 	cr.socket.Close()
 	cr.socket = nil
 }
@@ -351,6 +383,7 @@ type extFileInfo struct{
 }
 
 func (cr *Cluster)SyncFiles(_files []FileInfo){
+	logInfo("Pre sync files...")
 	files := make([]FileInfo, 0, len(_files) / 3)
 	for _, f := range _files {
 		p := cr.getHashPath(f.Hash)
@@ -362,19 +395,19 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			}
 		}
 	}
-	sort.Slice(files, func(i, j int)(bool){ return files[i].Hash < files[j].Hash })
 	fl := len(files)
 	if fl == 0 {
-		logInfo("All files are synchronized")
+		logInfo("All files was synchronized")
 		go cr.gc(_files)
 		return
 	}
+	sort.Slice(files, func(i, j int)(bool){ return files[i].Hash < files[j].Hash })
 	var (
 		totalsize float32 = 0
 		downloaded float32 = 0
 	)
 	for i, _ := range files { totalsize += (float32)(files[i].Size) }
-	logInfof("Starting synchronize file, count: %d, total: %.3fMB", fl, totalsize / 1024 / 1024)
+	logInfof("Starting sync files, count: %d, total: %s", fl, bytesToUnit(totalsize))
 	start := time.Now()
 	re := make(chan *extFileInfo, (int)(cr.max_conn))
 	fcount := 0
@@ -384,12 +417,15 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 		handlef func(f *extFileInfo)
 		dlfile func(f *FileInfo)
 	)
+	dling := 0
 	dlhandle = func(f *extFileInfo, c chan<- *extFileInfo){
 		defer func(){
 			alive--
 			c <- f
 		}()
 		var(
+			buf []byte = make([]byte, 1024 * 1024 * 8) // 8MB
+			n int
 			err error
 			res *http.Response
 			fd *os.File
@@ -408,33 +444,46 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			if err != nil {
 				continue
 			}
+			defer res.Body.Close()
 			fd, err = os.Create(p)
 			if err != nil {
 				continue
 			}
 			defer fd.Close()
-			_, err = io.Copy(fd, res.Body)
-			fd.Close()
+			for {
+				n, err = res.Body.Read(buf)
+				if n == 0 && (err == nil || err == io.EOF) {
+					err = nil
+					break
+				}
+				_, err = fd.Write(buf[:n])
+				if err != nil { break }
+				dling += n
+			}
 			if err != nil {
+				fd.Close()
 				continue
 			}
-			// logDebug("Downloaded:", f.Path)
 			return
 		}
 		if err != nil {
 			f.Err = err
 		}
-		// logDebug("Download Error:", f.Path, err)
 	}
+	lastt := time.Now()
 	handlef = func(f *extFileInfo){
 		if f.Err != nil {
 			logError("Download file error:", f.Path, f.Err)
 			dlfile(f.FileInfo)
 		}else{
+			d := (float32)(dling)
+			dling = 0
 			fcount++
 			downloaded += (float32)(f.Size)
-			logInfo("Downloaded:", f.Path,
-				fmt.Sprintf("[%.3f/%.3fMB]%.2f%%", downloaded / 1024 / 1024, totalsize / 1024 / 1024, downloaded / totalsize * 100))
+			logInfof("Downloaded: %s [%s/%s:%s/s]%.2f%%", f.Path,
+					bytesToUnit(downloaded), bytesToUnit(totalsize), 
+					bytesToUnit(d / (float32)(time.Since(lastt)) * (float32)(time.Second)), downloaded / totalsize * 100)
+			lastt = time.Now()
 		}
 	}
 	dlfile = func(f *FileInfo){
@@ -454,7 +503,28 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 		handlef(<-re)
 	}
 	use := time.Since(start)
-	logInfof("Sync file complete, use time: %v, %.3fMB/s", use, totalsize / 1024 / 1024 / (float32)(use))
+	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(totalsize / (float32)(use / time.Second)))
+	var flag bool = false
+	if use > time.Hour { // 1 hour
+		logWarn("Synchronization time was more than 1 hour, re checking now.")
+		_files2 := cr.GetFileList()
+		if len(_files2) != len(_files) {
+			flag = true
+		}else{
+			for _, f := range _files2 {
+				p := cr.getHashPath(f.Hash)
+				if ufile.IsNotExist(p) {
+					flag = true
+					break
+				}
+			}
+		}
+		if flag {
+			logWarn("At least one file has changed during file synchronization, re synchronize now.")
+			cr.SyncFiles(_files2)
+			return
+		}
+	}
 	go cr.gc(_files)
 }
 

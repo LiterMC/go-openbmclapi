@@ -25,6 +25,8 @@
 
 ### 使用配置文件
 
+#### 注意: 配置文件指定的值会被环境变量的值 _(如果存在)_ 覆盖掉
+
 配置文件应为**运行目录**下的`config.json`文件, 使用`json`格式解析  
 例:
 ```javascript
@@ -34,7 +36,6 @@
 	"port": 80,            // 要监听的本地端口, 同 CLUSTER_PORT
 	"public_port": 8080,   // 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
 	"cluster_id": "${CLUSTER_ID}", // CLUSTER_ID
-	"cluster_secret": "${CLUSTER_SECRET}", // CLUSTER_SECRET
-	"version": "0.6.0"     // 节点版本, 勿动(除更新)
+	"cluster_secret": "${CLUSTER_SECRET}" // CLUSTER_SECRET
 }
 ```

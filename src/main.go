@@ -100,18 +100,14 @@ func main(){
 	}
 
 
-	go func(){
-		var fl []FileInfo
-		for{
-			time.Sleep(time.Minute * 10)
-			fl = cluster.GetFileList()
-			if fl != nil {
-				logError("Can not get file list.")
-				continue
-			}
-			cluster.SyncFiles(fl)
+	createInterval(func(){
+		fl := cluster.GetFileList()
+		if fl == nil {
+			logError("Can not get file list.")
+			return
 		}
-	}()
+		cluster.SyncFiles(fl)
+	}, time.Minute * 10)
 
 	go func(){
 		logInfof("Server start at \"%s\"", cluster.Server.Addr)

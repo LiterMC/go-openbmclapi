@@ -41,7 +41,7 @@ func init(){
 		obj = make(json.JsonObj)
 		err = json.ReadJson(fd, &obj)
 		if err != nil { panic(err) }
-		DEBUG = obj.GetBool("debug")
+		DEBUG = obj.Has("debug") && obj.GetBool("debug")
 		if os.Getenv("CLUSTER_IP") != "" {
 			HOST = os.Getenv("CLUSTER_IP")
 		}else{

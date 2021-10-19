@@ -296,7 +296,10 @@ var WsDialer *websocket.Dialer = &websocket.Dialer{
 
 type ESocket struct {
 	connecting bool
-
+	connsign chan struct{}
+	msgbuf []*EPacket
+	url string
+	header http.Header
 	sid string
 
 	ConnectHandle func(s *ESocket)
@@ -315,7 +318,8 @@ func NewESocket(_d ...*websocket.Dialer)(*ESocket){
 	}
 	return &ESocket{
 		connecting: false,
-
+		connsign: make(chan struct{}, 0),
+		msgbuf: make([]*EPacket, 0),
 		sid: "",
 
 		Dialer: &d,
@@ -327,28 +331,66 @@ func (s *ESocket)Dial(url string, _h ...http.Header)(err error){
 	if s.wsconn != nil {
 		panic("s.wsconn != nil")
 	}
-	h := http.Header{}
+	s.url = url
+	s.header = http.Header{}
 	if len(_h) > 0 {
-		h = _h[0]
+		s.header = _h[0]
 	}
 	var wsconn *websocket.Conn
-	wsconn, _, err = s.Dialer.Dial(url, h)
+	wsconn, _, err = s.Dialer.Dial(s.url, s.header)
 	if err != nil { return }
 	s.wsconn = wsconn
 	s.connecting = true
 
 	oldclose := s.wsconn.CloseHandler()
 	s.wsconn.SetCloseHandler(func(code int, text string)(err error){
-		s.Close()
+		s.connecting = false
 		err = oldclose(code, text)
 		if code == websocket.CloseNormalClosure {
 			logWarn("Websocket disconnected")
 		}else{
 			logErrorf("Websocket disconnected(%d): %s", code, text)
+			s.Reconnect()
 		}
 		return
 	})
 	go s._reader()
+	return nil
+}
+
+func (s *ESocket)Reconnect()(err error){
+	if s.connecting {
+		return nil
+	}
+	if s.wsconn == nil {
+		return nil
+	}
+	var wsconn *websocket.Conn
+	wsconn, _, err = s.Dialer.Dial(s.url, s.header)
+	if err != nil { return }
+	s.wsconn = wsconn
+	s.connecting = true
+	oldclose := s.wsconn.CloseHandler()
+	s.wsconn.SetCloseHandler(func(code int, text string)(err error){
+		s.connecting = false
+		err = oldclose(code, text)
+		if code == websocket.CloseNormalClosure {
+			logWarn("Websocket disconnected")
+		}else{
+			logErrorf("Websocket disconnected(%d): %s", code, text)
+			s.Reconnect()
+		}
+		return
+	})
+	mb := s.msgbuf
+	s.msgbuf = make([]*EPacket, 0)
+	for _, p := range mb {
+		s.Emit(p)
+	}
+	select{
+	case <-s.connsign:
+	default:
+	}
 	return nil
 }
 
@@ -376,7 +418,12 @@ func (s *ESocket)_reader(){
 	var (
 		obj json.JsonObj
 	)
-	for s.wsconn != nil {
+	for {
+		if !s.connecting {
+			logDebug("Waiting for reconnect")
+			s.connsign <- struct{}{}
+			logDebug("Reconnect successed")
+		}
 		logDebug("reading message")
 		code, r, err = s.wsconn.NextReader()
 		if err != nil {
@@ -430,6 +477,10 @@ func (s *ESocket)_reader(){
 }
 
 func (s *ESocket)Emit(p *EPacket)(err error){
+	if !s.connecting {
+		s.msgbuf = append(s.msgbuf, p)
+		return
+	}
 	var w io.WriteCloser
 	w, err = s.wsconn.NextWriter(websocket.TextMessage)
 	if err != nil { return }

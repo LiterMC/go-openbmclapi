@@ -14,6 +14,10 @@ import (
 	json "github.com/KpnmServer/go-util/json"
 )
 
+const (
+	VERSION = "0.6.0"
+)
+
 var (
 	DEBUG bool = false
 	HOST string = ""
@@ -21,7 +25,6 @@ var (
 	PUBLIC_PORT uint16 = 0
 	CLUSTER_ID string = "username"
 	CLUSTER_SECRET string = "password"
-	VERSION string = "0.0.1"
 	USE_HTTPS bool = false
 	CRT_FILE string = ""
 	KEY_FILE string = ""
@@ -73,7 +76,6 @@ func init(){
 		}else{
 			CLUSTER_SECRET = obj.GetString("cluster_secret")
 		}
-		VERSION = obj.GetString("version")
 		USE_HTTPS = obj.Has("https") && obj.GetBool("https")
 		if USE_HTTPS {
 			CRT_FILE = obj.GetString("crt_file")
@@ -98,7 +100,6 @@ func main(){
 		logError("Can not enable, exit")
 		return
 	}
-
 
 	createInterval(func(){
 		fl := cluster.GetFileList()

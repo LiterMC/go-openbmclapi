@@ -15,14 +15,7 @@ import (
 
 	ufile "github.com/KpnmServer/go-util/file"
 	json "github.com/KpnmServer/go-util/json"
-	websocket "github.com/gorilla/websocket"
 )
-
-func init(){
-	websocket.DefaultDialer.TLSClientConfig = &tls.Config{
-		InsecureSkipVerify: true, // Skip verify because the author was lazy
-	}
-}
 
 type Cluster struct{
 	host string
@@ -38,12 +31,8 @@ type Cluster struct{
 	hbytes uint64
 	max_conn uint
 
-	connecting bool
 	enabled bool
-	socket *websocket.Conn
-	wshandlers map[string]func(id string, args json.JsonArr)
-	wsid string
-	esid string
+	socket *Socket
 	keepalive func()(bool)
 
 	client *http.Client
@@ -68,10 +57,8 @@ func newCluster(
 		hbytes: 0,
 		max_conn: 400,
 
-		connecting: false,
 		enabled: false,
 		socket: nil,
-		wshandlers: make(map[string]func(id string, args json.JsonArr)),
 
 		client: &http.Client{
 			Timeout: time.Minute * 60,
@@ -89,96 +76,8 @@ func newCluster(
 	return
 }
 
-var PACKET_TYPE0 = make(map[string]string)
-var PACKET_TYPE  = make(map[string]string)
-func init(){
-	PACKET_TYPE0["0"] = "OPEN";
-	PACKET_TYPE0["OPEN"] = "0";
-	PACKET_TYPE0["1"] = "CLOSE";
-	PACKET_TYPE0["CLOSE"] = "1";
-	PACKET_TYPE0["2"] = "PING";
-	PACKET_TYPE0["PING"] = "2";
-	PACKET_TYPE0["3"] = "PONG";
-	PACKET_TYPE0["PONG"] = "3";
-	PACKET_TYPE0["4"] = "MESSAGE";
-	PACKET_TYPE0["MESSAGE"] = "4";
-
-	PACKET_TYPE["0"] = "CONNECT";
-	PACKET_TYPE["CONNECT"] = "0";
-	PACKET_TYPE["1"] = "DISCONNECT";
-	PACKET_TYPE["DISCONNECT"] = "1";
-	PACKET_TYPE["2"] = "EVENT";
-	PACKET_TYPE["EVENT"] = "2";
-	PACKET_TYPE["3"] = "ACK";
-	PACKET_TYPE["ACK"] = "3";
-	PACKET_TYPE["4"] = "CONNECT_ERROR";
-	PACKET_TYPE["CONNECT_ERROR"] = "4";
-	PACKET_TYPE["5"] = "BINARY_EVENT";
-	PACKET_TYPE["BINARY_EVENT"] = "5";
-	PACKET_TYPE["6"] = "BINARY_ACK";
-	PACKET_TYPE["BINARY_ACK"] = "6";
-}
-
-func (cr *Cluster)runMsgHandler(id string, obj json.JsonArr){
-	h, ok := cr.wshandlers[id]
-	if ok {
-		h(id, obj)
-	}else{
-		logDebug("Got ws message:", id, obj)
-	}
-}
-
-func (cr *Cluster)sendMsg(msg string)(error){
-	logDebug("Sending msg:", msg)
-	return cr.socket.WriteMessage(websocket.TextMessage, ([]byte)(PACKET_TYPE0["MESSAGE"] + msg))
-}
-
-func (cr *Cluster)sendEvent(id string, objs ...interface{})(error){
-	jarr := (json.JsonArr)(append([]interface{}{id}, objs...))
-	return cr.sendMsg(PACKET_TYPE["EVENT"] + jarr.String())
-}
-
-func (cr *Cluster)onWsMessage(t string, data []byte){	
-	var (
-		err error
-		str string
-		obj json.JsonObj
-		arr json.JsonArr
-	)
-	switch t {
-	case "CONNECT":
-		err = json.DecodeJson(data, &obj)
-		if err == nil {
-			cr.wsid = obj.GetString("sid")
-			logDebug("socket.io connected id:", cr.wsid)
-			cr._enable()
-		}
-	case "DISCONNECT":
-		cr.Disable()
-	case "CONNECT_ERROR":
-		err = json.DecodeJson(data, &obj)
-		if err == nil {
-			logErrorf("Cannot connect to server:", obj)
-		}else if err = json.DecodeJson(data, &str); err == nil {
-			logErrorf("Cannot connect to server:", str)
-		}
-		panic((string)(data))
-	case "EVENT", "BINARY_EVENT":
-		err = json.DecodeJson(data, &arr)
-		logDebug("got event:", string(data))
-		cr.runMsgHandler(arr.GetString(0), arr[1:])
-	// case "ACK", "BINARY_ACK":
-	// 	err = json.DecodeJson(data, &arr)
-	default:
-		logError("Unknown socket.io package name:", t)
-	}
-	if err != nil {
-		logError("Error when decode message:", err)
-	}
-}
-
 func (cr *Cluster)Enable()(bool){
-	if cr.connecting {
+	if cr.enabled {
 		return true
 	}
 	var (
@@ -190,109 +89,46 @@ func (cr *Cluster)Enable()(bool){
 	logDebug("Websocket url:", wsurl)
 	header := http.Header{}
 	header.Set("Origin", cr.prefix)
-	cr.socket, res, err = websocket.DefaultDialer.Dial(wsurl, header)
+
+	cr.socket = NewSocket(NewESocket())
+	cr.socket.ConnectHandle = func(*Socket){
+		cr._enable()
+	}
+	cr.socket.DisconnectHandle = func(*Socket){
+		cr.Disable()
+	}
+	err = cr.socket.GetIO().Dial(wsurl, header)
 	if err != nil {
-		cr.socket = nil
-		logError("Websocket connect error:", err, res)
+		logError("Connect websocket error:", err, res)
 		return false
 	}
-	cr.connecting = true
-	oldclose := cr.socket.CloseHandler()
-	cr.socket.SetCloseHandler(func(code int, text string)(err error){
-		cr.connecting = false
-		if cr.keepalive != nil {
-			cr.keepalive()
-			cr.keepalive = nil
-		}
-		err = oldclose(code, text)
-		if code == websocket.CloseNormalClosure {
-			logWarn("Websocket disconnected")
-		}else{
-			logErrorf("Websocket disconnected(%d): %s", code, text)
-		}
-		return
-	})
-	go func(){
-		var (
-			code int
-			buf []byte
-			err error
-			t string
-			ok bool
-		)
-		var (
-			obj json.JsonObj
-		)
-		for cr.connecting {
-			logDebug("reading message")
-			code, buf, err = cr.socket.ReadMessage()
-			if err != nil {
-				if !cr.connecting {
-					return
-				}
-				cr.Disable()
-				logError("Error when reading websocket:", err)
-				return
-			}
-			if code == websocket.TextMessage {
-				logDebug("got msg:", string(buf))
-				if t, ok = PACKET_TYPE0[(string)(buf[0:1])]; !ok {
-					logError("Unknown packet type:", (string)(buf[0:1]))
-					continue
-				}
-				switch t {
-				case "OPEN":
-					err = json.DecodeJson(buf[1:], &obj)
-					if err == nil {
-						cr.esid = obj.GetString("sid")
-						logDebug("engine.io connected id:", cr.esid)
-						cr.sendMsg(PACKET_TYPE["CONNECT"])
-					}
-				case "CLOSE":
-					err = nil
-					logDebug("disconnecting")
-					if cr.socket != nil {
-						cr.socket.Close()
-					}
-					return
-				case "PING":
-					cr.socket.WriteMessage(websocket.TextMessage, ([]byte)(PACKET_TYPE0["PONG"]))
-				case "MESSAGE":
-					cr.onWsMessage(PACKET_TYPE[(string)(buf[1:2])], buf[2:])
-				default:
-					logError("Unknown engine.io packet name:", t)
-				}
-			}
-		}
-	}()
 	return true
 }
 
 func (cr *Cluster)_enable(){
-	cr.sendEvent("enable", json.JsonObj{
+	cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
+		logDebug("get enable ack:", data)
+		cr.enabled = true
+		cr.keepalive = createInterval(func(){
+			cr.KeepAlive()
+		}, time.Second * 60)
+	}, "enable", json.JsonObj{
 		"host": cr.host,
 		"port": cr.public_port,
 		"version": cr.version,
 	})
-	cr.enabled = true
-	cr.keepalive = createInterval(func(){
-		cr.KeepAlive()
-	}, time.Second * 30)
 }
 
 func (cr *Cluster)KeepAlive()(ok bool){
-	ok = false
 	hits, hbytes := cr.hits, cr.hbytes
-	defer func(){
-		if ok {
-			cr.hits -= hits
-			cr.hbytes -= hbytes
-		}
-	}()
 	var (
 		err error
 	)
-	err = cr.sendEvent("keep-alive", json.JsonObj{
+	err = cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
+		logDebug("get keep-alive ack:", data)
+		cr.hits -= hits
+		cr.hbytes -= hbytes
+	}, "keep-alive", json.JsonObj{
 		"time": time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits": cr.hits,
 		"bytes": cr.hbytes,
@@ -300,21 +136,18 @@ func (cr *Cluster)KeepAlive()(ok bool){
 	if err != nil {
 		logError("Error when keep-alive:", err)
 	}
-	ok = err == nil
-	return
+	return err == nil
 }
 
 func (cr *Cluster)Disable(){
 	if cr.enabled {
-		cr.enabled = false
-		cr.sendEvent("disable")
+		cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
+			logDebug("disable ack:", data)
+			cr.enabled = false
+			cr.socket.Close()
+			cr.socket = nil
+		}, "disable")
 	}
-	if cr.connecting {
-		cr.connecting = false
-		cr.sendMsg(PACKET_TYPE["DISCONNECT"])
-	}
-	cr.socket.Close()
-	cr.socket = nil
 }
 
 func (cr *Cluster)queryFunc(method string, url string, call func(*http.Request))(res *http.Response, err error){
@@ -505,8 +338,8 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 	use := time.Since(start)
 	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(totalsize / (float32)(use / time.Second)))
 	var flag bool = false
-	if use > time.Hour { // 1 hour
-		logWarn("Synchronization time was more than 1 hour, re checking now.")
+	if use > time.Minute * 10 { // interval time
+		logWarn("Synchronization time was more than 10 min, re checking now.")
 		_files2 := cr.GetFileList()
 		if len(_files2) != len(_files) {
 			flag = true
@@ -569,7 +402,7 @@ func (cr *Cluster)DownloadFile(hash string)(bool){
 		logError("Query file error:", err)
 		return false
 	}
-	fd, err = os.Create(hashToFilename(hash))
+	fd, err = os.Create(cr.getHashPath(hash))
 	if err != nil {
 		logError("Create file error:", err)
 		return false
@@ -587,7 +420,7 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 	method := request.Method
 	url := request.URL
 	rawpath := url.EscapedPath()
-	logDebug("serve url:", url.String())
+	logInfo("serve url:", url.String())
 	switch{
 	case strings.HasPrefix(rawpath, "/download/"):
 		if method == "GET" {
@@ -607,6 +440,7 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 				response.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			response.WriteHeader(http.StatusOK)
 			buf := make([]byte, 1024 * 1024 * 8) // chunk size = 8MB
 			var (
 				hb uint64
@@ -615,7 +449,8 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 			for {
 				n, err = fd.Read(buf)
 				if err != nil {
-					response.WriteHeader(http.StatusInternalServerError)
+					if err == io.EOF { break }
+					logError("Error when serving download read file:", err)
 					return
 				}
 				if n == 0 {
@@ -623,14 +458,13 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 				}
 				_, err = response.Write(buf[:n])
 				if err != nil {
-					response.WriteHeader(http.StatusInternalServerError)
+					logError("Error when serving download:", err)
 					return
 				}
 				hb += (uint64)(n)
 			}
 			cr.hits++
 			cr.hbytes += hb
-			response.WriteHeader(http.StatusOK)
 			return
 		}
 	case strings.HasPrefix(rawpath, "/measure/"):
@@ -644,8 +478,8 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 				response.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			response.Write(make([]byte, n * 1024 * 1024))
 			response.WriteHeader(http.StatusOK)
+			response.Write(make([]byte, n * 1024 * 1024))
 			return
 		}
 	}

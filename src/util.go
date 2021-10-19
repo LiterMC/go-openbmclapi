@@ -26,6 +26,7 @@ func createInterval(do func(), delay time.Duration)(cancel func()(bool)){
 		return true
 	}
 	go func(){
+		running = true
 		for running {
 			select{
 			case <-exitch:

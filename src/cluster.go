@@ -230,7 +230,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 	}
 	fl := len(files)
 	if fl == 0 {
-		logInfo("All files was synchronized")
+		logInfo("All file was synchronized")
 		go cr.gc(_files)
 		return
 	}

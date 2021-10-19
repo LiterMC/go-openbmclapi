@@ -19,14 +19,31 @@
 ### 从源代码运行
 
 1. 下载本仓库 _(可以使用`git clone https://github.com/KpnmServer/go-openbmclapi.git`)_
-2. 确保您的服务器上装有`go 1.11+` _(注: 仅测试过**go1.15.14**)_
+2. 确保您的**节点**服务器上装有`go 1.11+` _(注: 仅测试过**go1.15.14**)_
 3. cd进入本仓库
 4. 配置配置文件或环境变量
 5. 使用`go run ./src`运行本程序
 
 ### 从docker运行
 
-1. TODO
+#### 1. 可直接运行仓库目录下的`docker-run.sh`文件, 运行之前请确保存在`kupen/go-openbmclapi:latest`镜像, 或网络连通
+#### 2. 使用`docker build -t kupen/go-openbmclapi:latest .`手动编译镜像, 然后再使用`docker-run.sh`运行
+
+Dockerfile内容如下:
+```Dockerfile
+FROM ubuntu:latest
+
+RUN mkdir -p /web && mkdir -p /web/work && cd /web &&\
+ apt-get update && apt-get install -y curl &&\
+ curl -L -o /web/linux-amd64-openbmclapi\
+ "https://github.com/KpnmServer/go-openbmclapi/releases/download/v0.6.0-1/linux-amd64-openbmclapi" &&\
+ chmod +x /web/linux-amd64-openbmclapi &&\
+ echo -e '#!/bin/sh\ncd /web/work;if [ ! -f "./config.json" ];then echo "{\"debug\":false,\"port\":80}" >./config.json;fi;'\
+'exec /web/linux-amd64-openbmclapi' >/web/runner.sh &&\
+ chmod +x /web/runner.sh
+
+CMD exec /web/runner.sh
+```
 
 ## 配置
 

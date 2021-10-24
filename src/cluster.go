@@ -98,7 +98,7 @@ func (cr *Cluster)Enable()(bool){
 		cr.Disable()
 	}
 	cr.socket.GetIO().ErrorHandle = func(*ESocket){
-		cr.Disable()
+		cr.Disable()()
 		cr.Enable()
 	}
 	err = cr.socket.GetIO().Dial(wsurl, header)
@@ -111,7 +111,11 @@ func (cr *Cluster)Enable()(bool){
 
 func (cr *Cluster)_enable(){
 	cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
-		logDebug("get enable ack:", data)
+		data = data.GetArray(0)
+		if !data.GetBool(1) {
+			panic("Cannot enable: " + data.String())
+		}
+		logInfo("get enable ack:", data)
 		cr.enabled = true
 		cr.keepalive = createInterval(func(){
 			cr.KeepAlive()
@@ -129,8 +133,8 @@ func (cr *Cluster)KeepAlive()(ok bool){
 		err error
 	)
 	err = cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
-		logDebug("get keep-alive ack:", data)
-		logInfo("Keep-alive success:", hits, bytesToUnit((float32)(hbytes)))
+		data = data.GetArray(0)
+		logInfo("Keep-alive success:", hits, bytesToUnit((float32)(hbytes)), data)
 		cr.hits -= hits
 		cr.hbytes -= hbytes
 	}, "keep-alive", json.JsonObj{
@@ -144,20 +148,30 @@ func (cr *Cluster)KeepAlive()(ok bool){
 	return err == nil
 }
 
-func (cr *Cluster)Disable(){
+func (cr *Cluster)Disable()(sync func()){
 	logInfo("Disabling cluster")
 	if cr.keepalive != nil {
 		cr.keepalive()
 		cr.keepalive = nil
 	}
 	if cr.enabled {
+		sch := make(chan struct{}, 1)
 		cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
-			logDebug("disable ack:", data)
+			data = data.GetArray(0)
+			logInfo("disable ack:", data)
+			if !data.GetBool(1) {
+				panic("Cannot enable: " + data.String())
+			}
 			cr.enabled = false
 			cr.socket.Close()
 			cr.socket = nil
+			sch <- struct{}{}
 		}, "disable")
+		return func(){
+			<- sch
+		}
 	}
+	return func(){}
 }
 
 func (cr *Cluster)queryFunc(method string, url string, call func(*http.Request))(res *http.Response, err error){
@@ -244,7 +258,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 		go cr.gc(_files)
 		return
 	}
-	sort.Slice(files, func(i, j int)(bool){ return files[i].Hash < files[j].Hash })
+	sort.Slice(files, func(i, j int)(bool){ return files[i].Size > files[j].Size })
 	var (
 		totalsize float32 = 0
 		downloaded float32 = 0
@@ -260,7 +274,6 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 		handlef func(f *extFileInfo)
 		dlfile func(f *FileInfo)
 	)
-	dling := 0
 	dlhandle = func(f *extFileInfo, c chan<- *extFileInfo){
 		defer func(){
 			alive--
@@ -295,13 +308,14 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			defer fd.Close()
 			for {
 				n, err = res.Body.Read(buf)
-				if n == 0 && (err == nil || err == io.EOF) {
-					err = nil
+				if n == 0 {
+					if err == io.EOF{
+						err = nil
+					}
 					break
 				}
 				_, err = fd.Write(buf[:n])
 				if err != nil { break }
-				dling += n
 			}
 			if err != nil {
 				fd.Close()
@@ -313,20 +327,16 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			f.Err = err
 		}
 	}
-	lastt := time.Now()
 	handlef = func(f *extFileInfo){
 		if f.Err != nil {
 			logError("Download file error:", f.Path, f.Err)
 			dlfile(f.FileInfo)
 		}else{
-			d := (float32)(dling)
-			dling = 0
-			fcount++
 			downloaded += (float32)(f.Size)
+			fcount++
 			logInfof("Downloaded: %s [%s/%s:%s/s]%.2f%%", f.Path,
 					bytesToUnit(downloaded), bytesToUnit(totalsize), 
-					bytesToUnit(d / (float32)(time.Since(lastt)) * (float32)(time.Second)), downloaded / totalsize * 100)
-			lastt = time.Now()
+					bytesToUnit(downloaded / totalsize / (float32)(time.Since(start)) * (float32)(time.Second)), downloaded / totalsize * 100)
 		}
 	}
 	dlfile = func(f *FileInfo){

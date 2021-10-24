@@ -101,7 +101,7 @@ func flushLogfile(){
 	if ufile.IsNotExist(logdir){
 		ufile.CreateDir(logdir)
 	}
-	lfile, err := os.OpenFile(ufile.JoinPath(logdir, time.Now().Format("20060102.log")),
+	lfile, err := os.OpenFile(ufile.JoinPath(logdir, time.Now().Format("20060102-15.log")),
 		os.O_WRONLY | os.O_APPEND | os.O_CREATE, 0666)
 	if err != nil {
 		logError("Create new log file error:", err)
@@ -117,7 +117,7 @@ func init(){
 	go func(){
 		for{
 			select{
-			case <-time.After(time.Duration((time.Now().Unix() / (60 * 60 * 24) + 1) * (60 * 60 * 24) - time.Now().Unix()) * time.Second):
+			case <-time.After(time.Duration((time.Now().Unix() / 60 + 1) * 60 - time.Now().Unix()) * time.Minute):
 				flushLogfile()
 			}
 		}

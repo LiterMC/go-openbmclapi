@@ -27,7 +27,7 @@ type Cluster struct{
 	prefix string
 
 	cachedir string
-	hits uint64
+	hits uint32
 	hbytes uint64
 	max_conn uint
 
@@ -97,6 +97,10 @@ func (cr *Cluster)Enable()(bool){
 	cr.socket.DisconnectHandle = func(*Socket){
 		cr.Disable()
 	}
+	cr.socket.GetIO().ErrorHandle = func(*ESocket){
+		cr.Disable()
+		cr.Enable()
+	}
 	err = cr.socket.GetIO().Dial(wsurl, header)
 	if err != nil {
 		logError("Connect websocket error:", err, res)
@@ -126,6 +130,7 @@ func (cr *Cluster)KeepAlive()(ok bool){
 	)
 	err = cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
 		logDebug("get keep-alive ack:", data)
+		logInfo("Keep-alive success:", hits, bytesToUnit((float32)(hbytes)))
 		cr.hits -= hits
 		cr.hbytes -= hbytes
 	}, "keep-alive", json.JsonObj{
@@ -140,6 +145,11 @@ func (cr *Cluster)KeepAlive()(ok bool){
 }
 
 func (cr *Cluster)Disable(){
+	logInfo("Disabling cluster")
+	if cr.keepalive != nil {
+		cr.keepalive()
+		cr.keepalive = nil
+	}
 	if cr.enabled {
 		cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
 			logDebug("disable ack:", data)

@@ -295,6 +295,7 @@ var WsDialer *websocket.Dialer = &websocket.Dialer{
 }
 
 type ESocket struct {
+	connected bool
 	connecting bool
 	connsign chan struct{}
 	msgbuf []*EPacket
@@ -304,6 +305,7 @@ type ESocket struct {
 
 	ConnectHandle func(s *ESocket)
 	DisconnectHandle func(s *ESocket)
+	ErrorHandle func(s *ESocket)
 	PongHandle func(s *ESocket, data []byte)
 	MessageHandle func(s *ESocket, data []byte)
 
@@ -317,6 +319,7 @@ func NewESocket(_d ...*websocket.Dialer)(*ESocket){
 		d = *_d[0]
 	}
 	return &ESocket{
+		connected: false,
 		connecting: false,
 		connsign: make(chan struct{}, 0),
 		msgbuf: make([]*EPacket, 0),
@@ -340,6 +343,7 @@ func (s *ESocket)Dial(url string, _h ...http.Header)(err error){
 	wsconn, _, err = s.Dialer.Dial(s.url, s.header)
 	if err != nil { return }
 	s.wsconn = wsconn
+	s.connected = true
 	s.connecting = true
 
 	oldclose := s.wsconn.CloseHandler()
@@ -350,7 +354,10 @@ func (s *ESocket)Dial(url string, _h ...http.Header)(err error){
 			logWarn("Websocket disconnected")
 		}else{
 			logErrorf("Websocket disconnected(%d): %s", code, text)
-			s.Reconnect()
+			// s.Reconnect()
+			if s.ErrorHandle != nil {
+				s.ErrorHandle(s)
+			}
 		}
 		return
 	})
@@ -378,7 +385,7 @@ func (s *ESocket)Reconnect()(err error){
 			logWarn("Websocket disconnected")
 		}else{
 			logErrorf("Websocket disconnected(%d): %s", code, text)
-			s.Reconnect()
+			// s.Reconnect()
 		}
 		return
 	})

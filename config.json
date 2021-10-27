@@ -1,5 +1,6 @@
 {
 	"debug": false,
+	"show_serve_info": false,
 	"host": "example.com",
 	"port": 80,
 	"public_port": 8080,

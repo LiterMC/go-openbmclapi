@@ -30,6 +30,7 @@ type Cluster struct{
 	hits uint32
 	hbytes uint64
 	max_conn uint
+	issync bool
 
 	enabled bool
 	socket *Socket
@@ -56,6 +57,7 @@ func newCluster(
 		hits: 0,
 		hbytes: 0,
 		max_conn: 400,
+		issync: false,
 
 		enabled: false,
 		socket: nil,
@@ -84,6 +86,7 @@ func (cr *Cluster)Enable()(bool){
 		err error
 		res *http.Response
 	)
+	logInfo("Enabling cluster")
 	wsurl := httpToWs(cr.prefix) +
 		fmt.Sprintf("/socket.io/?clusterId=%s&clusterSecret=%s&EIO=4&transport=websocket", cr.username, cr.password)
 	logDebug("Websocket url:", wsurl)
@@ -98,8 +101,13 @@ func (cr *Cluster)Enable()(bool){
 		cr.Disable()
 	}
 	cr.socket.GetIO().ErrorHandle = func(*ESocket){
-		cr.Disable()()
-		cr.Enable()
+		go func(){
+			cr.enabled = false
+			cr.Disable()
+			if !cr.Enable() {
+				panic("Cannot reconnect to server, exit.")
+			}
+		}()
 	}
 	err = cr.socket.GetIO().Dial(wsurl, header)
 	if err != nil {
@@ -156,7 +164,7 @@ func (cr *Cluster)Disable()(sync func()){
 	}
 	if cr.enabled {
 		sch := make(chan struct{}, 1)
-		cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
+		err := cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
 			data = data.GetArray(0)
 			logInfo("disable ack:", data)
 			if !data.GetBool(1) {
@@ -167,8 +175,10 @@ func (cr *Cluster)Disable()(sync func()){
 			cr.socket = nil
 			sch <- struct{}{}
 		}, "disable")
-		return func(){
-			<- sch
+		if err == nil {
+			return func(){
+				<- sch
+			}
 		}
 	}
 	return func(){}
@@ -241,6 +251,14 @@ type extFileInfo struct{
 
 func (cr *Cluster)SyncFiles(_files []FileInfo){
 	logInfo("Pre sync files...")
+	if cr.issync {
+		logWarn("Another sync task is running!")
+		return
+	}
+	cr.issync = true
+	defer func(){
+		cr.issync = false
+	}()
 	files := make([]FileInfo, 0, len(_files) / 3)
 	for _, f := range _files {
 		p := cr.getHashPath(f.Hash)
@@ -357,6 +375,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 	}
 	use := time.Since(start)
 	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(totalsize / (float32)(use / time.Second)))
+	cr.issync = false
 	var flag bool = false
 	if use > time.Minute * 10 { // interval time
 		logWarn("Synchronization time was more than 10 min, re checking now.")
@@ -382,6 +401,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 }
 
 func (cr *Cluster)gc(files []FileInfo){
+	logInfo("Starting global cleanup")
 	fileset := make(map[string]struct{})
 	for i, _ := range files {
 		fileset[cr.getHashPath(files[i].Hash)] = struct{}{}
@@ -403,12 +423,20 @@ func (cr *Cluster)gc(files []FileInfo){
 			continue
 		}
 		for _, f := range fil {
+			if cr.issync {
+				logWarn("Global cleanup interrupted")
+				return
+			}
 			n = ufile.JoinPath(p, f.Name())
-			if _, ok = fileset[n]; !ok {
-				ufile.RemoveFile(n)
+			if ufile.IsDir(n) {
+				stack = append(stack, n)
+			}else if _, ok = fileset[n]; !ok {
+				logInfo("Found outdated file:", n)
+				go ufile.RemoveFile(n)
 			}
 		}
 	}
+	logInfo("Global cleanup finished")
 }
 
 func (cr *Cluster)DownloadFile(hash string)(bool){
@@ -440,7 +468,9 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 	method := request.Method
 	url := request.URL
 	rawpath := url.EscapedPath()
-	logInfo("serve url:", url.String())
+	if SHOW_SERVE_INFO {
+		go logInfo("serve url:", url.String())
+	}
 	switch{
 	case strings.HasPrefix(rawpath, "/download/"):
 		if method == "GET" {
@@ -461,7 +491,7 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 				return
 			}
 			response.WriteHeader(http.StatusOK)
-			buf := make([]byte, 1024 * 1024 * 8) // chunk size = 8MB
+			buf := make([]byte, 1024 * 512) // chunk size = 512KB
 			var (
 				hb uint64
 				n int
@@ -469,7 +499,10 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 			for {
 				n, err = fd.Read(buf)
 				if err != nil {
-					if err == io.EOF { break }
+					if err == io.EOF {
+						err = nil
+						break
+					}
 					logError("Error when serving download read file:", err)
 					return
 				}

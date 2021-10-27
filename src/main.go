@@ -20,6 +20,7 @@ const (
 
 var (
 	DEBUG bool = false
+	SHOW_SERVE_INFO bool = false
 	HOST string = ""
 	PORT uint16 = 0
 	PUBLIC_PORT uint16 = 0
@@ -45,6 +46,7 @@ func init(){
 		err = json.ReadJson(fd, &obj)
 		if err != nil { panic(err) }
 		DEBUG = obj.Has("debug") && obj.GetBool("debug")
+		SHOW_SERVE_INFO = obj.Has("show_serve_info") && obj.GetBool("show_serve_info")
 		if os.Getenv("CLUSTER_IP") != "" {
 			HOST = os.Getenv("CLUSTER_IP")
 		}else{
@@ -85,6 +87,13 @@ func init(){
 }
 
 func main(){
+	defer func(){
+		err := recover()
+		if err != nil {
+			logError("Panic error:", err)
+			panic(err)
+		}
+	}()
 	cluster := newCluster(HOST, PUBLIC_PORT, CLUSTER_ID, CLUSTER_SECRET, VERSION, fmt.Sprintf("%s:%d", "0.0.0.0", PORT))
 
 	logInfof("Starting OpenBmclApi(golang) v%s", VERSION)

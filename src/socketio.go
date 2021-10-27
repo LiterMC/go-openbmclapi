@@ -386,6 +386,9 @@ func (s *ESocket)Reconnect()(err error){
 		}else{
 			logErrorf("Websocket disconnected(%d): %s", code, text)
 			// s.Reconnect()
+			if s.ErrorHandle != nil {
+				s.ErrorHandle(s)
+			}
 		}
 		return
 	})
@@ -408,6 +411,10 @@ func (s *ESocket)Close()(err error){
 	s.connecting = false
 	err = s.wsconn.Close()
 	s.wsconn = nil
+	select{
+	case <-s.connsign:
+	default:
+	}
 	return
 }
 
@@ -425,17 +432,24 @@ func (s *ESocket)_reader(){
 	var (
 		obj json.JsonObj
 	)
-	for {
+	for s.wsconn != nil {
 		if !s.connecting {
 			logDebug("Waiting for reconnect")
 			s.connsign <- struct{}{}
+			if s.wsconn == nil {
+				return
+			}
 			logDebug("Reconnect successed")
 		}
 		logDebug("reading message")
 		code, r, err = s.wsconn.NextReader()
 		if err != nil {
 			logError("Error when try read websocket:", err)
-			continue
+			s.wsconn.Close()
+			if s.ErrorHandle != nil {
+				s.ErrorHandle(s)
+			}
+			return
 		}
 		if code != websocket.TextMessage { continue }
 		pkt = &EPacket{}

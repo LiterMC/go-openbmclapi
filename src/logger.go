@@ -117,7 +117,7 @@ func init(){
 	go func(){
 		for{
 			select{
-			case <-time.After(time.Duration((time.Now().Unix() / 60 + 1) * 60 - time.Now().Unix()) * time.Minute):
+			case <-time.After(time.Duration((time.Now().Unix() / (60 * 60) + 1) * (60 * 60) - time.Now().Unix()) * time.Second):
 				flushLogfile()
 			}
 		}

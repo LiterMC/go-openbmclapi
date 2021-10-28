@@ -1,6 +1,6 @@
 #!/bin/sh
 
-cd $(dirname $0)
+cd "$(dirname "$0")"
 
 docker pull kupen/go-openbmclapi:latest || (
  echo "[ERROR] Failed to pull docker image 'kupen/go-openbmclapi:latest'"

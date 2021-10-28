@@ -31,7 +31,7 @@ var (
 	KEY_FILE string = ""
 )
 
-func init(){
+func readConfig(){
 	{ // read config file
 		var (
 			fd *os.File
@@ -86,31 +86,28 @@ func init(){
 	}
 }
 
-func main(){
-	defer func(){
-		err := recover()
-		if err != nil {
-			logError("Panic error:", err)
-			panic(err)
-		}
-	}()
-	cluster := newCluster(HOST, PUBLIC_PORT, CLUSTER_ID, CLUSTER_SECRET, VERSION, fmt.Sprintf("%s:%d", "0.0.0.0", PORT))
+var cluster *Cluster = nil
+var syncFileTimer func()(bool) = nil
+
+func before()(bool){
+	readConfig()
+	cluster = NewCluster(HOST, PUBLIC_PORT, CLUSTER_ID, CLUSTER_SECRET, VERSION, fmt.Sprintf("%s:%d", "0.0.0.0", PORT))
 
 	logInfof("Starting OpenBmclApi(golang) v%s", VERSION)
 	{
 		fl := cluster.GetFileList()
 		if fl == nil {
 			logError("Filelist nil, exit")
-			return
+			return false
 		}
 		cluster.SyncFiles(fl)
 	}
 	if !cluster.Enable() {
 		logError("Can not enable, exit")
-		return
+		return false
 	}
 
-	createInterval(func(){
+	syncFileTimer = createInterval(func(){
 		fl := cluster.GetFileList()
 		if fl == nil {
 			logError("Can not get file list.")
@@ -132,22 +129,42 @@ func main(){
 		}
 	}()
 
+	return true
+}
+
+func after(){
+	if syncFileTimer != nil {
+		syncFileTimer()
+		syncFileTimer = nil
+	}
+	cluster.Disable()
+}
+
+func main(){
+	defer func(){
+		err := recover()
+		if err != nil {
+			logError("Panic error:", err)
+			panic(err)
+		}
+	}()
+
+
 	bgcont := context.Background()
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
-	exch := make(chan struct{}, 0)
+	var s os.Signal
+	start: if !before() { return }
 
 	select {
-	case <-sigs:
+	case s = <-sigs:
 		timeoutCtx, _ := context.WithTimeout(bgcont, 16 * time.Second)
 		logWarn("Closing server...")
-		go func(){
-			cluster.Disable()
-			exch <- struct{}{}
-		}()
+		after()
 		cluster.Server.Shutdown(timeoutCtx)
 	}
-
-	<-exch
+	if s == syscall.SIGHUP {
+		goto start
+	}
 }

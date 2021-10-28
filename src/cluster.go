@@ -10,6 +10,7 @@ import (
 	strings "strings"
 	strconv "strconv"
 	fmt "fmt"
+	sync "sync"
 	tls "crypto/tls"
 	http "net/http"
 
@@ -34,13 +35,14 @@ type Cluster struct{
 
 	enabled bool
 	socket *Socket
+	connlock sync.Mutex
 	keepalive func()(bool)
 
 	client *http.Client
 	Server *http.Server
 }
 
-func newCluster(
+func NewCluster(
 	host string, public_port uint16,
 	username string, password string,
 	version string, address string)(cr *Cluster){
@@ -61,6 +63,7 @@ func newCluster(
 
 		enabled: false,
 		socket: nil,
+		connlock: sync.Mutex{},
 
 		client: &http.Client{
 			Timeout: time.Minute * 60,
@@ -79,7 +82,12 @@ func newCluster(
 }
 
 func (cr *Cluster)Enable()(bool){
-	if cr.enabled {
+	if cr.socket != nil {
+		return true
+	}
+	cr.connlock.Lock()
+	defer cr.connlock.Unlock()
+	if cr.socket != nil {
 		return true
 	}
 	var (
@@ -162,7 +170,7 @@ func (cr *Cluster)Disable()(sync func()){
 		cr.keepalive()
 		cr.keepalive = nil
 	}
-	if cr.enabled {
+	if cr.socket != nil {
 		sch := make(chan struct{}, 1)
 		err := cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
 			data = data.GetArray(0)
@@ -180,6 +188,7 @@ func (cr *Cluster)Disable()(sync func()){
 				<- sch
 			}
 		}
+		cr.socket = nil
 	}
 	return func(){}
 }
@@ -308,7 +317,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 		defer func(){
 			if err != nil {
 				if ufile.IsExist(p) {
-					ufile.RemoveFile(p)
+					os.Remove(p)
 				}
 			}
 		}()
@@ -397,7 +406,27 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			return
 		}
 	}
+	go cr.CheckFiles(_files)
 	go cr.gc(_files)
+}
+
+func (cr *Cluster)CheckFiles(files []FileInfo){
+	logInfo("Starting check files")
+	for _, f := range files {
+		if cr.issync {
+			logWarn("File check interrupted")
+			return
+		}
+		p := cr.getHashPath(f.Hash)
+		fs, err := os.Stat(p)
+		if err == nil {
+			if fs.Size() != f.Size {
+				logInfof("Found wrong size file: '%s'(%s) except %s", p, bytesToUnit((float32)(fs.Size())), bytesToUnit((float32)(f.Size)))
+				os.Remove(p)
+			}
+		}
+	}
+	logInfo("File check finished")
 }
 
 func (cr *Cluster)gc(files []FileInfo){
@@ -432,7 +461,7 @@ func (cr *Cluster)gc(files []FileInfo){
 				stack = append(stack, n)
 			}else if _, ok = fileset[n]; !ok {
 				logInfo("Found outdated file:", n)
-				go ufile.RemoveFile(n)
+				os.Remove(n)
 			}
 		}
 	}

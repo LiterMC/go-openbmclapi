@@ -45,6 +45,11 @@ RUN mkdir -p /web && mkdir -p /web/work && cd /web &&\
 CMD exec /web/runner.sh
 ```
 
+### 从`systemd`运行 _(仅Linux)_
+
+1. **确保systemd是您的*启动进程***
+2. 执行本仓库service
+
 ## 配置
 
 ### 使用配置文件

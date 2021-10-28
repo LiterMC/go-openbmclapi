@@ -150,9 +150,13 @@ func (cr *Cluster)KeepAlive()(ok bool){
 	)
 	err = cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
 		data = data.GetArray(0)
-		logInfo("Keep-alive success:", hits, bytesToUnit((float32)(hbytes)), data)
-		cr.hits -= hits
-		cr.hbytes -= hbytes
+		if len(data) > 1 && data.Get(1) == true {
+			logInfo("Keep-alive success:", hits, bytesToUnit((float32)(hbytes)), data)
+			cr.hits -= hits
+			cr.hbytes -= hbytes
+		}else{
+			logInfo("Keep-alive failed:", data.Get(0))
+		}
 	}, "keep-alive", json.JsonObj{
 		"time": time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits": cr.hits,
@@ -540,7 +544,9 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 				}
 				_, err = response.Write(buf[:n])
 				if err != nil {
-					logError("Error when serving download:", err)
+					if !IGNORE_SERVE_ERROR {
+						logError("Error when serving download:", err)
+					}
 					return
 				}
 				hb += (uint64)(n)

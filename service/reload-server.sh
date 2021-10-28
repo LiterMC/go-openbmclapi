@@ -9,5 +9,5 @@ fi
 PID="`cat ./pid`"
 
 if [ "x`ps -o command= $PID`" = 'x./service-linux-go-openbmclapi' ]; then
-	kill -SIGHUP $PID
+	kill -s SIGHUP $PID
 fi

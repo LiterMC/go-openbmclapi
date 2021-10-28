@@ -115,9 +115,11 @@ func flushLogfile(){
 func init(){
 	flushLogfile()
 	go func(){
+		tma := (time.Now().Unix() / (60 * 60) + 1) * (60 * 60)
 		for{
 			select{
-			case <-time.After(time.Duration((time.Now().Unix() / (60 * 60) + 1) * (60 * 60) - time.Now().Unix()) * time.Second):
+			case <-time.After(time.Duration(tma - time.Now().Unix()) * time.Second):
+				tma = (time.Now().Unix() / (60 * 60) + 1) * (60 * 60)
 				flushLogfile()
 			}
 		}

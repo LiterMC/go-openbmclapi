@@ -21,6 +21,7 @@ const (
 var (
 	DEBUG bool = false
 	SHOW_SERVE_INFO bool = false
+	IGNORE_SERVE_ERROR bool = true
 	HOST string = ""
 	PORT uint16 = 0
 	PUBLIC_PORT uint16 = 0
@@ -47,6 +48,7 @@ func readConfig(){
 		if err != nil { panic(err) }
 		DEBUG = obj.Has("debug") && obj.GetBool("debug")
 		SHOW_SERVE_INFO = obj.Has("show_serve_info") && obj.GetBool("show_serve_info")
+		IGNORE_SERVE_ERROR = obj.Has("ignore_serve_error") && obj.GetBool("ignore_serve_error")
 		if os.Getenv("CLUSTER_IP") != "" {
 			HOST = os.Getenv("CLUSTER_IP")
 		}else{

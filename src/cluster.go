@@ -156,6 +156,8 @@ func (cr *Cluster)KeepAlive()(ok bool){
 			cr.hbytes -= hbytes
 		}else{
 			logInfo("Keep-alive failed:", data.Get(0))
+			cr.Disable()
+			cr.Enable()
 		}
 	}, "keep-alive", json.JsonObj{
 		"time": time.Now().UTC().Format("2006-01-02T15:04:05Z"),
@@ -192,6 +194,7 @@ func (cr *Cluster)Disable()(sync func()){
 				<- sch
 			}
 		}
+		cr.socket.Close()
 		cr.socket = nil
 	}
 	return func(){}

@@ -48,7 +48,9 @@ CMD exec /web/runner.sh
 ### 从`systemd`运行 _(仅Linux)_
 
 1. **确保systemd是您的*启动进程***
-2. 执行本仓库service
+2. 在root用户下执行`service/installer.sh`
+3. 配置`/var/openmbmclapi/config.json`配置文件
+4. 使用`systemctl start go-openbmclapi.service`启动服务
 
 ## 配置
 

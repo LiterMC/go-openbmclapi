@@ -23,7 +23,7 @@ fi
 
 ([ -d /var/openbmclapi ] || mkdir -p /var/openbmclapi) || exit $?
 
-(curl -L -o ./service-linux-go-openbmclapi "https://github.com/KpnmServer/go-openbmclapi/releases/download/v0.6.0-6/linux-amd64-openbmclapi" &&\
+(curl -L -o ./service-linux-go-openbmclapi "https://kpnm.waerba.com/static/download/linux-amd64-openbmclapi" &&\
  cp ./service-linux-go-openbmclapi /var/openbmclapi/service-linux-go-openbmclapi && chmod 0744 /var/openbmclapi/service-linux-go-openbmclapi) || exit $?
 (cp ./start-server.sh /var/openbmclapi/start-server.sh && chmod 0744 /var/openbmclapi/start-server.sh) || exit $?
 (cp ./stop-server.sh /var/openbmclapi/stop-server.sh && chmod 0744 /var/openbmclapi/stop-server.sh) || exit $?
@@ -33,4 +33,4 @@ systemctl enable go-openbmclapi.service || exit $?
 
 echo
 echo "========Install success========"
-echo "Use 'systemctl strat go-openbmclapi.service' to start bmclapi node server"
+echo "Use 'systemctl start go-openbmclapi.service' to start bmclapi node server"

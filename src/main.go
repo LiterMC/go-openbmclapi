@@ -165,6 +165,7 @@ func main(){
 		logWarn("Closing server...")
 		after()
 		cluster.Server.Shutdown(timeoutCtx)
+		logWarn("Server closed.")
 	}
 	if s == syscall.SIGHUP {
 		goto start

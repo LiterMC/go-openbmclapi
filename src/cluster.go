@@ -83,11 +83,13 @@ func NewCluster(
 
 func (cr *Cluster)Enable()(bool){
 	if cr.socket != nil {
+		logDebug("Extara enable")
 		return true
 	}
 	cr.connlock.Lock()
 	defer cr.connlock.Unlock()
 	if cr.socket != nil {
+		logDebug("Extara after lock enable")
 		return true
 	}
 	var (
@@ -111,7 +113,7 @@ func (cr *Cluster)Enable()(bool){
 	cr.socket.GetIO().ErrorHandle = func(*ESocket){
 		go func(){
 			cr.enabled = false
-			cr.Disable()
+			cr.Disable()()
 			if !cr.Enable() {
 				panic("Cannot reconnect to server, exit.")
 			}
@@ -150,7 +152,7 @@ func (cr *Cluster)KeepAlive()(ok bool){
 	)
 	err = cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
 		data = data.GetArray(0)
-		if len(data) > 1 && data.Get(1) == true {
+		if len(data) > 1 && data.Get(0) == nil {
 			logInfo("Keep-alive success:", hits, bytesToUnit((float32)(hbytes)), data)
 			cr.hits -= hits
 			cr.hbytes -= hbytes
@@ -171,6 +173,10 @@ func (cr *Cluster)KeepAlive()(ok bool){
 }
 
 func (cr *Cluster)Disable()(sync func()){
+	if !cr.enabled {
+		logDebug("Extara disable")
+		return func(){}
+	}
 	logInfo("Disabling cluster")
 	if cr.keepalive != nil {
 		cr.keepalive()
@@ -182,20 +188,18 @@ func (cr *Cluster)Disable()(sync func()){
 			data = data.GetArray(0)
 			logInfo("disable ack:", data)
 			if !data.GetBool(1) {
-				panic("Cannot enable: " + data.String())
+				panic("Cannot disable: " + data.String())
 			}
-			cr.enabled = false
-			cr.socket.Close()
-			cr.socket = nil
 			sch <- struct{}{}
 		}, "disable")
+		cr.enabled = false
+		cr.socket.Close()
+		cr.socket = nil
 		if err == nil {
 			return func(){
 				<- sch
 			}
 		}
-		cr.socket.Close()
-		cr.socket = nil
 	}
 	return func(){}
 }
@@ -262,7 +266,8 @@ func (cr *Cluster)GetFileList()(files []FileInfo){
 
 type extFileInfo struct{
 	*FileInfo
-	Err error
+	dlerr error
+	trycount int
 }
 
 func (cr *Cluster)SyncFiles(_files []FileInfo){
@@ -275,17 +280,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 	defer func(){
 		cr.issync = false
 	}()
-	files := make([]FileInfo, 0, len(_files) / 3)
-	for _, f := range _files {
-		p := cr.getHashPath(f.Hash)
-		if ufile.IsNotExist(p) {
-			files = append(files, f)
-			p = ufile.DirPath(p)
-			if ufile.IsNotExist(p) {
-				os.MkdirAll(p, 0744)
-			}
-		}
-	}
+	files := cr.CheckFiles(_files, make([]FileInfo, 0, 16))
 	fl := len(files)
 	if fl == 0 {
 		logInfo("All file was synchronized")
@@ -306,7 +301,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 	var (
 		dlhandle func(f *extFileInfo, c chan<- *extFileInfo)
 		handlef func(f *extFileInfo)
-		dlfile func(f *FileInfo)
+		dlfile func(f *extFileInfo)
 	)
 	dlhandle = func(f *extFileInfo, c chan<- *extFileInfo){
 		defer func(){
@@ -322,7 +317,9 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 		)
 		p := cr.getHashPath(f.Hash)
 		defer func(){
+			f.dlerr = err
 			if err != nil {
+				f.trycount++
 				if ufile.IsExist(p) {
 					os.Remove(p)
 				}
@@ -335,11 +332,16 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 				continue
 			}
 			defer res.Body.Close()
+			if res.StatusCode != http.StatusOK {
+				err = fmt.Errorf("Unexpected status code: %d", res.StatusCode)
+				return
+			}
 			fd, err = os.Create(p)
 			if err != nil {
 				continue
 			}
 			defer fd.Close()
+			var t int64 = 0
 			for {
 				n, err = res.Body.Read(buf)
 				if n == 0 {
@@ -348,8 +350,17 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 					}
 					break
 				}
+				t += (int64)(n)
 				_, err = fd.Write(buf[:n])
 				if err != nil { break }
+			}
+			if t != f.Size && err == nil {
+				err = fmt.Errorf("File size wrong %s expect %s", bytesToUnit((float32)(t)), bytesToUnit((float32)(f.Size)))
+				f0, _ := os.Open(p)
+				b0, _ := ioutil.ReadAll(f0)
+				if len(b0) < 16 * 1024 {
+					logDebug("File content:", (string)(b0), "//for", f.Path)
+				}
 			}
 			if err != nil {
 				fd.Close()
@@ -357,23 +368,24 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			}
 			return
 		}
-		if err != nil {
-			f.Err = err
-		}
 	}
 	handlef = func(f *extFileInfo){
-		if f.Err != nil {
-			logError("Download file error:", f.Path, f.Err)
-			dlfile(f.FileInfo)
+		if f.dlerr != nil {
+			logError("Download file error:", f.Path, f.dlerr)
+			if f.trycount < 3 {
+				dlfile(f)
+			}else{
+				fcount++
+			}
 		}else{
 			downloaded += (float32)(f.Size)
 			fcount++
-			logInfof("Downloaded: %s [%s/%s:%s/s]%.2f%%", f.Path,
+			logInfof("Downloaded: %s [%s/%s;%d/%d]%.2f%%", f.Path,
 					bytesToUnit(downloaded), bytesToUnit(totalsize), 
-					bytesToUnit(downloaded / totalsize / (float32)(time.Since(start)) * (float32)(time.Second)), downloaded / totalsize * 100)
+					fcount, fl, downloaded / totalsize * 100)
 		}
 	}
-	dlfile = func(f *FileInfo){
+	dlfile = func(f *extFileInfo){
 		for alive >= cr.max_conn {
 			select{
 			case r := <-re:
@@ -381,10 +393,10 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			}
 		}
 		alive++
-		go dlhandle(&extFileInfo{ FileInfo: f, Err: nil }, re)
+		go dlhandle(f, re)
 	}
 	for i, _ := range files {
-		dlfile(&files[i])
+		dlfile(&extFileInfo{ FileInfo: &files[i], dlerr: nil, trycount: 0 })
 	}
 	for fcount < fl {
 		handlef(<-re)
@@ -413,27 +425,44 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			return
 		}
 	}
-	go cr.CheckFiles(_files)
 	go cr.gc(_files)
 }
 
-func (cr *Cluster)CheckFiles(files []FileInfo){
+func (cr *Cluster)CheckFiles(files []FileInfo, notf []FileInfo)([]FileInfo){
 	logInfo("Starting check files")
-	for _, f := range files {
-		if cr.issync {
+	for i, _ := range files {
+		if cr.issync && notf == nil {
 			logWarn("File check interrupted")
-			return
+			return nil
 		}
-		p := cr.getHashPath(f.Hash)
+		p := cr.getHashPath(files[i].Hash)
 		fs, err := os.Stat(p)
 		if err == nil {
-			if fs.Size() != f.Size {
-				logInfof("Found wrong size file: '%s'(%s) except %s", p, bytesToUnit((float32)(fs.Size())), bytesToUnit((float32)(f.Size)))
+			if fs.Size() != files[i].Size {
+				logInfof("Found wrong size file: '%s'(%s) expect %s",
+					p, bytesToUnit((float32)(fs.Size())), bytesToUnit((float32)(files[i].Size)))
+				if notf == nil {
+					os.Remove(p)
+				}else{
+					notf = append(notf, files[i])
+				}
+			}
+		}else{
+			if notf != nil {
+				notf = append(notf, files[i])
+			}
+			if os.IsNotExist(err) {
+				p = ufile.DirPath(p)
+				if ufile.IsNotExist(p) {
+					os.MkdirAll(p, 0744)
+				}
+			}else{
 				os.Remove(p)
 			}
 		}
 	}
 	logInfo("File check finished")
+	return notf
 }
 
 func (cr *Cluster)gc(files []FileInfo){

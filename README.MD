@@ -52,6 +52,10 @@ CMD exec /web/runner.sh
 3. 配置`/var/openmbmclapi/config.json`配置文件
 4. 使用`systemctl start go-openbmclapi.service`启动服务
 
+- 使用`systemctl reload go-openbmclapi.service`可重新加载配置文件 __(暂时仅限完全启动后, *即web服务器已启动* )__
+- 使用`systemctl stop go-openbmclapi.service`停止服务
+- 使用`journalctl -f -u go-openbmclapi.service`监听实时日志
+
 ## 配置
 
 ### 使用配置文件

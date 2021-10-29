@@ -10,5 +10,7 @@ PID="`cat ./pid`"
 rm ./pid
 
 if [ "x`ps -o command= $PID`" = 'x./service-linux-go-openbmclapi' ]; then
-	kill -s SIGQUIT $PID
+	kill -s QUIT $PID
 fi
+
+exit 0

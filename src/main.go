@@ -111,6 +111,19 @@ func before(ctx context.Context, re chan<- bool){
 		return
 	}
 
+	go func(){
+		logInfof("Server start at \"%s\"", cluster.Server.Addr)
+		var err error
+		if USE_HTTPS {
+			err = cluster.Server.ListenAndServeTLS(CRT_FILE, KEY_FILE)
+		}else{
+			err = cluster.Server.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
+			logError("Error on server:", err)
+		}
+	}()
+
 	if !cluster.Enable() {
 		logError("Can not enable, exit")
 		re <- false
@@ -131,19 +144,6 @@ func before(ctx context.Context, re chan<- bool){
 		}
 		cluster.SyncFiles(fl)
 	}, time.Minute * 10)
-
-	go func(){
-		logInfof("Server start at \"%s\"", cluster.Server.Addr)
-		var err error
-		if USE_HTTPS {
-			err = cluster.Server.ListenAndServeTLS(CRT_FILE, KEY_FILE)
-		}else{
-			err = cluster.Server.ListenAndServe()
-		}
-		if err != nil && err != http.ErrServerClosed {
-			logError("Error on server:", err)
-		}
-	}()
 
 	re <- true
 }
@@ -169,7 +169,7 @@ func main(){
 	bgctx := context.Background()
 
 	var (
-		signalch chan os.Signal = make(chan os.Signal, 0)
+		signalch chan os.Signal = make(chan os.Signal, 1)
 		s os.Signal = nil
 		befctx context.Context
 		cancelBefore context.CancelFunc

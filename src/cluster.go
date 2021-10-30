@@ -327,12 +327,17 @@ func (cr *Cluster)SyncFiles(_files []FileInfo, _ctx ...context.Context){
 			c <- f
 		}()
 		var(
-			buf []byte = make([]byte, 1024 * 1024 * 8) // 8MB
+			buf []byte
+			bi int
 			n int
 			err error
 			res *http.Response
 			fd *os.File
 		)
+		buf, bi = mallocBuf()
+		defer func(){
+			releaseBuf(bi)
+		}()
 		p := cr.getHashPath(f.Hash)
 		defer func(){
 			f.dlerr = err
@@ -600,7 +605,10 @@ func (cr *Cluster)ServeHTTP(response http.ResponseWriter, request *http.Request)
 				return
 			}
 			response.WriteHeader(http.StatusOK)
-			buf := make([]byte, 1024 * 512) // chunk size = 512KB
+			buf, bi := mallocBuf()
+			defer func(){
+				releaseBuf(bi)
+			}()
 			var (
 				hb uint64
 				n int

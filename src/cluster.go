@@ -11,6 +11,7 @@ import (
 	strconv "strconv"
 	fmt "fmt"
 	sync "sync"
+	context "context"
 	tls "crypto/tls"
 	http "net/http"
 
@@ -115,6 +116,7 @@ func (cr *Cluster)Enable()(bool){
 			cr.enabled = false
 			cr.Disable()()
 			if !cr.Enable() {
+				logError("Cannot reconnect to server, exit.")
 				panic("Cannot reconnect to server, exit.")
 			}
 		}()
@@ -131,7 +133,8 @@ func (cr *Cluster)_enable(){
 	cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
 		data = data.GetArray(0)
 		if !data.GetBool(1) {
-			panic("Cannot enable: " + data.String())
+			logError("Enable failed: " + data.String())
+			panic("Enable failed: " + data.String())
 		}
 		logInfo("get enable ack:", data)
 		cr.enabled = true
@@ -188,7 +191,8 @@ func (cr *Cluster)Disable()(sync func()){
 			data = data.GetArray(0)
 			logInfo("disable ack:", data)
 			if !data.GetBool(1) {
-				panic("Cannot disable: " + data.String())
+				logError("Disable failed: " + data.String())
+				panic("Disable failed: " + data.String())
 			}
 			sch <- struct{}{}
 		}, "disable")
@@ -270,7 +274,15 @@ type extFileInfo struct{
 	trycount int
 }
 
-func (cr *Cluster)SyncFiles(_files []FileInfo){
+func (cr *Cluster)SyncFiles(_files []FileInfo, _ctx ...context.Context){
+	var ctx context.Context = nil
+	if len(_ctx) > 0 {
+		ctx = _ctx[0]
+	}
+	if checkContext(ctx) {
+		logWarn("File sync interrupted")
+		return
+	}
 	logInfo("Pre sync files...")
 	if cr.issync {
 		logWarn("Another sync task is running!")
@@ -280,7 +292,13 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 	defer func(){
 		cr.issync = false
 	}()
-	files := cr.CheckFiles(_files, make([]FileInfo, 0, 16))
+	var files []FileInfo
+	if !withContext(ctx, func(){
+		files = cr.CheckFiles(_files, make([]FileInfo, 0, 16))
+	}) {
+		logWarn("File sync interrupted")
+		return
+	}
 	fl := len(files)
 	if fl == 0 {
 		logInfo("All file was synchronized")
@@ -299,11 +317,11 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 	fcount := 0
 	alive := (uint)(0)
 	var (
-		dlhandle func(f *extFileInfo, c chan<- *extFileInfo)
-		handlef func(f *extFileInfo)
-		dlfile func(f *extFileInfo)
+		dlhandle func(f *extFileInfo, c chan<- *extFileInfo, ctx context.Context)
+		handlef func(f *extFileInfo, ctx context.Context)
+		dlfile func(f *extFileInfo, ctx context.Context)
 	)
-	dlhandle = func(f *extFileInfo, c chan<- *extFileInfo){
+	dlhandle = func(f *extFileInfo, c chan<- *extFileInfo, ctx context.Context){
 		defer func(){
 			alive--
 			c <- f
@@ -327,11 +345,13 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 		}()
 		logDebug("Downloading:", f.Path)
 		for i := 0; i < 3 ;i++ {
+			if checkContext(ctx) { return }
 			res, err = cr.queryURL("GET", f.Path)
 			if err != nil {
 				continue
 			}
 			defer res.Body.Close()
+			if checkContext(ctx) { return }
 			if res.StatusCode != http.StatusOK {
 				err = fmt.Errorf("Unexpected status code: %d", res.StatusCode)
 				return
@@ -343,6 +363,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			defer fd.Close()
 			var t int64 = 0
 			for {
+				if checkContext(ctx) { return }
 				n, err = res.Body.Read(buf)
 				if n == 0 {
 					if err == io.EOF{
@@ -366,14 +387,18 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 				fd.Close()
 				continue
 			}
-			return
+			break
 		}
 	}
-	handlef = func(f *extFileInfo){
+	handlef = func(f *extFileInfo, ctx context.Context){
+		if checkContext(ctx) { return }
 		if f.dlerr != nil {
-			logError("Download file error:", f.Path, f.dlerr)
-			if f.trycount < 3 {
-				dlfile(f)
+			logErrorf("Download file error: %v %s [%s/%s;%d/%d]%.2f%%", f.dlerr, f.Path,
+				bytesToUnit(downloaded), bytesToUnit(totalsize),
+				fcount, fl, downloaded / totalsize * 100)
+			if f.trycount < 1 { // ps: 由于主服务器数据库维护中, 故此减小max_trycount, 以提高初次启动速度(另:该方法治标不治本
+				c, _ := context.WithCancel(ctx)
+				dlfile(f, c)
 			}else{
 				fcount++
 			}
@@ -381,25 +406,40 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			downloaded += (float32)(f.Size)
 			fcount++
 			logInfof("Downloaded: %s [%s/%s;%d/%d]%.2f%%", f.Path,
-					bytesToUnit(downloaded), bytesToUnit(totalsize), 
-					fcount, fl, downloaded / totalsize * 100)
+				bytesToUnit(downloaded), bytesToUnit(totalsize),
+				fcount, fl, downloaded / totalsize * 100)
 		}
 	}
-	dlfile = func(f *extFileInfo){
+	dlfile = func(f *extFileInfo, ctx context.Context){
 		for alive >= cr.max_conn {
 			select{
 			case r := <-re:
-				handlef(r)
+				c, _ := context.WithCancel(ctx)
+				handlef(r, c)
+			case <-ctx.Done():
+				return
 			}
 		}
 		alive++
-		go dlhandle(f, re)
+		go dlhandle(f, re, ctx)
 	}
 	for i, _ := range files {
-		dlfile(&extFileInfo{ FileInfo: &files[i], dlerr: nil, trycount: 0 })
+		if checkContext(ctx) {
+			logWarn("File sync interrupted")
+			return
+		}
+		c, _ := context.WithCancel(ctx)
+		dlfile(&extFileInfo{ FileInfo: &files[i], dlerr: nil, trycount: 0 }, c)
 	}
 	for fcount < fl {
-		handlef(<-re)
+		select{
+		case r := <-re:
+			c, _ := context.WithCancel(ctx)
+			handlef(r, c)
+		case <-ctx.Done():
+			logWarn("File sync interrupted")
+			return
+		}
 	}
 	use := time.Since(start)
 	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(totalsize / (float32)(use / time.Second)))
@@ -412,6 +452,10 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 			flag = true
 		}else{
 			for _, f := range _files2 {
+				if checkContext(ctx){
+					logWarn("File sync interrupted")
+					return
+				}
 				p := cr.getHashPath(f.Hash)
 				if ufile.IsNotExist(p) {
 					flag = true
@@ -421,7 +465,7 @@ func (cr *Cluster)SyncFiles(_files []FileInfo){
 		}
 		if flag {
 			logWarn("At least one file has changed during file synchronization, re synchronize now.")
-			cr.SyncFiles(_files2)
+			cr.SyncFiles(_files2, ctx)
 			return
 		}
 	}

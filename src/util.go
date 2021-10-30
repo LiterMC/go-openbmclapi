@@ -5,6 +5,7 @@ import (
 	fmt "fmt"
 	time "time"
 	strings "strings"
+	context "context"
 
 	ufile "github.com/KpnmServer/go-util/file"
 )
@@ -65,5 +66,32 @@ func bytesToUnit(size float32)(string){
 		}
 	}
 	return fmt.Sprintf("%.1f", size) + unit
+}
+
+func withContext(ctx context.Context, call func())(bool){
+	if ctx == nil {
+		call()
+		return true
+	}
+	done := make(chan struct{}, 1)
+	go func(){
+		call()
+		done <- struct{}{}
+	}()
+	select{
+	case <-ctx.Done():
+		return false
+	case <-done:
+		return true
+	}
+}
+
+func checkContext(ctx context.Context)(bool){
+	select{
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }
 

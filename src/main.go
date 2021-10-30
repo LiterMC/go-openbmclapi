@@ -91,7 +91,7 @@ func readConfig(){
 var cluster *Cluster = nil
 var syncFileTimer func()(bool) = nil
 
-func before()(bool){
+func before(ctx context.Context, re chan<- bool){
 	readConfig()
 	cluster = NewCluster(HOST, PUBLIC_PORT, CLUSTER_ID, CLUSTER_SECRET, VERSION, fmt.Sprintf("%s:%d", "0.0.0.0", PORT))
 
@@ -100,19 +100,35 @@ func before()(bool){
 		fl := cluster.GetFileList()
 		if fl == nil {
 			logError("Filelist nil, exit")
-			return false
+			re <- false
+			return
 		}
-		cluster.SyncFiles(fl)
+		cluster.SyncFiles(fl, ctx)
 	}
+
+	select {
+	case <-ctx.Done():
+		re <- false
+		return
+	}
+
 	if !cluster.Enable() {
 		logError("Can not enable, exit")
-		return false
+		re <- false
+		return
+	}
+
+	select {
+	case <-ctx.Done():
+		re <- false
+		return
 	}
 
 	syncFileTimer = createInterval(func(){
 		fl := cluster.GetFileList()
 		if fl == nil {
 			logError("Can not get file list.")
+			re <- false
 			return
 		}
 		cluster.SyncFiles(fl)
@@ -131,7 +147,7 @@ func before()(bool){
 		}
 	}()
 
-	return true
+	re <- true
 }
 
 func after(){
@@ -152,22 +168,40 @@ func main(){
 	}()
 
 
-	bgcont := context.Background()
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	bgctx := context.Background()
 
-	var s os.Signal
-	start: if !before() { return }
+	var (
+		signalch chan os.Signal = make(chan os.Signal, 0)
+		s os.Signal = nil
+		befctx context.Context
+		cancelBefore context.CancelFunc
+		befch chan bool = make(chan bool, 1)
+	)
+	signal.Notify(signalch, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
-	select {
-	case s = <-sigs:
-		timeoutCtx, _ := context.WithTimeout(bgcont, 16 * time.Second)
-		logWarn("Closing server...")
-		after()
-		cluster.Server.Shutdown(timeoutCtx)
-		logWarn("Server closed.")
-	}
-	if s == syscall.SIGHUP {
-		goto start
+	for {
+		befctx, cancelBefore = context.WithCancel(bgctx)
+		go before(befctx, befch)
+
+		select {
+		case o := <-befch:
+			if !o { return }
+		case s = <-signalch:
+			cancelBefore()
+		}
+		if s != nil {
+			select {
+			case s = <-signalch:
+				timeoutCtx, _ := context.WithTimeout(bgctx, 16 * time.Second)
+				logWarn("Closing server...")
+				after()
+				cluster.Server.Shutdown(timeoutCtx)
+				logWarn("Server closed.")
+			}
+		}
+		if s == syscall.SIGHUP {
+			continue
+		}
+		break
 	}
 }

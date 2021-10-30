@@ -106,8 +106,7 @@ func before(ctx context.Context, re chan<- bool){
 		cluster.SyncFiles(fl, ctx)
 	}
 
-	select {
-	case <-ctx.Done():
+	if checkContext(ctx) {
 		re <- false
 		return
 	}
@@ -118,8 +117,7 @@ func before(ctx context.Context, re chan<- bool){
 		return
 	}
 
-	select {
-	case <-ctx.Done():
+	if checkContext(ctx) {
 		re <- false
 		return
 	}
@@ -189,7 +187,7 @@ func main(){
 		case s = <-signalch:
 			cancelBefore()
 		}
-		if s != nil {
+		if s == nil {
 			select {
 			case s = <-signalch:
 				timeoutCtx, _ := context.WithTimeout(bgctx, 16 * time.Second)

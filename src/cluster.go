@@ -132,7 +132,7 @@ func (cr *Cluster)Enable()(bool){
 func (cr *Cluster)_enable(){
 	cr.socket.EmitAck(func(_ uint64, data json.JsonArr){
 		data = data.GetArray(0)
-		if !data.GetBool(1) {
+		if len(data) < 2 || !data.GetBool(1) {
 			logError("Enable failed: " + data.String())
 			panic("Enable failed: " + data.String())
 		}

@@ -170,7 +170,7 @@ func main(){
 
 	var (
 		signalch chan os.Signal = make(chan os.Signal, 1)
-		s os.Signal = nil
+		s os.Signal
 		befctx context.Context
 		cancelBefore context.CancelFunc
 		befch chan bool = make(chan bool, 1)
@@ -178,6 +178,7 @@ func main(){
 	signal.Notify(signalch, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	for {
+		s = nil
 		befctx, cancelBefore = context.WithCancel(bgctx)
 		go before(befctx, befch)
 

@@ -162,7 +162,10 @@ func (cr *Cluster)KeepAlive()(ok bool){
 		}else{
 			logInfo("Keep-alive failed:", data.Get(0))
 			cr.Disable()
-			cr.Enable()
+			if !cr.Enable() {
+				logError("Cannot reconnect to server, exit.")
+				panic("Cannot reconnect to server, exit.")
+			}
 		}
 	}, "keep-alive", json.JsonObj{
 		"time": time.Now().UTC().Format("2006-01-02T15:04:05Z"),

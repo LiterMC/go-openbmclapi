@@ -3,7 +3,6 @@ package main
 
 import (
 	io "io"
-	ioutil "io/ioutil"
 	bytes "bytes"
 	time "time"
 	strconv "strconv"
@@ -169,7 +168,7 @@ func (p *EPacket)ReadFrom(r io.Reader)(n int, err error){
 	if p.typ == EP_UNKNOWN {
 		return n, fmt.Errorf("Unexpected packet id %c", t[0])
 	}
-	p.data, err = ioutil.ReadAll(r)
+	p.data, err = io.ReadAll(r)
 	if err != nil { return }
 	n += len(p.data)
 	return
@@ -212,7 +211,7 @@ func (p *SPacket)WriteTo(w io.Writer)(n int, err error){
 
 func (p *SPacket)ReadFrom(r io.Reader)(n int, err error){
 	var b []byte
-	b, err = ioutil.ReadAll(r)
+	b, err = io.ReadAll(r)
 	if err != nil { return }
 	n = len(b)
 	err = p.ParseBuffer(bytes.NewReader(b))

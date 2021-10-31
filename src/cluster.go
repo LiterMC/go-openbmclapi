@@ -4,7 +4,6 @@ package main
 import (
 	os "os"
 	io "io"
-	ioutil "io/ioutil"
 	time "time"
 	sort "sort"
 	strings "strings"
@@ -385,10 +384,12 @@ func (cr *Cluster)SyncFiles(_files []FileInfo, _ctx ...context.Context){
 			}
 			if t != f.Size && err == nil {
 				err = fmt.Errorf("File size wrong %s expect %s", bytesToUnit((float32)(t)), bytesToUnit((float32)(f.Size)))
-				f0, _ := os.Open(p)
-				b0, _ := ioutil.ReadAll(f0)
-				if len(b0) < 16 * 1024 {
-					logDebug("File content:", (string)(b0), "//for", f.Path)
+				if DEBUG {
+					f0, _ := os.Open(p)
+					b0, _ := io.ReadAll(f0)
+					if len(b0) < 16 * 1024 {
+						logDebug("File content:", (string)(b0), "//for", f.Path)
+					}
 				}
 			}
 			if err != nil {
@@ -529,13 +530,13 @@ func (cr *Cluster)gc(files []FileInfo){
 		ok bool
 		p string
 		n string
-		fil []os.FileInfo
+		fil []os.DirEntry
 		err error
 	)
 	for len(stack) > 0 {
 		p = stack[len(stack) - 1]
 		stack = stack[:len(stack) - 1]
-		fil, err = ioutil.ReadDir(p)
+		fil, err = os.ReadDir(p)
 		if err != nil {
 			continue
 		}

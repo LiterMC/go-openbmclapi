@@ -1,13 +1,11 @@
 package main
 
 import (
-	// io "io"
-	bytes "bytes"
-	fmt "fmt"
-	os "os"
-	strings "strings"
-	sync "sync"
-	time "time"
+	"bytes"
+	"fmt"
+	"os"
+	"strings"
+	"time"
 
 	ufile "github.com/KpnmServer/go-util/file"
 )
@@ -15,7 +13,6 @@ import (
 var logdir string = "logs"
 var logfile *os.File
 
-var logLock sync.Mutex
 var logTimeFormat string = "15:04:05.000"
 
 func logX(x string, args ...any) {
@@ -32,8 +29,6 @@ func logX(x string, args ...any) {
 	buf.WriteString(time.Now().Format(logTimeFormat))
 	buf.WriteString("]: ")
 	buf.WriteString(c)
-	logLock.Lock()
-	defer logLock.Unlock()
 	fmt.Fprintln(os.Stderr, buf.String())
 	if logfile != nil {
 		logfile.Write(buf.Bytes())
@@ -51,8 +46,6 @@ func logXf(x string, format string, args ...any) {
 	buf.WriteString(time.Now().Format(logTimeFormat))
 	buf.WriteString("]: ")
 	buf.WriteString(c)
-	logLock.Lock()
-	defer logLock.Unlock()
 	fmt.Fprintln(os.Stderr, buf.String())
 	if logfile != nil {
 		logfile.Write(buf.Bytes())
@@ -106,12 +99,11 @@ func flushLogfile() {
 		logError("Create new log file error:", err)
 		return
 	}
-	logLock.Lock()
-	defer logLock.Unlock()
+
 	logfile = lfile
 }
 
-func init() {
+func startFlushLogFile() {
 	flushLogfile()
 	go func() {
 		tma := (time.Now().Unix()/(60*60) + 1) * (60 * 60)

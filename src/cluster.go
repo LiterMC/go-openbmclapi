@@ -37,6 +37,7 @@ type Cluster struct {
 	maxConn  int
 	issync   bool
 
+	ctx         context.Context
 	mux         sync.Mutex
 	enabled     bool
 	socket      *Socket
@@ -48,10 +49,13 @@ type Cluster struct {
 }
 
 func NewCluster(
+	ctx context.Context,
 	host string, publicPort uint16,
 	username string, password string,
 	version string, address string) (cr *Cluster) {
 	cr = &Cluster{
+		ctx: ctx,
+
 		host:       host,
 		publicPort: publicPort,
 		username:   username,
@@ -80,89 +84,95 @@ func NewCluster(
 	return
 }
 
-func (cr *Cluster) Enable() bool {
+func (cr *Cluster) Connect() bool {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
+
 	if cr.socket != nil {
-		logDebug("Extra enable")
+		logDebug("Extra connect")
 		return true
 	}
-	var (
-		err error
-		res *http.Response
-	)
-	logInfo("Enabling cluster")
 	wsurl := httpToWs(cr.prefix) +
 		fmt.Sprintf("/socket.io/?clusterId=%s&clusterSecret=%s&EIO=4&transport=websocket", cr.username, cr.password)
-	logDebug("Websocket url:", wsurl)
 	header := http.Header{}
 	header.Set("Origin", cr.prefix)
 
-	cr.socket = NewSocket(NewESocket())
+	connectCh := make(chan struct{}, 0)
+	connected := sync.OnceFunc(func(){
+		close(connectCh)
+	})
+
+	cr.socket = NewSocket(cr.ctx, NewESocket())
 	cr.socket.ConnectHandle = func(*Socket) {
-		cr._enable()
+		connected()
 	}
 	cr.socket.DisconnectHandle = func(*Socket) {
+		connected()
 		cr.Disable()
 	}
-	cr.socket.GetIO().ErrorHandle = func(*ESocket) {
+	cr.socket.ErrorHandle = func(*Socket) {
+		connected()
 		go func() {
-			cr.enabled = false
-			ch := cr.Disable()
-			if ch != nil {
-				<-ch
-			}
-			if !cr.Enable() {
+			cr.Disable()
+			if !cr.Connect() {
 				logError("Cannot reconnect to server, exit.")
-				panic("Cannot reconnect to server, exit.")
+				os.Exit(1)
+			}
+			if err := cr.Enable(); err != nil {
+				logError("Cannot enable cluster:", err, "; exit.")
+				os.Exit(1)
 			}
 		}()
 	}
-	err = cr.socket.GetIO().Dial(wsurl, header)
+	logInfof("Dialing %s", wsurl)
+	err := cr.socket.GetIO().Dial(wsurl, header)
 	if err != nil {
-		logError("Connect websocket error:", err, res)
+		logError("Websocket connect error:", err)
 		return false
+	}
+	select {
+	case <-cr.ctx.Done():
+		return false
+	case <-connectCh:
 	}
 	return true
 }
 
-func (cr *Cluster) _enable() {
-	cr.socket.EmitAck(func(_ uint64, data json.JsonArr) {
-		data = data.GetArray(0)
-		if len(data) < 2 || !data.GetBool(1) {
-			logError("Enable failed: " + data.String())
-			panic("Enable failed: " + data.String())
-		}
-		logInfo("get enable ack:", data)
-		cr.enabled = true
+func (cr *Cluster) Enable() (err error) {
+	cr.mux.Lock()
+	defer cr.mux.Unlock()
 
-		var keepaliveCtx context.Context
-		keepaliveCtx, cr.keepalive = context.WithCancel(context.TODO())
-		createInterval(keepaliveCtx, func() {
-			cr.KeepAlive()
-		}, KeepAliveInterval)
-	}, "enable", json.JsonObj{
+	if cr.enabled {
+		logDebug("Extra enable")
+		return
+	}
+	logInfo("Sending enable packet")
+	data, err := cr.socket.EmitAck("enable", json.JsonObj{
 		"host":    cr.host,
 		"port":    cr.publicPort,
 		"version": cr.version,
+		"byoc":    USE_HTTPS,
 	})
+	if err != nil {
+		return
+	}
+	if len(data) < 2 || !data.GetBool(1) {
+		return errors.New(data.String())
+	}
+	logInfo("get enable ack:", data)
+	cr.enabled = true
+
+	var keepaliveCtx context.Context
+	keepaliveCtx, cr.keepalive = context.WithCancel(context.TODO())
+	createInterval(keepaliveCtx, func() {
+		cr.KeepAlive()
+	}, KeepAliveInterval)
+	return
 }
 
 func (cr *Cluster) KeepAlive() (ok bool) {
 	hits, hbytes := cr.hits.Swap(0), cr.hbytes.Swap(0)
-	err := cr.socket.EmitAck(func(_ uint64, data json.JsonArr) {
-		data = data.GetArray(0)
-		if len(data) > 1 && data.Get(0) == nil {
-			logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbytes)), data)
-		} else {
-			logInfo("Keep-alive failed:", data.Get(0))
-			cr.Disable()
-			if !cr.Enable() {
-				logError("Cannot reconnect to server, exit.")
-				panic("Cannot reconnect to server, exit.")
-			}
-		}
-	}, "keep-alive", json.JsonObj{
+	data, err := cr.socket.EmitAck("keep-alive", json.JsonObj{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits":  hits,
 		"bytes": hbytes,
@@ -171,16 +181,30 @@ func (cr *Cluster) KeepAlive() (ok bool) {
 		logError("Error when keep-alive:", err)
 		return false
 	}
+	if len(data) > 1 && data.Get(0) == nil {
+		logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbytes)), data)
+	} else {
+		logInfo("Keep-alive failed:", data.Get(0))
+		cr.Disable()
+		if !cr.Connect() {
+			logError("Cannot reconnect to server, exit.")
+			os.Exit(1)
+		}
+		if err := cr.Enable(); err != nil {
+			logError("Cannot enable cluster:", err, "; exit.")
+			os.Exit(1)
+		}
+	}
 	return true
 }
 
-func (cr *Cluster) Disable() (done <-chan struct{}) {
+func (cr *Cluster) Disable() (successed bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
 	if !cr.enabled {
 		logDebug("Extra disable")
-		return nil
+		return true
 	}
 	logInfo("Disabling cluster")
 	if cr.keepalive != nil {
@@ -188,25 +212,21 @@ func (cr *Cluster) Disable() (done <-chan struct{}) {
 		cr.keepalive = nil
 	}
 	if cr.socket == nil {
-		return nil
+		return true
 	}
-	sch := make(chan struct{}, 1)
-	err := cr.socket.EmitAck(func(_ uint64, data json.JsonArr) {
-		data = data.GetArray(0)
-		logInfo("disable ack:", data)
-		if !data.GetBool(1) {
-			logError("Disable failed: " + data.String())
-			panic("Disable failed: " + data.String())
-		}
-		sch <- struct{}{}
-	}, "disable")
+	data, err := cr.socket.EmitAck("disable")
 	cr.enabled = false
 	cr.socket.Close()
 	cr.socket = nil
 	if err != nil {
-		return nil
+		return false
 	}
-	return sch
+	logInfo("disable ack:", data)
+	if !data.GetBool(1) {
+		logError("Disable failed: " + data.String())
+		return false
+	}
+	return true
 }
 
 type CertKeyPair struct {
@@ -228,34 +248,28 @@ func (pair *CertKeyPair) SaveAsFile() (cert, key string, err error) {
 	if err = os.WriteFile(cert, ([]byte)(pair.Cert), 0600); err != nil {
 		return
 	}
-	if err = os.WriteFile(cert, ([]byte)(pair.Key), 0600); err != nil {
+	if err = os.WriteFile(key, ([]byte)(pair.Key), 0600); err != nil {
 		return
 	}
 	return
 }
 
 func (cr *Cluster) RequestCert() (ckp *CertKeyPair, err error) {
-	done := make(chan struct{}, 0)
-	err = cr.socket.EmitAck(func(_ uint64, data json.JsonArr) {
-		defer close(done)
-		data = data.GetArray(0)
-		if erv := data.Get(0); erv != nil {
-			err = fmt.Errorf("socket.io remote error: %v", erv)
-			return
-		}
-		pair := data.GetObj(1)
-		ckp = &CertKeyPair{
-			Cert: pair.GetString("cert"),
-			Key:  pair.GetString("key"),
-		}
-	}, "request-cert")
+	logInfo("Requesting cert, please wait ...")
+	data, err := cr.socket.EmitAck("request-cert")
 	if err != nil {
 		return
 	}
-	<-done
-	if err != nil {
+	if erv := data.Get(0); erv != nil {
+		err = fmt.Errorf("socket.io remote error: %v", erv)
 		return
 	}
+	pair := data.GetObj(1)
+	ckp = &CertKeyPair{
+		Cert: pair.GetString("cert"),
+		Key:  pair.GetString("key"),
+	}
+	logInfo("Certificate requested")
 	return
 }
 

@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	json "github.com/KpnmServer/go-util/json"
@@ -375,6 +378,8 @@ var WsDialer *websocket.Dialer = &websocket.Dialer{
 }
 
 type ESocket struct {
+	mux sync.Mutex
+
 	connected  bool
 	connecting bool
 	connsign   chan struct{}
@@ -385,7 +390,7 @@ type ESocket struct {
 
 	ConnectHandle    func(s *ESocket)
 	DisconnectHandle func(s *ESocket)
-	ErrorHandle      func(s *ESocket)
+	ErrorHandle      func(s *ESocket, err error)
 	PongHandle       func(s *ESocket, data []byte)
 	MessageHandle    func(s *ESocket, data []byte)
 
@@ -430,21 +435,27 @@ func (s *ESocket) Dial(url string, _h ...http.Header) (err error) {
 
 	oldclose := s.wsconn.CloseHandler()
 	s.wsconn.SetCloseHandler(func(code int, text string) (err error) {
-		s.connecting = false
 		err = oldclose(code, text)
-		if code == websocket.CloseNormalClosure {
-			logWarn("Websocket disconnected")
-		} else {
-			logErrorf("Websocket disconnected(%d): %s", code, text)
-			// s.Reconnect()
-			if s.ErrorHandle != nil {
-				s.ErrorHandle(s)
-			}
-		}
+		s.wsCloseHandler(code, text)
 		return
 	})
 	go s._reader()
 	return nil
+}
+
+func (s *ESocket) wsCloseHandler(code int, text string) (err error) {
+	s.connecting = false
+	if code == websocket.CloseNormalClosure {
+		logWarn("Websocket disconnected")
+	} else {
+		err := fmt.Errorf("Websocket disconnected(%d): %s", code, text)
+		logError(err)
+		// s.Reconnect()
+		if s.ErrorHandle != nil {
+			s.ErrorHandle(s, err)
+		}
+	}
+	return
 }
 
 func (s *ESocket) Reconnect() (err error) {
@@ -463,17 +474,8 @@ func (s *ESocket) Reconnect() (err error) {
 	s.connecting = true
 	oldclose := s.wsconn.CloseHandler()
 	s.wsconn.SetCloseHandler(func(code int, text string) (err error) {
-		s.connecting = false
 		err = oldclose(code, text)
-		if code == websocket.CloseNormalClosure {
-			logWarn("Websocket disconnected")
-		} else {
-			logErrorf("Websocket disconnected(%d): %s", code, text)
-			// s.Reconnect()
-			if s.ErrorHandle != nil {
-				s.ErrorHandle(s)
-			}
-		}
+		s.wsCloseHandler(code, text)
 		return
 	})
 	mb := s.msgbuf
@@ -531,7 +533,7 @@ func (s *ESocket) _reader() {
 			logError("Error when try read websocket:", err)
 			s.wsconn.Close()
 			if s.ErrorHandle != nil {
-				s.ErrorHandle(s)
+				s.ErrorHandle(s, err)
 			}
 			return
 		}
@@ -544,13 +546,13 @@ func (s *ESocket) _reader() {
 			logError("Error when parsing packet:", err)
 			continue
 		}
-		logDebug("recv packet:", string(pkt.Bytes()))
+		logDebug("Engine.io: recv packet:", string(pkt.Bytes()))
 		switch pkt.typ {
 		case EP_OPEN:
 			err = json.DecodeJson(pkt.data, &obj)
 			if err == nil {
 				s.sid = obj.GetString("sid")
-				logDebug("engine.io connected id:", s.sid)
+				logDebug("Engine.io: connected id:", s.sid)
 				if s.ConnectHandle != nil {
 					s.ConnectHandle(s)
 				}
@@ -584,6 +586,9 @@ func (s *ESocket) _reader() {
 }
 
 func (s *ESocket) Emit(p *EPacket) (err error) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	if !s.connecting {
 		s.msgbuf = append(s.msgbuf, p)
 		return
@@ -604,35 +609,45 @@ func (s *ESocket) Emit(p *EPacket) (err error) {
 
 type Socket struct {
 	connecting bool
+	ctx        context.Context
+	cancel     context.CancelCauseFunc
 
-	ackid   uint64
-	ackcall map[uint64]func(uint64, json.JsonArr)
+	ackid   atomic.Uint64
+	ackMux  sync.Mutex
+	ackcall map[uint64]chan json.JsonArr
 
 	ConnectHandle    func(s *Socket)
 	DisconnectHandle func(s *Socket)
+	ErrorHandle      func(s *Socket)
 	handles          map[string]func(string, json.JsonArr)
 	sid              string
 
 	io *ESocket
 }
 
-func NewSocket(io *ESocket) (s *Socket) {
+func NewSocket(ctx context.Context, io *ESocket) (s *Socket) {
 	s = &Socket{
 		connecting: false,
 
-		ackid:   1,
-		ackcall: make(map[uint64]func(uint64, json.JsonArr)),
+		ackcall: make(map[uint64]chan json.JsonArr),
 
 		handles: make(map[string]func(string, json.JsonArr)),
 		sid:     "",
 
 		io: io,
 	}
+	s.ctx, s.cancel = context.WithCancelCause(ctx)
 	s.io.ConnectHandle = func(*ESocket) {
 		s.send(&SPacket{typ: SP_CONNECT})
 	}
 	s.io.DisconnectHandle = func(*ESocket) {
 		s.Close()
+	}
+	s.io.ErrorHandle = func(_ *ESocket, err error) {
+		s.cancel(err)
+		if s.ErrorHandle != nil {
+			s.ErrorHandle(s)
+		}
 	}
 	s.io.MessageHandle = func(_ *ESocket, data []byte) {
 		var (
@@ -652,7 +667,7 @@ func NewSocket(io *ESocket) (s *Socket) {
 			if d, ok := pkt.data.(map[string]any); ok {
 				obj = (json.JsonObj)(d)
 				s.sid = obj.GetString("sid")
-				logDebug("socket.io connected id:", s.sid)
+				logDebug("Socket.io: connected id:", s.sid)
 				s.connecting = true
 				if s.ConnectHandle != nil {
 					s.ConnectHandle(s)
@@ -667,15 +682,16 @@ func NewSocket(io *ESocket) (s *Socket) {
 				h(e, arr[1:])
 			}
 		case SP_ACK:
+			s.ackMux.Lock()
+			defer s.ackMux.Unlock()
 			logDebug("ackcall:", pkt.id, s.ackcall)
 			if h, ok := s.ackcall[pkt.id]; ok {
 				delete(s.ackcall, pkt.id)
 				arr = (json.JsonArr)(pkt.data.([]any))
-				logDebug("running ackcall")
-				h(pkt.id, arr)
+				h <- arr
 			}
 		case SP_CONNECT_ERROR:
-			logError("SIO connect error:", pkt.data)
+			logError("Socket.io: connect error:", pkt.data)
 			panic(pkt.data)
 		// case SP_BINARY_EVENT:
 		// 	// TODO
@@ -727,15 +743,22 @@ func (s *Socket) Emit(event string, objs ...any) (err error) {
 	return s.send(&SPacket{typ: SP_EVENT, data: (json.JsonArr)(append([]any{event}, objs...))})
 }
 
-func (s *Socket) EmitAck(call func(uint64, json.JsonArr), event string, objs ...any) (err error) {
-	if call == nil {
-		panic("call == nil")
-	}
-	err = s.send(&SPacket{typ: SP_EVENT, id: s.ackid, data: (json.JsonArr)(append([]any{event}, objs...))})
+func (s *Socket) EmitAck(event string, objs ...any) (res json.JsonArr, err error) {
+	id := s.ackid.Add(1)
+	err = s.send(&SPacket{typ: SP_EVENT, id: id, data: (json.JsonArr)(append([]any{event}, objs...))})
 	if err != nil {
 		return
 	}
-	s.ackcall[s.ackid] = call
-	s.ackid++
-	return nil
+	resCh := make(chan json.JsonArr, 1)
+
+	s.ackMux.Lock()
+	s.ackcall[id] = resCh
+	s.ackMux.Unlock()
+	select {
+	case ret := <-resCh:
+		res = ret.GetArray(0)
+	case <-s.ctx.Done():
+		err = context.Cause(s.ctx)
+	}
+	return
 }

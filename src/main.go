@@ -102,28 +102,34 @@ func main() {
 		}
 	}()
 
+	startFlushLogFile()
+
 	bgctx := context.Background()
 
-	var (
-		signalCh = make(chan os.Signal, 1)
-		exitCh   = make(chan struct{}, 1)
-	)
-	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	signalCh := make(chan os.Signal, 1)
 
 START:
+	signal.Stop(signalCh)
+
+	exitCh := make(chan struct{}, 0)
 	ctx, cancel := context.WithCancel(bgctx)
 
 	readConfig()
-	cluster := NewCluster(HOST, PUBLIC_PORT, CLUSTER_ID, CLUSTER_SECRET, VERSION, fmt.Sprintf("%s:%d", "0.0.0.0", PORT))
+	cluster := NewCluster(ctx, HOST, PUBLIC_PORT, CLUSTER_ID, CLUSTER_SECRET, VERSION, fmt.Sprintf("%s:%d", "0.0.0.0", PORT))
 
 	logInfof("Starting Go-OpenBmclApi v%s", VERSION)
-	{
-		fl := cluster.GetFileList()
-		if fl == nil {
-			logError("Cluster filelist is nil, exit")
-			os.Exit(1)
-		}
-		cluster.SyncFiles(fl, ctx)
+
+	// {
+	// 	fl := cluster.GetFileList()
+	// 	if fl == nil {
+	// 		logError("Cluster filelist is nil, exit")
+	// 		os.Exit(1)
+	// 	}
+	// 	cluster.SyncFiles(fl, ctx)
+	// }
+
+	if !cluster.Connect() {
+		os.Exit(1)
 	}
 
 	var certFile, keyFile string
@@ -155,8 +161,8 @@ START:
 		}
 	}()
 
-	if !cluster.Enable() {
-		logError("Cannot enable cluster, exit")
+	if err := cluster.Enable(); err != nil {
+		logError("Cannot enable cluster:", err)
 		os.Exit(1)
 	}
 
@@ -169,16 +175,29 @@ START:
 		cluster.SyncFiles(fl, ctx)
 	}, SyncFileInterval)
 
+	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
 	select {
 	case <-exitCh:
 		return
 	case s := <-signalCh:
-		timeoutCtx, cancelShut := context.WithTimeout(bgctx, 16*time.Second)
+		shutCtx, cancelShut := context.WithTimeout(bgctx, 16*time.Second)
 		logWarn("Closing server ...")
 		cancel()
-		cluster.Disable()
-		cluster.Server.Shutdown(timeoutCtx)
-		cancelShut()
+		shutExit := make(chan struct{}, 0)
+		go func() {
+			defer close(shutExit)
+			defer cancelShut()
+			cluster.Disable()
+			cluster.Server.Shutdown(shutCtx)
+		}()
+		select {
+		case <-shutExit:
+		case s := <-signalCh:
+			logWarn("signal:", s)
+			logError("Second close signal received, exit")
+			return
+		}
 		logWarn("Server closed.")
 		if s == syscall.SIGHUP {
 			logInfo("Restarting server ...")

@@ -18,5 +18,5 @@ docker run -d --name my-go-openbmclapi \
 	-v "${PWD}/cache":/web/work/cache\
 	-v "${PWD}/logs":/web/work/logs\
 	-v "${PWD}/config.json":/web/work/config.json\
-	-p ${CLUSTER_PORT}:80\
+	-p ${CLUSTER_PORT}:4000\
 	kupen/go-openbmclapi:latest

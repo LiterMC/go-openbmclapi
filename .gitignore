@@ -3,9 +3,12 @@
 .DS_Store
 
 # runtime
+/test
+/pems
 /cache
 /logs
 
 # binarys
+/output
 /build
 /build-all.sh

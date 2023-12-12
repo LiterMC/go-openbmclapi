@@ -59,11 +59,16 @@ fetchBlob service/start-server.sh "$BASE_PATH/start-server.sh" 0744 || exit $?
 fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0744 || exit $?
 fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0744 || exit $?
 
-echo "==> Downloading $REPO/releases/download/$LATEST_TAG/linux-amd64-openbmclapi"
-{
-	curl -L -o ./service-linux-go-openbmclapi "$REPO/releases/download/$LATEST_TAG/linux-amd64-openbmclapi" && \
-	mv ./service-linux-go-openbmclapi "$BASE_PATH/service-linux-go-openbmclapi" && chmod 0744 "$BASE_PATH/service-linux-go-openbmclapi"
-} || exit $?
+
+arch=$(uname -m)
+source="$REPO/releases/download/$LATEST_TAG/go-opembmclapi-linux-$arch"
+echo "==> Downloading $source"
+if ! curl -L -o ./service-linux-go-openbmclapi "$source"; then
+	source="$REPO/releases/download/$LATEST_TAG/go-opembmclapi-linux-amd64"
+	echo "==> Downloading fallback binary $source"
+	curl -L -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || exit $?
+fi
+chmod 0744 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
 
 
 echo "==> Enable go-openbmclapi.service"

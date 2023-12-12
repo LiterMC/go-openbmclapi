@@ -1,0 +1,49 @@
+
+name: Create tagged release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Action Checkout
+        uses: actions/checkout@v3
+      -
+        name: Setup Golang
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      -
+        name: Generate
+        run: go generate ./src
+      -
+        name: Test
+        run: go test -v ./src
+      -
+        name: Build
+        run: |
+          bash ./src/build.sh
+      -
+        name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+      -
+        name: Upload Release Assets
+        uses: zyxkad/upload-release-asset-dir@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_dir: ./output

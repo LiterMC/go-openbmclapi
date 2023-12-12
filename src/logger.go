@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	ufile "github.com/KpnmServer/go-util/file"
 )
 
 var logdir string = "logs"
-var logfile *os.File
+var logfile atomic.Pointer[os.File]
 
 var logTimeFormat string = "15:04:05.000"
 
@@ -30,9 +31,9 @@ func logX(x string, args ...any) {
 	buf.WriteString("]: ")
 	buf.WriteString(c)
 	fmt.Fprintln(os.Stderr, buf.String())
-	if logfile != nil {
-		logfile.Write(buf.Bytes())
-		logfile.Write([]byte{'\n'})
+	if fd := logfile.Load(); fd != nil {
+		fd.Write(buf.Bytes())
+		fd.Write([]byte{'\n'})
 	}
 }
 
@@ -47,9 +48,9 @@ func logXf(x string, format string, args ...any) {
 	buf.WriteString("]: ")
 	buf.WriteString(c)
 	fmt.Fprintln(os.Stderr, buf.String())
-	if logfile != nil {
-		logfile.Write(buf.Bytes())
-		logfile.Write([]byte{'\n'})
+	if fd := logfile.Load(); fd != nil {
+		fd.Write(buf.Bytes())
+		fd.Write([]byte{'\n'})
 	}
 }
 
@@ -100,7 +101,7 @@ func flushLogfile() {
 		return
 	}
 
-	logfile = lfile
+	logfile.Store(lfile)
 }
 
 func startFlushLogFile() {

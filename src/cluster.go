@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,10 +33,10 @@ type Cluster struct {
 	prefix     string
 
 	cachedir string
+	maxConn  int
 	hits     atomic.Int32
 	hbytes   atomic.Int64
-	maxConn  int
-	issync   bool
+	issync   atomic.Bool
 
 	ctx         context.Context
 	mux         sync.Mutex
@@ -66,7 +67,6 @@ func NewCluster(
 
 		cachedir: "cache",
 		maxConn:  400,
-		issync:   false,
 
 		client: &http.Client{
 			Timeout: time.Second * 60,
@@ -124,7 +124,7 @@ func (cr *Cluster) Connect() bool {
 			}
 		}()
 	}
-	logInfof("Dialing %s", wsurl)
+	logInfof("Dialing %s", strings.ReplaceAll(wsurl, cr.password, "<******>"))
 	err := cr.socket.GetIO().Dial(wsurl, header)
 	if err != nil {
 		logError("Websocket connect error:", err)
@@ -341,6 +341,7 @@ func (cr *Cluster) GetFileList() (files []FileInfo) {
 		logErrorf("Query filelist error: Unexpected status code: %d %s", res.StatusCode, res.Status)
 		return nil
 	}
+	logDebug("Parsing filelist body ...")
 	zr, err := zstd.NewReader(res.Body)
 	if err != nil {
 		logError("Parse filelist body error:", err)
@@ -369,16 +370,14 @@ type syncStats struct {
 }
 
 func (cr *Cluster) SyncFiles(files0 []FileInfo, ctx context.Context) {
-	logInfo("Pre sync files...")
-	if cr.issync {
+	logInfo("Preparing to sync files...")
+	if cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
 		return
 	}
-	cr.issync = true
-	defer func() {
-		cr.issync = false
-	}()
+	defer cr.issync.Store(false)
 
+RESYNC:
 	var files []FileInfo
 	if !withContext(ctx, func() {
 		files = cr.CheckFiles(files0, make([]FileInfo, 0, 16))
@@ -421,7 +420,6 @@ func (cr *Cluster) SyncFiles(files0 []FileInfo, ctx context.Context) {
 
 	use := time.Since(start)
 	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(stats.totalsize/use.Seconds()))
-	cr.issync = false
 	var flag bool = false
 	if use > SyncFileInterval {
 		logWarn("Synchronization time was more than 10 min, re-check now.")
@@ -438,9 +436,9 @@ func (cr *Cluster) SyncFiles(files0 []FileInfo, ctx context.Context) {
 			}
 		}
 		if flag {
+			files0 = files2
 			logWarn("At least one file has changed during file synchronization, re synchronize now.")
-			cr.SyncFiles(files2, ctx)
-			return
+			goto RESYNC
 		}
 	}
 	go cr.gc(files0)
@@ -512,7 +510,7 @@ func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
 func (cr *Cluster) CheckFiles(files []FileInfo, notf []FileInfo) []FileInfo {
 	logInfo("Starting check files")
 	for i, _ := range files {
-		if cr.issync && notf == nil {
+		if cr.issync.Load() && notf == nil {
 			logWarn("File check interrupted")
 			return nil
 		}
@@ -562,7 +560,7 @@ func (cr *Cluster) gc(files []FileInfo) {
 			continue
 		}
 		for _, f := range fil {
-			if cr.issync {
+			if cr.issync.Load() {
 				logWarn("Global cleanup interrupted")
 				return
 			}

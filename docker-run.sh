@@ -2,10 +2,10 @@
 
 cd "$(dirname "$0")"
 
-docker pull kupen/go-openbmclapi:latest || {
- echo "[ERROR] Failed to pull docker image 'kupen/go-openbmclapi:latest'"
- if ! docker images kupen/go-openbmclapi | grep latest; then
- 	echo "Can not found docker image 'kupen/go-openbmclapi:latest'"
+docker pull craftmine/go-openbmclapi:latest || {
+ echo "[ERROR] Failed to pull docker image 'craftmine/go-openbmclapi:latest'"
+ if ! docker images craftmine/go-openbmclapi | grep latest; then
+ 	echo "Can not found docker image 'craftmine/go-openbmclapi:latest'"
  	exit 1
  fi
 }
@@ -19,4 +19,4 @@ docker run -d --name my-go-openbmclapi \
 	-v "${PWD}/logs":/web/work/logs\
 	-v "${PWD}/config.json":/web/work/config.json\
 	-p ${CLUSTER_PORT}:4000\
-	kupen/go-openbmclapi:latest
+	craftmine/go-openbmclapi:latest

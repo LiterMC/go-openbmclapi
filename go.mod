@@ -2,8 +2,6 @@ module github.com/LiterMC/go-openbmclapi
 
 go 1.21
 
-toolchain go1.21.1
-
 require (
 	github.com/KpnmServer/go-util v0.0.0-20210918230454-6dd48583efa9
 	github.com/gorilla/websocket v1.5.1

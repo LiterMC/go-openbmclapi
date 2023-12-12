@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG GO_VERSION=1.20
+ARG GO_VERSION=1.21
 ARG REPO=github.com/LiterMC/go-openbmclapi
 
 FROM golang:${GO_VERSION}-alpine AS BUILD
@@ -8,7 +8,7 @@ FROM golang:${GO_VERSION}-alpine AS BUILD
 ARG REPO
 
 COPY ./go.mod ./go.sum "/go/src/${REPO}/"
-COPY "./src" "/go/src/${REPO}/src"
+COPY ./src "/go/src/${REPO}/src"
 RUN --mount=type=cache,target=/root/.cache/go-build cd "/go/src/${REPO}" && \
  CGO_ENABLED=0 go build -v -o "/go/bin/application" "./src"
 

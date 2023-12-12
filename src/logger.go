@@ -14,7 +14,7 @@ import (
 var logdir string = "logs"
 var logfile atomic.Pointer[os.File]
 
-var logTimeFormat string = "15:04:05.000"
+var logTimeFormat string = "15:04:05"
 
 func logX(x string, args ...any) {
 	sa := make([]string, len(args))
@@ -106,6 +106,7 @@ func flushLogfile() {
 
 func startFlushLogFile() {
 	flushLogfile()
+	logfile.Load().Write(([]byte)("================================================================\n"))
 	go func() {
 		tma := (time.Now().Unix()/(60*60) + 1) * (60 * 60)
 		for {

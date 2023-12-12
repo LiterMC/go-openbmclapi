@@ -463,11 +463,12 @@ WAIT_SLOT:
 	RETRY:
 		err := cr.dlhandle(ctx, f.FileInfo)
 		if err != nil {
-			logErrorf("Download file error: %v %s [%s/%s;%d/%d]%.2f%%",
-				err, f.Path,
+			logErrorf("Download file error: %s [%s/%s ; %d/%d]%.2f%%\n\t%s",
+				f.Path,
 				bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
 				stats.fcount.Load(), stats.fl,
-				stats.downloaded/stats.totalsize*100)
+				stats.downloaded/stats.totalsize*100,
+				err)
 			if f.trycount < 3 {
 				f.trycount++
 				goto RETRY

@@ -119,14 +119,15 @@ START:
 
 	logInfof("Starting Go-OpenBmclApi v%s", VERSION)
 
-	// {
-	// 	fl := cluster.GetFileList()
-	// 	if fl == nil {
-	// 		logError("Cluster filelist is nil, exit")
-	// 		os.Exit(1)
-	// 	}
-	// 	cluster.SyncFiles(fl, ctx)
-	// }
+	{
+		logInfof("Fetching file list")
+		fl := cluster.GetFileList()
+		if fl == nil {
+			logError("Cluster filelist is nil, exit")
+			os.Exit(1)
+		}
+		cluster.SyncFiles(fl, ctx)
+	}
 
 	if !cluster.Connect() {
 		os.Exit(1)

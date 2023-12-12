@@ -5,10 +5,12 @@ import (
 	"crypto"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -207,6 +209,56 @@ func (cr *Cluster) Disable() (done <-chan struct{}) {
 	return sch
 }
 
+type CertKeyPair struct {
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
+
+func (pair *CertKeyPair) SaveAsFile() (cert, key string, err error) {
+	const pemBase = "pems"
+	if _, err = os.Stat(pemBase); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		if err = os.Mkdir(pemBase, 0700); err != nil {
+			return
+		}
+	}
+	cert, key = filepath.Join(pemBase, "cert.pem"), filepath.Join(pemBase, "key.pem")
+	if err = os.WriteFile(cert, ([]byte)(pair.Cert), 0600); err != nil {
+		return
+	}
+	if err = os.WriteFile(cert, ([]byte)(pair.Key), 0600); err != nil {
+		return
+	}
+	return
+}
+
+func (cr *Cluster) RequestCert() (ckp *CertKeyPair, err error) {
+	done := make(chan struct{}, 0)
+	err = cr.socket.EmitAck(func(_ uint64, data json.JsonArr) {
+		defer close(done)
+		data = data.GetArray(0)
+		if erv := data.Get(0); erv != nil {
+			err = fmt.Errorf("socket.io remote error: %v", erv)
+			return
+		}
+		pair := data.GetObj(1)
+		ckp = &CertKeyPair{
+			Cert: pair.GetString("cert"),
+			Key:  pair.GetString("key"),
+		}
+	}, "request-cert")
+	if err != nil {
+		return
+	}
+	<-done
+	if err != nil {
+		return
+	}
+	return
+}
+
 func (cr *Cluster) queryFunc(method string, url string, call func(*http.Request)) (res *http.Response, err error) {
 	var req *http.Request
 	req, err = http.NewRequest(method, cr.prefix+url, nil)
@@ -251,10 +303,11 @@ var fileListSchema = avro.MustParse(`{
   "type": "array",
   "items": {
     "type": "record",
+  	"name": "fileinfo",
     "fields": [
       {"name": "path", "type": "string"},
       {"name": "hash", "type": "string"},
-      {"name": "size", "type": "long"},
+      {"name": "size", "type": "long"}
     ]
   }
 }`)

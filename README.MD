@@ -26,24 +26,8 @@
 
 ### 从docker运行
 
-#### 1. 可直接运行仓库目录下的`docker-run.sh`文件, 运行之前请确保存在`kupen/go-openbmclapi:latest`镜像, 或网络连通
-#### 2. 使用`docker build -t kupen/go-openbmclapi:latest .`手动编译镜像, 然后再使用`docker-run.sh`运行
-
-Dockerfile内容如下:
-```Dockerfile
-FROM ubuntu:latest
-
-RUN mkdir -p /web && mkdir -p /web/work && cd /web &&\
- apt-get update && apt-get install -y curl &&\
- curl -L -o /web/linux-amd64-openbmclapi\
- "https://github.com/KpnmServer/go-openbmclapi/releases/download/v0.6.0-1/linux-amd64-openbmclapi" &&\
- chmod +x /web/linux-amd64-openbmclapi &&\
- echo -e '#!/bin/sh\ncd /web/work;if [ ! -f "./config.json" ];then echo "{\"debug\":false,\"port\":80}" >./config.json;fi;'\
-'exec /web/linux-amd64-openbmclapi' >/web/runner.sh &&\
- chmod +x /web/runner.sh
-
-CMD exec /web/runner.sh
-```
+- 可直接运行仓库目录下的`docker-run.sh`文件, 运行之前请确保存在`kupen/go-openbmclapi:latest`镜像, 或网络连通
+- 也可使用`docker build -t kupen/go-openbmclapi:latest .`手动编译镜像
 
 ### 从`systemd`运行 _(仅Linux)_
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -23,14 +24,13 @@ var (
 	CLUSTER_ID         string = "username"
 	CLUSTER_SECRET     string = "password"
 	USE_HTTPS          bool   = false
-	CRT_FILE           string = ""
-	KEY_FILE           string = ""
 
 	SyncFileInterval  = time.Minute * 10
 	KeepAliveInterval = time.Second * 60
 )
 
 func readConfig() {
+	// TODO: Use struct with json tag
 	{ // read config file
 		var (
 			fd  *os.File
@@ -86,59 +86,12 @@ func readConfig() {
 		} else {
 			CLUSTER_SECRET = obj.GetString("cluster_secret")
 		}
-		USE_HTTPS = obj.Has("https") && obj.GetBool("https")
-		if USE_HTTPS {
-			CRT_FILE = obj.GetString("crt_file")
-			KEY_FILE = obj.GetString("key_file")
-		}
-	}
-}
-
-var cluster *Cluster = nil
-var syncFileTimer func() bool = nil
-
-func before(ctx context.Context) bool {
-	readConfig()
-	cluster = NewCluster(HOST, PUBLIC_PORT, CLUSTER_ID, CLUSTER_SECRET, VERSION, fmt.Sprintf("%s:%d", "0.0.0.0", PORT))
-
-	logInfof("Starting OpenBmclApi(golang) v%s", VERSION)
-	{
-		fl := cluster.GetFileList()
-		if fl == nil {
-			logError("Cluster filelist is nil, exit")
-			return false
-		}
-		cluster.SyncFiles(fl, ctx)
-	}
-
-	go func() {
-		logInfof("Server start at \"%s\"", cluster.Server.Addr)
-		var err error
-		if USE_HTTPS {
-			err = cluster.Server.ListenAndServeTLS(CRT_FILE, KEY_FILE)
+		if byoc := os.Getenv("CLUSTER_BYOC"); byoc != "" {
+			USE_HTTPS = byoc != "true"
 		} else {
-			err = cluster.Server.ListenAndServe()
+			USE_HTTPS = !(obj.Has("nohttps") && obj.GetBool("nohttps"))
 		}
-		if err != nil && err != http.ErrServerClosed {
-			logError("Error on server:", err)
-		}
-	}()
-
-	if !cluster.Enable() {
-		logError("Cannot enable cluster, exit")
-		return false
 	}
-
-	createInterval(ctx, func() {
-		fl := cluster.GetFileList()
-		if fl == nil {
-			logError("Cannot get cluster file list, exit")
-			return
-		}
-		cluster.SyncFiles(fl, ctx)
-	}, SyncFileInterval)
-
-	return true
 }
 
 func main() {
@@ -159,12 +112,62 @@ func main() {
 
 START:
 	ctx, cancel := context.WithCancel(bgctx)
+
+	readConfig()
+	cluster := NewCluster(HOST, PUBLIC_PORT, CLUSTER_ID, CLUSTER_SECRET, VERSION, fmt.Sprintf("%s:%d", "0.0.0.0", PORT))
+
+	logInfof("Starting Go-OpenBmclApi v%s", VERSION)
+	{
+		fl := cluster.GetFileList()
+		if fl == nil {
+			logError("Cluster filelist is nil, exit")
+			os.Exit(1)
+		}
+		cluster.SyncFiles(fl, ctx)
+	}
+
+	var certFile, keyFile string
+	if USE_HTTPS {
+		pair, err := cluster.RequestCert()
+		if err != nil {
+			logError("Error when requesting cert key pair:", err)
+			os.Exit(1)
+		}
+		certFile, keyFile, err = pair.SaveAsFile()
+		if err != nil {
+			logError("Error when saving cert key pair:", err)
+			os.Exit(1)
+		}
+	}
+
 	go func() {
 		defer close(exitCh)
-		if !before(ctx) {
-			return
+		logInfof("Server start at \"%s\"", cluster.Server.Addr)
+		var err error
+		if USE_HTTPS {
+			err = cluster.Server.ListenAndServeTLS(certFile, keyFile)
+		} else {
+			err = cluster.Server.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logError("Error on server:", err)
+			os.Exit(1)
 		}
 	}()
+
+	if !cluster.Enable() {
+		logError("Cannot enable cluster, exit")
+		os.Exit(1)
+	}
+
+	createInterval(ctx, func() {
+		fl := cluster.GetFileList()
+		if fl == nil {
+			logError("Cannot get cluster file list, exit")
+			os.Exit(1)
+		}
+		cluster.SyncFiles(fl, ctx)
+	}, SyncFileInterval)
 
 	select {
 	case <-exitCh:

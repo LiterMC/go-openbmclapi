@@ -2,9 +2,9 @@
 	"debug": false,
 	"show_serve_info": false,
 	"ignore_serve_error": true,
-	"host": "example.com",
-	"port": 80,
+	"public_host": "example.com",
 	"public_port": 8080,
+	"port": 80,
 	"cluster_id": "${CLUSTER_ID}",
 	"cluster_secret": "${CLUSTER_SECRET}"
 }

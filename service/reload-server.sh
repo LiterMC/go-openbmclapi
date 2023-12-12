@@ -8,7 +8,7 @@ fi
 
 PID="`cat ./pid`"
 
-if [ "x`ps -o command= $PID`" = 'x./service-linux-go-openbmclapi' ]; then
+if [ "`ps -o command= $PID`" = './service-linux-go-openbmclapi' ]; then
 	kill -s HUP $PID
 fi
 

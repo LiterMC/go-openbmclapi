@@ -1,13 +1,22 @@
+# syntax=docker/dockerfile:1
 
-FROM ubuntu:latest
+ARG GO_VERSION=1.20
+ARG REPO=github.com/LiterMC/go-openbmclapi
 
-RUN mkdir -p /web && mkdir -p /web/work && cd /web &&\
- apt-get update && apt-get install -y curl &&\
- curl -L -o /web/linux-amd64-openbmclapi\
- "https://kpnm.waerba.com/static/download/linux-amd64-openbmclapi" &&\
- chmod +x /web/linux-amd64-openbmclapi &&\
- echo -e '#!/bin/sh\ncd /web/work;if [ ! -f "./config.json" ];then echo "{\"debug\":false,\"port\":80}" >./config.json;fi;'\
-'exec /web/linux-amd64-openbmclapi' >/web/runner.sh &&\
- chmod +x /web/runner.sh
+FROM golang:${GO_VERSION}-alpine AS BUILD
 
-CMD exec /web/runner.sh
+ARG REPO
+
+COPY ./go.mod ./go.sum "/go/src/${REPO}/"
+COPY "./src" "/go/src/${REPO}/src"
+RUN --mount=type=cache,target=/root/.cache/go-build cd "/go/src/${REPO}" && \
+ CGO_ENABLED=0 go build -v -o "/go/bin/application" "./src"
+
+FROM alpine:latest
+
+WORKDIR /web/work
+COPY ./config.json /web/work/config.json
+
+COPY --from=BUILD "/go/bin/application" "/web/application"
+
+CMD ["/web/application"]

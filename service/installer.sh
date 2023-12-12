@@ -1,11 +1,13 @@
 #!/bin/sh
 
-cd "$(dirname "$0")"
+REPO='https://github.com/LiterMC/go-openbmclapi'
+BASE_PATH=/opt/openbmclapi
+
 
 if [ $(id -u) -ne 0 ]; then
-	read -p 'ERROR: You are not root user, are you sure to continue?(Y/n)' Y
+	read -p 'ERROR: You are not root user, are you sure to continue?(y/N) ' Y
 	echo
-	[ "x$Y" = "xY" ] || exit 1
+	[ "$Y" = "Y" ] || [ "$Y" = "y" ] || exit 1
 fi
 
 if ! systemd --version; then
@@ -18,19 +20,60 @@ if [ ! -d /usr/lib/systemd/system/ ]; then
 	exit 1
 fi
 
-[ -f /usr/lib/systemd/system/go-openbmclapi.service ] && systemctl disable go-openbmclapi.service
-(cp ./go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.service) || exit $?
+function fetchGithubLatestTag(){
+	prefix="location: $REPO/releases/tag/"
+	location=$(curl -sSI "$REPO/releases/latest" | grep "$prefix")
+	[ $? = 0 ] || return 1
+	export LATEST_TAG="${location#${prefix}}"
+}
 
-([ -d /var/openbmclapi ] || mkdir -p /var/openbmclapi) || exit $?
+function fetchBlob(){
+	file=$1
+	target=$2
+	filemod=$3
 
-(curl -L -o ./service-linux-go-openbmclapi "https://kpnm.waerba.com/static/download/linux-amd64-openbmclapi" &&\
- cp ./service-linux-go-openbmclapi /var/openbmclapi/service-linux-go-openbmclapi && chmod 0744 /var/openbmclapi/service-linux-go-openbmclapi) || exit $?
-(cp ./start-server.sh /var/openbmclapi/start-server.sh && chmod 0744 /var/openbmclapi/start-server.sh) || exit $?
-(cp ./stop-server.sh /var/openbmclapi/stop-server.sh && chmod 0744 /var/openbmclapi/stop-server.sh) || exit $?
-(cp ./reload-server.sh /var/openbmclapi/reload-server.sh && chmod 0744 /var/openbmclapi/reload-server.sh) || exit $?
+	source="$REPO/blob/$LATEST_TAG/$file"
+	echo "==> Downloading $source"
+	tmpf=$(mktemp -t go-openbmclapi.XXXXXXXXXXXX.downloading)
+	curl -sSL -o "$tmpf" "$source" || { rm "$tmpf"; return 1; }
+	echo "==> Downloaded $source"
+	mv "$tmpf" "$target" || return $?
+	[ -n "$filemod" ] || chmod "$filemod" "$target" || return $?
+}
 
+if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
+	echo 'WARN: go-openbmclapi.service is already installed, disabled'
+	systemctl disable go-openbmclapi.service
+fi
+
+echo "==> Fetching latest tag for $REPO"
+fetchGithubLatestTag
+echo "go-openbmclapi LATEST TAG: $LATEST_TAG"
+echo
+
+fetchBlob service/go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.service 0644
+
+[ -d "$BASE_PATH" ] || { mkdir -p /opt/openbmclapi && chmod 0755 "$BASE_PATH"; } || exit $?
+
+fetchBlob service/start-server.sh "$BASE_PATH/start-server.sh" 0744 || exit $?
+fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0744 || exit $?
+fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0744 || exit $?
+
+echo "==> Downloading $REPO/releases/download/$LATEST_TAG/linux-amd64-openbmclapi"
+{
+	curl -L -o ./service-linux-go-openbmclapi "$REPO/releases/download/$LATEST_TAG/linux-amd64-openbmclapi" && \
+	mv ./service-linux-go-openbmclapi "$BASE_PATH/service-linux-go-openbmclapi" && chmod 0744 "$BASE_PATH/service-linux-go-openbmclapi"
+} || exit $?
+
+
+echo "==> Enable go-openbmclapi.service"
 systemctl enable go-openbmclapi.service || exit $?
 
-echo
-echo "========Install success========"
-echo "Use 'systemctl start go-openbmclapi.service' to start bmclapi node server"
+echo "
+================================ Install successed ================================
+
+  Use 'systemctl start go-openbmclapi.service' to start openbmclapi server
+  Use 'systemctl stop go-openbmclapi.service' to stop openbmclapi server
+  Use 'systemctl reload go-openbmclapi.service' to reload openbmclapi server configs
+  Use 'journalctl -f -u go-openbmclapi.service' to watch the openbmclapi logs
+"

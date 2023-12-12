@@ -10,7 +10,7 @@
 
 ## 安装
 
-### 直接运行
+### 无依赖直接运行
 
 1. 从 github release 找到**适合您服务器平台**的程序并下载到节点服务器上
 2. 配置配置文件, 可以直接使用与bangbang93的openbmclapi相同的环境变量配置, 也可以从`config.json`配置 _(下文有讲)_
@@ -48,13 +48,15 @@ CMD exec /web/runner.sh
 ### 从`systemd`运行 _(仅Linux)_
 
 1. **确保systemd是您的*启动进程***
-2. 在root用户下执行`service/installer.sh`
+2. 执行
+   ```sh
+   sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh)"
+   ```
 3. 配置`/var/openmbmclapi/config.json`配置文件
 4. 使用`systemctl start go-openbmclapi.service`启动服务
-
-- 使用`systemctl reload go-openbmclapi.service`可重新加载配置文件
-- 使用`systemctl stop go-openbmclapi.service`停止服务
-- 使用`journalctl -f -u go-openbmclapi.service`实时监听日志
+   - 使用`systemctl reload go-openbmclapi.service`可重新加载配置文件
+   - 使用`systemctl stop go-openbmclapi.service`停止服务
+   - 使用`journalctl -f -u go-openbmclapi.service`实时监听日志
 
 ## 配置
 

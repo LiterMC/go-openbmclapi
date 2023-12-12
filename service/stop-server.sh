@@ -9,7 +9,7 @@ fi
 PID="`cat ./pid`"
 rm ./pid
 
-if [ "x`ps -o command= $PID`" = 'x./service-linux-go-openbmclapi' ]; then
+if [ "`ps -o command= $PID`" = './service-linux-go-openbmclapi' ]; then
 	kill -s QUIT $PID
 fi
 

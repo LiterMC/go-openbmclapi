@@ -62,7 +62,7 @@ func NewCluster(
 		username:   username,
 		password:   password,
 		version:    version,
-		useragent:  "openbmclapi-cluster/" + version,
+		useragent:  "openbmclapi-cluster/" + version + " (Golang Edition)",
 		prefix:     "https://openbmclapi.bangbang93.com",
 
 		cachedir: "cache",
@@ -96,6 +96,7 @@ func (cr *Cluster) Connect() bool {
 		fmt.Sprintf("/socket.io/?clusterId=%s&clusterSecret=%s&EIO=4&transport=websocket", cr.username, cr.password)
 	header := http.Header{}
 	header.Set("Origin", cr.prefix)
+	header.Set("User-Agent", cr.useragent)
 
 	connectCh := make(chan struct{}, 0)
 	connected := sync.OnceFunc(func(){

@@ -90,7 +90,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, e.Error(), http.StatusBadRequest)
 			return
 		}
-		rw.Header().Set("Content-Length", strconv.Itoa(n * len(zeroBuffer)))
+		rw.Header().Set("Content-Length", strconv.Itoa(n*len(zeroBuffer)))
 		rw.WriteHeader(http.StatusOK)
 		for i := 0; i < n; i++ {
 			rw.Write(zeroBuffer[:])

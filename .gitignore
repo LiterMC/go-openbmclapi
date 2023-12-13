@@ -8,6 +8,7 @@
 /cache
 /logs
 /.tmp
+/oss_mirror
 
 # binarys
 /output

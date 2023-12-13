@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,19 +23,19 @@ var (
 )
 
 type Config struct {
-	Debug            bool   `json:"debug"`
-	ShowServeInfo    bool   `json:"show_serve_info"`
-	Nohttps          bool   `json:"nohttps"`
-	PublicHost       string `json:"public_host"`
-	PublicPort       uint16 `json:"public_port"`
-	Port             uint16 `json:"port"`
-	ClusterId        string `json:"cluster_id"`
-	ClusterSecret    string `json:"cluster_secret"`
-	UseOss           bool   `json:"use_oss"`
-	OssRedirectBase  string `json:"oss_redirect_base"`
-	Hijack           bool   `json:"hijack"`
-	HijackPort       uint16 `json:"hijack_port"`
-	AntiHijackDNS    string `json:"anti_hijack_dns"`
+	Debug           bool   `json:"debug"`
+	ShowServeInfo   bool   `json:"show_serve_info"`
+	Nohttps         bool   `json:"nohttps"`
+	PublicHost      string `json:"public_host"`
+	PublicPort      uint16 `json:"public_port"`
+	Port            uint16 `json:"port"`
+	ClusterId       string `json:"cluster_id"`
+	ClusterSecret   string `json:"cluster_secret"`
+	UseOss          bool   `json:"use_oss"`
+	OssRedirectBase string `json:"oss_redirect_base"`
+	Hijack          bool   `json:"hijack"`
+	HijackPort      uint16 `json:"hijack_port"`
+	AntiHijackDNS   string `json:"anti_hijack_dns"`
 }
 
 var config Config
@@ -43,19 +44,19 @@ func readConfig() {
 	const configPath = "config.json"
 
 	config = Config{
-		Debug:            false,
-		ShowServeInfo:    false,
-		Nohttps:          false,
-		PublicHost:       "example.com",
-		PublicPort:       8080,
-		Port:             4000,
-		ClusterId:        "${CLUSTER_ID}",
-		ClusterSecret:    "${CLUSTER_SECRET}",
-		UseOss: false,
+		Debug:           false,
+		ShowServeInfo:   false,
+		Nohttps:         false,
+		PublicHost:      "example.com",
+		PublicPort:      8080,
+		Port:            4000,
+		ClusterId:       "${CLUSTER_ID}",
+		ClusterSecret:   "${CLUSTER_SECRET}",
+		UseOss:          false,
 		OssRedirectBase: "https://oss.example.com/base/paths",
-		Hijack:           false,
-		HijackPort:       8090,
-		AntiHijackDNS:    "8.8.8.8:53",
+		Hijack:          false,
+		HijackPort:      8090,
+		AntiHijackDNS:   "8.8.8.8:53",
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -114,6 +115,8 @@ const cacheDir = "cache"
 
 var hijackPath = filepath.Join(cacheDir, "__hijack")
 
+const ossMirrorDir = "oss_mirror"
+
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
@@ -160,7 +163,7 @@ START:
 	}
 	redirectBase := ""
 	if config.UseOss {
-		assertOSS()
+		redirectBase = config.OssRedirectBase
 	}
 	cluster := NewCluster(ctx, cacheDir,
 		config.PublicHost, config.PublicPort,
@@ -172,6 +175,7 @@ START:
 
 	logInfof("Starting Go-OpenBmclApi v%s", VERSION)
 
+		createOssMirrorDir()
 	{
 		logInfof("Fetching file list")
 		fl := cluster.GetFileList()
@@ -184,7 +188,7 @@ START:
 
 	if config.UseOss {
 		assertOSS()
-		go func(){
+		go func() {
 			ticker := time.NewTicker(time.Minute * 10)
 			defer ticker.Stop()
 			for {
@@ -277,7 +281,43 @@ START:
 	}
 }
 
-func assertOSS(){
+func createOssMirrorDir() {
+	os.RemoveAll(ossMirrorDir)
+	if err := os.MkdirAll(ossMirrorDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		logErrorf("Cannot create OSS mirror folder %q: %v", ossMirrorDir, err)
+		os.Exit(2)
+	}
+	downloadDir := filepath.Join(ossMirrorDir, "download")
+	if err := os.Mkdir(downloadDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		logErrorf("Cannot create OSS mirror folder %q: %v", downloadDir, err)
+		os.Exit(2)
+	}
+	measureDir := filepath.Join(ossMirrorDir, "measure")
+	if err := os.Mkdir(measureDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		logErrorf("Cannot create OSS mirror folder %q: %v", measureDir, err)
+		os.Exit(2)
+	}
+	for i := 0; i < 0x100; i++ {
+		d := hex.EncodeToString([]byte{(byte)(i)})
+		o := filepath.Join(cacheDir, d)
+		t := filepath.Join(downloadDir, d)
+		os.Mkdir(o, 0755)
+		if err := os.Symlink(filepath.Join("..", "..", o), t); err != nil {
+			logErrorf("Cannot create OSS mirror cache symlink %q: %v", t, err)
+			os.Exit(2)
+		}
+	}
+	var buf [200 * 1024 * 1024]byte
+	for i := 1; i <= 200; i++ {
+		t := filepath.Join(measureDir, strconv.Itoa(i))
+		if err := os.WriteFile(t, buf[:i*1024*1024], 0644); err != nil {
+			logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
+			os.Exit(2)
+		}
+	}
+}
+
+func assertOSS() {
 	target, err := url.JoinPath(config.OssRedirectBase, "measure", "10")
 	if err != nil {
 		logError("Cannot check OSS server:", err)

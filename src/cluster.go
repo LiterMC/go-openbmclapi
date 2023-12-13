@@ -80,7 +80,7 @@ func NewCluster(
 		redirectBase: redirectBase,
 
 		cacheDir: cacheDir,
-		tmpDir:   filepath.Join(filepath.Dir(cacheDir), ".tmp"),
+		tmpDir:   filepath.Join(cacheDir, ".tmp"),
 		maxConn:  128,
 
 		client: &http.Client{

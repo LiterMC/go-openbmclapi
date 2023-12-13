@@ -16,14 +16,6 @@
 2. 配置配置文件, 可以直接使用与bangbang93的openbmclapi相同的环境变量配置, 也可以从`config.json`配置 _(下文有讲)_
 3. 运行程序
 
-### 从源代码运行
-
-1. 下载本仓库 _(可以使用`git clone https://github.com/KpnmServer/go-openbmclapi.git`)_
-2. 确保您的**节点**服务器上装有`go 1.16+`
-3. cd进入本仓库
-4. 配置配置文件或环境变量
-5. 使用`go run ./src`运行本程序
-
 ### 从docker运行
 
 - 可直接运行仓库目录下的`docker-run.sh`文件, 运行之前请确保存在`craftmine/go-openbmclapi:latest`镜像, 或网络连通
@@ -41,6 +33,14 @@
    - 使用`systemctl reload go-openbmclapi.service`可重新加载配置文件
    - 使用`systemctl stop go-openbmclapi.service`停止服务
    - 使用`journalctl -f -u go-openbmclapi.service`实时监听日志
+
+### 从源代码运行
+
+1. 下载本仓库 _(可以使用`git clone https://github.com/LiterMC/go-openbmclapi.git`)_
+2. 确保您的服务器上装有`go 1.21+`
+3. cd进入本仓库
+4. 配置配置文件或环境变量
+5. 使用`go run ./src`运行本程序
 
 ## 配置
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -23,13 +24,14 @@ var (
 type Config struct {
 	Debug            bool   `json:"debug"`
 	ShowServeInfo    bool   `json:"show_serve_info"`
-	IgnoreServeError bool   `json:"ignore_serve_error"`
 	Nohttps          bool   `json:"nohttps"`
 	PublicHost       string `json:"public_host"`
 	PublicPort       uint16 `json:"public_port"`
 	Port             uint16 `json:"port"`
 	ClusterId        string `json:"cluster_id"`
 	ClusterSecret    string `json:"cluster_secret"`
+	UseOss           bool   `json:"use_oss"`
+	OssRedirectBase  string `json:"oss_redirect_base"`
 	Hijack           bool   `json:"hijack"`
 	HijackPort       uint16 `json:"hijack_port"`
 	AntiHijackDNS    string `json:"anti_hijack_dns"`
@@ -43,13 +45,14 @@ func readConfig() {
 	config = Config{
 		Debug:            false,
 		ShowServeInfo:    false,
-		IgnoreServeError: true,
 		Nohttps:          false,
 		PublicHost:       "example.com",
 		PublicPort:       8080,
 		Port:             4000,
 		ClusterId:        "${CLUSTER_ID}",
 		ClusterSecret:    "${CLUSTER_SECRET}",
+		UseOss: false,
+		OssRedirectBase: "https://oss.example.com/base/paths",
 		Hijack:           false,
 		HijackPort:       8090,
 		AntiHijackDNS:    "8.8.8.8:53",
@@ -155,11 +158,17 @@ START:
 		}()
 		time.Sleep(time.Second * 100000)
 	}
+	redirectBase := ""
+	if config.UseOss {
+		assertOSS()
+	}
 	cluster := NewCluster(ctx, cacheDir,
 		config.PublicHost, config.PublicPort,
 		config.ClusterId, config.ClusterSecret, VERSION,
 		fmt.Sprintf("%s:%d", "0.0.0.0", config.Port),
-		config.Nohttps, dialer)
+		config.Nohttps, dialer,
+		redirectBase,
+	)
 
 	logInfof("Starting Go-OpenBmclApi v%s", VERSION)
 
@@ -171,6 +180,22 @@ START:
 			os.Exit(1)
 		}
 		cluster.SyncFiles(fl, ctx)
+	}
+
+	if config.UseOss {
+		assertOSS()
+		go func(){
+			ticker := time.NewTicker(time.Minute * 10)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					assertOSS()
+				}
+			}
+		}()
 	}
 
 	if !cluster.Connect() {
@@ -249,5 +274,23 @@ START:
 			logInfo("Restarting server ...")
 			goto START
 		}
+	}
+}
+
+func assertOSS(){
+	target, err := url.JoinPath(config.OssRedirectBase, "measure", "10")
+	if err != nil {
+		logError("Cannot check OSS server:", err)
+		os.Exit(2)
+	}
+	res, err := http.Get(target)
+	if err != nil {
+		logErrorf("OSS check request failed %q: %v", target, err)
+		os.Exit(2)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		logErrorf("OSS check request failed %q: %d %s", target, res.StatusCode, res.Status)
+		os.Exit(2)
 	}
 }

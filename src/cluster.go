@@ -33,6 +33,8 @@ type Cluster struct {
 	prefix     string
 	byoc       bool
 
+	redirectBase string
+
 	cacheDir string
 	tmpDir   string
 	maxConn  int
@@ -57,6 +59,7 @@ func NewCluster(
 	username string, password string,
 	version string, address string,
 	byoc bool, dialer *net.Dialer,
+	redirectBase string,
 ) (cr *Cluster) {
 	transport := &http.Transport{}
 	if dialer != nil {
@@ -74,8 +77,10 @@ func NewCluster(
 		prefix:     "https://openbmclapi.bangbang93.com",
 		byoc:       byoc,
 
+		redirectBase: redirectBase,
+
 		cacheDir: cacheDir,
-		tmpDir:   filepath.Join(cacheDir, ".tmp"),
+		tmpDir:   filepath.Join(filepath.Dir(cacheDir), ".tmp"),
 		maxConn:  128,
 
 		client: &http.Client{

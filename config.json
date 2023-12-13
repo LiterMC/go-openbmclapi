@@ -1,7 +1,6 @@
 {
   "debug": false,
   "show_serve_info": false,
-  "ignore_serve_error": true,
   "nohttps": false,
   "public_host": "example.com",
   "public_port": 8080,

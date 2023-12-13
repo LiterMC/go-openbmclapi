@@ -464,7 +464,7 @@ WAIT_SLOT:
 	RETRY:
 		err := cr.dlhandle(ctx, f.FileInfo)
 		if err != nil {
-			logErrorf("Download file error: %s [%s/%s ; %d/%d]%.2f%%\n\t%s",
+			logErrorf("Download file error: %s [%s/%s ; %d/%d] %.2f%%\n\t%s",
 				f.Path,
 				bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
 				stats.fcount.Load(), stats.fl,
@@ -482,7 +482,7 @@ WAIT_SLOT:
 		} else {
 			stats.downloaded += (float64)(f.Size)
 			stats.fcount.Add(1)
-			logInfof("Downloaded: %s [%s/%s;%d/%d]%.2f%%", f.Path,
+			logInfof("Downloaded: %s [%s/%s ; %d/%d] %.2f%%", f.Path,
 				bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
 				stats.fcount.Load(), stats.fl,
 				stats.downloaded/stats.totalsize*100)
@@ -491,7 +491,7 @@ WAIT_SLOT:
 }
 
 func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
-	logDebug("Downloading:", f.Path)
+	logInfof("Downloading: %s", f.Path)
 	hashMethod, err := getHashMethod(len(f.Hash))
 	if err != nil {
 		return

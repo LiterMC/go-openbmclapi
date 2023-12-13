@@ -175,7 +175,6 @@ START:
 
 	logInfof("Starting Go-OpenBmclApi v%s", VERSION)
 
-	createOssMirrorDir()
 	{
 		logInfof("Fetching file list")
 		fl := cluster.GetFileList()
@@ -187,6 +186,7 @@ START:
 	}
 
 	if config.UseOss {
+		createOssMirrorDir()
 		assertOSS()
 		go func() {
 			ticker := time.NewTicker(time.Minute * 10)

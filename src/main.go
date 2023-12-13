@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -333,7 +334,6 @@ func assertOSS() {
 		logErrorf("OSS check request failed %q: %d %s", target, res.StatusCode, res.Status)
 		os.Exit(2)
 	}
-	var cw countWriter
 	n, err := io.Copy(io.Discard, res.Body)
 	if err != nil {
 		logErrorf("OSS check request failed %q: %v", target, err)

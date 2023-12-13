@@ -39,6 +39,22 @@ var config Config
 
 func readConfig() {
 	const configPath = "config.json"
+
+	config = Config{
+		Debug:            false,
+		ShowServeInfo:    false,
+		IgnoreServeError: true,
+		Nohttps:          false,
+		PublicHost:       "example.com",
+		PublicPort:       8080,
+		Port:             4000,
+		ClusterId:        "${CLUSTER_ID}",
+		ClusterSecret:    "${CLUSTER_SECRET}",
+		Hijack:           false,
+		HijackPort:       8090,
+		AntiHijackDNS:    "8.8.8.8:53",
+	}
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -46,20 +62,6 @@ func readConfig() {
 			os.Exit(1)
 		}
 		logError("Config file not exists, create one")
-		config = Config{
-			Debug:            false,
-			ShowServeInfo:    false,
-			IgnoreServeError: true,
-			Nohttps:          false,
-			PublicHost:       "example.com",
-			PublicPort:       8080,
-			Port:             4000,
-			ClusterId:        "${CLUSTER_ID}",
-			ClusterSecret:    "${CLUSTER_SECRET}",
-			Hijack:           false,
-			HijackPort:       8090,
-			AntiHijackDNS:    "8.8.8.8:53",
-		}
 	} else if err = json.Unmarshal(data, &config); err != nil {
 		logError("Cannot parse config:", err)
 		os.Exit(1)

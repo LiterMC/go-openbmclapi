@@ -1,13 +1,12 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-
-	ufile "github.com/KpnmServer/go-util/file"
 )
 
 const maxZeroBufMB = 200
@@ -26,7 +25,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		if method == http.MethodGet {
 			hash := rawpath[len("/download/"):]
 			path := cr.getHashPath(hash)
-			if ufile.IsNotExist(path) {
+			if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 				if err := cr.DownloadFile(req.Context(), path); err != nil {
 					rw.WriteHeader(http.StatusInternalServerError)
 					return
@@ -41,42 +40,24 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				rw.WriteHeader(http.StatusInternalServerError)
 				return
 			}
+			defer fd.Close()
 			rw.Header().Set("X-Bmclapi-Hash", hash)
 			rw.WriteHeader(http.StatusOK)
-			var (
-				buf []byte
-				hb  int64
-				n   int
-			)
+			var buf []byte
 			{
 				buf0 := bufPool.Get().(*[]byte)
 				defer bufPool.Put(buf0)
 				buf = *buf0
 			}
-			for {
-				n, err = fd.Read(buf)
-				if err != nil {
-					if err == io.EOF {
-						err = nil
-						break
-					}
-					logError("Error when serving download read file:", err)
-					return
-				}
-				if n == 0 {
-					break
-				}
-				_, err = rw.Write(buf[:n])
-				if err != nil {
-					if !config.IgnoreServeError {
-						logError("Error when serving download:", err)
-					}
-					return
-				}
-				hb += (int64)(n)
-			}
+			n, err := io.CopyBuffer(rw, fd, buf)
 			cr.hits.Add(1)
-			cr.hbytes.Add(hb)
+			cr.hbytes.Add(n)
+			if err != nil {
+				if !config.IgnoreServeError {
+					logError("Error when serving download:", err)
+				}
+				return
+			}
 			return
 		}
 	case strings.HasPrefix(rawpath, "/measure/"):

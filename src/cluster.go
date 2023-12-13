@@ -74,10 +74,10 @@ func NewCluster(
 		byoc:       byoc,
 
 		cachedir: cacheDir,
-		maxConn:  400,
+		maxConn:  128,
 
 		client: &http.Client{
-			Timeout:   time.Second * 60,
+			Timeout:   time.Second * 120,
 			Transport: transport,
 		},
 		Server: &http.Server{
@@ -401,7 +401,7 @@ RESYNC:
 	}
 
 	// sort the files in descending order of size
-	sort.Slice(files, func(i, j int) bool { return files[i].Size < files[j].Size })
+	sort.Slice(files, func(i, j int) bool { return files[i].Size > files[j].Size })
 
 	var stats syncStats
 	stats.slots = make(chan struct{}, cr.maxConn)
@@ -495,7 +495,7 @@ WAIT_SLOT:
 }
 
 func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
-	logInfof("Downloading: %s", f.Path)
+	logInfof("Downloading: %s [%s]", f.Path, bytesToUnit((float64)(f.Size)))
 	hashMethod, err := getHashMethod(len(f.Hash))
 	if err != nil {
 		return
@@ -608,13 +608,16 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 		return
 	}
 
-	var t int64
-	t, err = io.CopyBuffer(io.MultiWriter(hw, fd), res.Body, buf)
+	_, err = io.CopyBuffer(io.MultiWriter(hw, fd), res.Body, buf)
 	fd.Close()
 	if err != nil {
 		return
 	}
-	if f.Size >= 0 && t != f.Size {
+	var stat os.FileInfo
+	if stat, err = os.Stat(hspt); err != nil {
+		return
+	}
+	if t := stat.Size(); f.Size >= 0 && t != f.Size {
 		err = fmt.Errorf("File size wrong, got %s, expect %s", bytesToUnit((float64)(t)), bytesToUnit((float64)(f.Size)))
 	} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
 		err = fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)

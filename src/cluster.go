@@ -646,6 +646,7 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 	if err = os.Rename(tfile, hspt); err != nil {
 		return
 	}
+	os.Chmod(hspt, 0644)
 
 	if config.Hijack {
 		if !strings.HasPrefix(f.Path, "/openbmclapi/download/") {

@@ -50,7 +50,6 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 			defer fd.Close()
 			rw.Header().Set("X-Bmclapi-Hash", hash)
-			rw.WriteHeader(http.StatusOK)
 			counter := &countReader{ReadSeeker: fd}
 			http.ServeContent(rw, req, name, time.Time{}, counter)
 			cr.hits.Add(1)
@@ -65,7 +64,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 			n, e := strconv.Atoi(rawpath[len("/measure/"):])
 			if e != nil || n < 0 || n > 200 {
-				rw.WriteHeader(http.StatusBadRequest)
+				http.Error(rw, e.Error(), http.StatusBadRequest)
 				return
 			}
 			rw.Header().Set("Content-Length", strconv.Itoa(n * len(zeroBuffer)))
@@ -76,6 +75,5 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
-	rw.WriteHeader(http.StatusNotFound)
-	rw.Write(([]byte)("404 Status Not Found"))
+	http.Error(rw, "404 Status Not Found", http.StatusNotFound)
 }

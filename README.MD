@@ -52,13 +52,16 @@
 例:
 ```javascript
 {
-	"debug": false,                // 是否打印调试日志, 默认为否
-	"show_serve_info": false,      // 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
-	"ignore_serve_error": true,    // 是否忽略http serve error, 默认打开 (这个选项对于压缩日志文件十分有用)
-	"public_host": "example.com",  // public host, 同 CLUSTER_IP
-	"public_port": 8080,           // 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
-	"port": 80,                    // 要监听的本地端口, 同 CLUSTER_PORT
-	"cluster_id": "${CLUSTER_ID}", // CLUSTER_ID
-	"cluster_secret": "${CLUSTER_SECRET}" // CLUSTER_SECRET
+	"debug": false,                 // 是否打印调试日志, 默认为否
+	"show_serve_info": false,       // 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
+	"ignore_serve_error": true,     // 是否忽略http serve error, 默认打开 (这个选项对于压缩日志文件十分有用)
+	"public_host": "example.com",   // public host, 同 CLUSTER_IP
+	"public_port": 8080,            // 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
+	"port": 80,                     // 要监听的本地端口, 同 CLUSTER_PORT
+	"cluster_id": "${CLUSTER_ID}",  // CLUSTER_ID
+	"cluster_secret": "${CLUSTER_SECRET}", // CLUSTER_SECRET
+	"hijack": false,                // 是否启动 bmclapi 劫持代理
+	"hijack_port": 8090,            // 劫持代理监听的端口
+	"anti_hijack_dns": "8.8.8.8:32" // 用于绕过DNS劫持的DNS服务器
 }
 ```

@@ -1,11 +1,14 @@
 {
-	"debug": false,
-	"show_serve_info": false,
-	"ignore_serve_error": true,
-	"nohttps": false,
-	"public_host": "example.com",
-	"public_port": 8080,
-	"port": 4000,
-	"cluster_id": "${CLUSTER_ID}",
-	"cluster_secret": "${CLUSTER_SECRET}"
+  "debug": false,
+  "show_serve_info": false,
+  "ignore_serve_error": true,
+  "nohttps": false,
+  "public_host": "example.com",
+  "public_port": 8080,
+  "port": 4000,
+  "cluster_id": "${CLUSTER_ID}",
+  "cluster_secret": "${CLUSTER_SECRET}",
+  "hijack": true,
+  "hijack_port": 8090,
+  "anti_hijack_dns": "8.8.8.8:53"
 }

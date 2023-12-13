@@ -18,12 +18,12 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	url := req.URL
 	rawpath := url.EscapedPath()
-	if SHOW_SERVE_INFO {
-		go logInfo("serve url:", url.String())
+	if config.ShowServeInfo {
+		logInfo("serve url:", url.String())
 	}
 	switch {
 	case strings.HasPrefix(rawpath, "/download/"):
-		if method == "GET" {
+		if method == http.MethodGet {
 			hash := rawpath[len("/download/"):]
 			path := cr.getHashPath(hash)
 			if ufile.IsNotExist(path) {
@@ -68,7 +68,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				}
 				_, err = rw.Write(buf[:n])
 				if err != nil {
-					if !IGNORE_SERVE_ERROR {
+					if !config.IgnoreServeError {
 						logError("Error when serving download:", err)
 					}
 					return
@@ -80,7 +80,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 	case strings.HasPrefix(rawpath, "/measure/"):
-		if method == "GET" {
+		if method == http.MethodGet {
 			if req.Header.Get("x-openbmclapi-secret") != cr.password {
 				rw.WriteHeader(http.StatusForbidden)
 				return

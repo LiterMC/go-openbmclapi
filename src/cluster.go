@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"crypto"
-	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,6 +31,7 @@ type Cluster struct {
 	version    string
 	useragent  string
 	prefix     string
+	byoc       bool
 
 	cachedir string
 	maxConn  int
@@ -50,10 +51,16 @@ type Cluster struct {
 }
 
 func NewCluster(
-	ctx context.Context,
+	ctx context.Context, cacheDir string,
 	host string, publicPort uint16,
 	username string, password string,
-	version string, address string) (cr *Cluster) {
+	version string, address string,
+	byoc bool, dialer *net.Dialer,
+) (cr *Cluster) {
+	transport := &http.Transport{}
+	if dialer != nil {
+		transport.DialContext = dialer.DialContext
+	}
 	cr = &Cluster{
 		ctx: ctx,
 
@@ -64,17 +71,14 @@ func NewCluster(
 		version:    version,
 		useragent:  "openbmclapi-cluster/" + version,
 		prefix:     "https://openbmclapi.bangbang93.com",
+		byoc:       byoc,
 
-		cachedir: "cache",
+		cachedir: cacheDir,
 		maxConn:  400,
 
 		client: &http.Client{
-			Timeout: time.Second * 60,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					// InsecureSkipVerify: true, // Skip verify because the author was lazy
-				},
-			},
+			Timeout:   time.Second * 60,
+			Transport: transport,
 		},
 		Server: &http.Server{
 			Addr: address,
@@ -99,7 +103,7 @@ func (cr *Cluster) Connect() bool {
 	header.Set("User-Agent", cr.useragent)
 
 	connectCh := make(chan struct{}, 0)
-	connected := sync.OnceFunc(func(){
+	connected := sync.OnceFunc(func() {
 		close(connectCh)
 	})
 
@@ -152,7 +156,7 @@ func (cr *Cluster) Enable() (err error) {
 		"host":    cr.host,
 		"port":    cr.publicPort,
 		"version": cr.version,
-		"byoc":    USE_HTTPS,
+		"byoc":    cr.byoc,
 	})
 	if err != nil {
 		return
@@ -397,7 +401,7 @@ RESYNC:
 	}
 
 	// sort the files in descending order of size
-	sort.Slice(files, func(i, j int) bool { return files[i].Size > files[j].Size })
+	sort.Slice(files, func(i, j int) bool { return files[i].Size < files[j].Size })
 
 	var stats syncStats
 	stats.slots = make(chan struct{}, cr.maxConn)
@@ -505,7 +509,9 @@ func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
 	}
 
 	for i := 0; i < 3; i++ {
-		cr.downloadFileBuf(ctx, f, hashMethod, buf)
+		if err = cr.downloadFileBuf(ctx, f, hashMethod, buf); err == nil {
+			return
+		}
 	}
 	return
 }
@@ -597,7 +603,8 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 
 	hw := hashMethod.New()
 
-	if fd, err = os.Create(cr.getHashPath(f.Hash)); err != nil {
+	hspt := cr.getHashPath(f.Hash)
+	if fd, err = os.Create(hspt); err != nil {
 		return
 	}
 
@@ -612,13 +619,28 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 	} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
 		err = fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)
 	}
-	if DEBUG && err != nil {
-		f0, _ := os.Open(cr.getHashPath(f.Hash))
-		b0, _ := io.ReadAll(f0)
-		if len(b0) < 16*1024 {
-			logDebug("File content:", (string)(b0), "//for", f.Path)
+	if err != nil {
+		if config.Debug {
+			f0, _ := os.Open(cr.getHashPath(f.Hash))
+			b0, _ := io.ReadAll(f0)
+			if len(b0) < 16*1024 {
+				logDebug("File content:", (string)(b0), "//for", f.Path)
+			}
+		}
+		return
+	}
+
+	if config.Hijack {
+		if !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
+			target := filepath.Join(hijackPath, filepath.FromSlash(f.Path))
+			dir := filepath.Dir(target)
+			os.MkdirAll(dir, 0755)
+			if rp, err := filepath.Rel(dir, hspt); err == nil {
+				os.Symlink(rp, target)
+			}
 		}
 	}
+
 	return
 }
 

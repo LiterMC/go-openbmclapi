@@ -55,13 +55,13 @@ func logXf(x string, format string, args ...any) {
 }
 
 func logDebug(args ...any) {
-	if DEBUG {
+	if config.Debug {
 		logX("DBUG", args...)
 	}
 }
 
 func logDebugf(format string, args ...any) {
-	if DEBUG {
+	if config.Debug {
 		logXf("DBUG", format, args...)
 	}
 }

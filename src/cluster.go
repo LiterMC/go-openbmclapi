@@ -62,7 +62,7 @@ func NewCluster(
 		username:   username,
 		password:   password,
 		version:    version,
-		useragent:  "openbmclapi-cluster/" + version + " (Golang Edition)",
+		useragent:  "openbmclapi-cluster/" + version,
 		prefix:     "https://openbmclapi.bangbang93.com",
 
 		cachedir: "cache",
@@ -340,6 +340,8 @@ func (cr *Cluster) GetFileList() (files []FileInfo) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		logErrorf("Query filelist error: Unexpected status code: %d %s", res.StatusCode, res.Status)
+		data, _ := io.ReadAll(res.Body)
+		logErrorf("Response Body:\n%s", (string)(data))
 		return nil
 	}
 	logDebug("Parsing filelist body ...")
@@ -372,7 +374,7 @@ type syncStats struct {
 
 func (cr *Cluster) SyncFiles(files0 []FileInfo, ctx context.Context) {
 	logInfo("Preparing to sync files...")
-	if cr.issync.CompareAndSwap(false, true) {
+	if !cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
 		return
 	}

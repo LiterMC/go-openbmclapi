@@ -33,7 +33,8 @@ type Cluster struct {
 	prefix     string
 	byoc       bool
 
-	cachedir string
+	cacheDir string
+	tmpDir   string
 	maxConn  int
 	hits     atomic.Int32
 	hbytes   atomic.Int64
@@ -73,7 +74,8 @@ func NewCluster(
 		prefix:     "https://openbmclapi.bangbang93.com",
 		byoc:       byoc,
 
-		cachedir: cacheDir,
+		cacheDir: cacheDir,
+		tmpDir: filepath.Join(cacheDir, ".tmp"),
 		maxConn:  128,
 
 		client: &http.Client{
@@ -85,6 +87,9 @@ func NewCluster(
 		},
 	}
 	cr.Server.Handler = cr
+	os.MkdirAll(cr.cacheDir, 0755)
+	os.RemoveAll(cr.tmpDir)
+	os.Mkdir(cr.tmpDir, 0700)
 	return
 }
 
@@ -308,7 +313,7 @@ func (cr *Cluster) queryURLHeader(method string, url string, header map[string]s
 }
 
 func (cr *Cluster) getHashPath(hash string) string {
-	return ufile.JoinPath(cr.cachedir, hash[:2], hash)
+	return ufile.JoinPath(cr.cacheDir, hash[:2], hash)
 }
 
 type FileInfo struct {
@@ -560,7 +565,7 @@ func (cr *Cluster) gc(files []FileInfo) {
 		fileset[cr.getHashPath(files[i].Hash)] = struct{}{}
 	}
 	stack := make([]string, 0, 10)
-	stack = append(stack, cr.cachedir)
+	stack = append(stack, cr.cacheDir)
 	for len(stack) > 0 {
 		p := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -603,18 +608,18 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 
 	hw := hashMethod.New()
 
-	hspt := cr.getHashPath(f.Hash)
-	if fd, err = os.Create(hspt); err != nil {
+	if fd, err = os.CreateTemp(cr.tmpDir, "*.downloading"); err != nil {
 		return
 	}
+	tfile := fd.Name()
 
 	_, err = io.CopyBuffer(io.MultiWriter(hw, fd), res.Body, buf)
+	stat, err2 := fd.Stat()
+	if err2 != nil {
+		return err2
+	}
 	fd.Close()
 	if err != nil {
-		return
-	}
-	var stat os.FileInfo
-	if stat, err = os.Stat(hspt); err != nil {
 		return
 	}
 	if t := stat.Size(); f.Size >= 0 && t != f.Size {
@@ -627,9 +632,14 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 			f0, _ := os.Open(cr.getHashPath(f.Hash))
 			b0, _ := io.ReadAll(f0)
 			if len(b0) < 16*1024 {
-				logDebug("File content:", (string)(b0), "//for", f.Path)
+				logDebug("File path:", tfile, "; for", f.Path)
 			}
 		}
+		return
+	}
+
+	hspt := cr.getHashPath(f.Hash)
+	if err = os.Rename(tfile, hspt); err != nil {
 		return
 	}
 

@@ -7,11 +7,21 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
-const maxZeroBufMB = 200
+var zeroBuffer [1024 * 1024]byte
 
-var zeroBuffer [maxZeroBufMB * 1024 * 1024]byte
+type countReader struct {
+	io.ReadSeeker
+	n int64
+}
+
+func (r *countReader) Read(buf []byte) (n int, err error) {
+	n, err = r.ReadSeeker.Read(buf)
+	r.n += (int64)(n)
+	return
+}
 
 func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
@@ -31,9 +41,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 					return
 				}
 			}
-			if name := req.Form.Get("name"); name != "" {
-				rw.Header().Set("Content-Disposition", "attachment; filename="+name)
-			}
+			name := req.Form.Get("name")
 			rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
 			fd, err := os.Open(path)
 			if err != nil {
@@ -43,21 +51,10 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			defer fd.Close()
 			rw.Header().Set("X-Bmclapi-Hash", hash)
 			rw.WriteHeader(http.StatusOK)
-			var buf []byte
-			{
-				buf0 := bufPool.Get().(*[]byte)
-				defer bufPool.Put(buf0)
-				buf = *buf0
-			}
-			n, err := io.CopyBuffer(rw, fd, buf)
+			counter := &countReader{ReadSeeker: fd}
+			http.ServeContent(rw, req, name, time.Time{}, counter)
 			cr.hits.Add(1)
-			cr.hbytes.Add(n)
-			if err != nil {
-				if !config.IgnoreServeError {
-					logError("Error when serving download:", err)
-				}
-				return
-			}
+			cr.hbytes.Add(counter.n)
 			return
 		}
 	case strings.HasPrefix(rawpath, "/measure/"):
@@ -67,12 +64,15 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				return
 			}
 			n, e := strconv.Atoi(rawpath[len("/measure/"):])
-			if e != nil || n < 0 || n > maxZeroBufMB {
+			if e != nil || n < 0 || n > 200 {
 				rw.WriteHeader(http.StatusBadRequest)
 				return
 			}
+			rw.Header().Set("Content-Length", strconv.Itoa(n * len(zeroBuffer)))
 			rw.WriteHeader(http.StatusOK)
-			rw.Write(zeroBuffer[:n*1024*1024])
+			for i := 0; i < n; i++ {
+				rw.Write(zeroBuffer[:])
+			}
 			return
 		}
 	}

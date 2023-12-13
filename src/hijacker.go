@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 func getDialerWithDNS(dnsaddr string) *net.Dialer {
@@ -33,7 +32,6 @@ func NewHjProxy(dialer *net.Dialer, path string) (h *HjProxy) {
 		dialer: dialer,
 		path:   path,
 		client: &http.Client{
-			Timeout: time.Second * 15,
 			Transport: &http.Transport{
 				DialContext: dialer.DialContext,
 			},

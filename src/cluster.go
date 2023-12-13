@@ -75,11 +75,10 @@ func NewCluster(
 		byoc:       byoc,
 
 		cacheDir: cacheDir,
-		tmpDir: filepath.Join(cacheDir, ".tmp"),
+		tmpDir:   filepath.Join(cacheDir, ".tmp"),
 		maxConn:  128,
 
 		client: &http.Client{
-			Timeout:   time.Second * 120,
 			Transport: transport,
 		},
 		Server: &http.Server{

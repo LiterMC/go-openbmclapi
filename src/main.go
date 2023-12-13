@@ -284,7 +284,6 @@ START:
 
 func createOssMirrorDir() {
 	logInfo("Creating %s", ossMirrorDir)
-	os.RemoveAll(ossMirrorDir)
 	if err := os.MkdirAll(ossMirrorDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 		logErrorf("Cannot create OSS mirror folder %q: %v", ossMirrorDir, err)
 		os.Exit(2)

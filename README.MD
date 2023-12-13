@@ -36,7 +36,7 @@
    ```sh
    sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh)"
    ```
-3. 配置`/var/openmbmclapi/config.json`配置文件
+3. 配置`/opt/openbmclapi/config.json`配置文件
 4. 使用`systemctl start go-openbmclapi.service`启动服务
    - 使用`systemctl reload go-openbmclapi.service`可重新加载配置文件
    - 使用`systemctl stop go-openbmclapi.service`停止服务

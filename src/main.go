@@ -283,6 +283,7 @@ START:
 }
 
 func createOssMirrorDir() {
+	logInfo("Creating %s", ossMirrorDir)
 	os.RemoveAll(ossMirrorDir)
 	if err := os.MkdirAll(ossMirrorDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 		logErrorf("Cannot create OSS mirror folder %q: %v", ossMirrorDir, err)
@@ -308,6 +309,7 @@ func createOssMirrorDir() {
 			os.Exit(2)
 		}
 	}
+	logDebug("Creating measure files")
 	var buf [200 * 1024 * 1024]byte
 	for i := 1; i <= 200; i++ {
 		t := filepath.Join(measureDir, strconv.Itoa(i))
@@ -316,6 +318,7 @@ func createOssMirrorDir() {
 			os.Exit(2)
 		}
 	}
+	logDebug("Measure files created")
 }
 
 func assertOSS() {
@@ -335,6 +338,7 @@ func assertOSS() {
 		logErrorf("OSS check request failed %q: %d %s", target, res.StatusCode, res.Status)
 		os.Exit(2)
 	}
+	logDebug("reading OSS response")
 	n, err := io.Copy(io.Discard, res.Body)
 	if err != nil {
 		logErrorf("OSS check request failed %q: %v", target, err)

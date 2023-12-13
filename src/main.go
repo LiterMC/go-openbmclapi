@@ -319,6 +319,7 @@ func createOssMirrorDir() {
 }
 
 func assertOSS() {
+	logInfo("Checking OSS ...")
 	target, err := url.JoinPath(config.OssRedirectBase, "measure", "10")
 	if err != nil {
 		logError("Cannot check OSS server:", err)

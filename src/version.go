@@ -1,6 +1,3 @@
 package main
 
-var (
-	// TODO: use ldflags?
-	VERSION = "1.6.7"
-)
+var BuildVersion string = "dev"

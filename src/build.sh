@@ -12,6 +12,10 @@ outputdir=output
 
 mkdir -p "$outputdir"
 
+[ -n "$TAG" ] || TAG=$(git describe --tags --match v[0-9]* --abbrev=0 2>/dev/null || git log -1 --format="dev-%H")
+
+echo "Detected tag: $TAG"
+
 export CGO_ENABLED=0
 
 for p in "${available_platforms[@]}"; do
@@ -22,5 +26,5 @@ for p in "${available_platforms[@]}"; do
 		target="${target}.exe"
 	fi
 	echo "Building $target ..."
-	GOOS=$os GOARCH=$arch go build -o "$target" "$@" "$curdir" || exit $?
+	GOOS=$os GOARCH=$arch go build -o "$target" -ldflags "-X 'main.BuildVersion=$TAG'" "$@" "$curdir" || exit $?
 done

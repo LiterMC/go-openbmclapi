@@ -23,6 +23,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
+const ClusterVersion = "1.6.7"
+
 type Cluster struct {
 	host       string
 	publicPort uint16
@@ -57,7 +59,7 @@ func NewCluster(
 	ctx context.Context, cacheDir string,
 	host string, publicPort uint16,
 	username string, password string,
-	version string, address string,
+	address string,
 	byoc bool, dialer *net.Dialer,
 	redirectBase string,
 ) (cr *Cluster) {
@@ -72,8 +74,7 @@ func NewCluster(
 		publicPort: publicPort,
 		username:   username,
 		password:   password,
-		version:    version,
-		useragent:  "openbmclapi-cluster/" + version,
+		useragent:  "openbmclapi-cluster/" + ClusterVersion,
 		prefix:     "https://openbmclapi.bangbang93.com",
 		byoc:       byoc,
 

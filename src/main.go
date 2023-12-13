@@ -168,13 +168,13 @@ START:
 	}
 	cluster := NewCluster(ctx, cacheDir,
 		config.PublicHost, config.PublicPort,
-		config.ClusterId, config.ClusterSecret, VERSION,
+		config.ClusterId, config.ClusterSecret,
 		fmt.Sprintf("%s:%d", "0.0.0.0", config.Port),
 		config.Nohttps, dialer,
 		redirectBase,
 	)
 
-	logInfof("Starting Go-OpenBmclApi v%s", VERSION)
+	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
 
 	{
 		logInfof("Fetching file list")

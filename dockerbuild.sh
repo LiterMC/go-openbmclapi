@@ -16,6 +16,7 @@ function build(){
 	DOCKER_BUILDKIT=1 docker build --platform ${platform} \
 	 --tag "$fulltag" \
 	 --file "Dockerfile" \
+	 --build-arg "TAG=$TAG" \
 	 . || return $?
 	echo
 	docker tag "$fulltag" "${PUBLIC_PREFIX}:latest"

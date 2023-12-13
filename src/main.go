@@ -289,6 +289,7 @@ func createOssMirrorDir() {
 		os.Exit(2)
 	}
 	downloadDir := filepath.Join(ossMirrorDir, "download")
+	os.RemoveAll(downloadDir)
 	if err := os.Mkdir(downloadDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 		logErrorf("Cannot create OSS mirror folder %q: %v", downloadDir, err)
 		os.Exit(2)

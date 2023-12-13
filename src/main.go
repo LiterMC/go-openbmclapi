@@ -175,7 +175,7 @@ START:
 
 	logInfof("Starting Go-OpenBmclApi v%s", VERSION)
 
-		createOssMirrorDir()
+	createOssMirrorDir()
 	{
 		logInfof("Fetching file list")
 		fl := cluster.GetFileList()
@@ -328,9 +328,19 @@ func assertOSS() {
 		logErrorf("OSS check request failed %q: %v", target, err)
 		os.Exit(2)
 	}
-	res.Body.Close()
+	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		logErrorf("OSS check request failed %q: %d %s", target, res.StatusCode, res.Status)
+		os.Exit(2)
+	}
+	var cw countWriter
+	n, err := io.Copy(io.Discard, res.Body)
+	if err != nil {
+		logErrorf("OSS check request failed %q: %v", target, err)
+		os.Exit(2)
+	}
+	if n != 10*1024*1024 {
+		logErrorf("OSS check request failed %q: expected 10MB, but got %d bytes", target, n)
 		os.Exit(2)
 	}
 }

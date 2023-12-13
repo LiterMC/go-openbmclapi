@@ -1,6 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 
-REPO='https://github.com/LiterMC/go-openbmclapi'
+REPO='LiterMC/go-openbmclapi'
+RAW_PREFIX='https://raw.githubusercontent.com/'
+RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
 
 
@@ -21,8 +23,8 @@ if [ ! -d /usr/lib/systemd/system/ ]; then
 fi
 
 function fetchGithubLatestTag(){
-	prefix="location: $REPO/releases/tag/"
-	location=$(curl -sSI "$REPO/releases/latest" | grep "$prefix")
+	prefix="location: https://github.com/$REPO/releases/tag/"
+	location=$(curl -sSI "https://github.com/$REPO/releases/latest" | grep "$prefix" | tr -d "\r")
 	[ $? = 0 ] || return 1
 	export LATEST_TAG="${location#${prefix}}"
 }
@@ -32,13 +34,16 @@ function fetchBlob(){
 	target=$2
 	filemod=$3
 
-	source="$REPO/blob/$LATEST_TAG/$file"
+	source="$RAW_REPO/$LATEST_TAG/$file"
 	echo "==> Downloading $source"
 	tmpf=$(mktemp -t go-openbmclapi.XXXXXXXXXXXX.downloading)
 	curl -sSL -o "$tmpf" "$source" || { rm "$tmpf"; return 1; }
 	echo "==> Downloaded $source"
 	mv "$tmpf" "$target" || return $?
-	[ -n "$filemod" ] || chmod "$filemod" "$target" || return $?
+	echo "==> Installed to $target"
+	if [ -n "$filemod" ]; then
+		chmod "$filemod" "$target" || return $?
+	fi
 }
 
 if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
@@ -46,14 +51,14 @@ if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
 	systemctl disable go-openbmclapi.service
 fi
 
-echo "==> Fetching latest tag for $REPO"
+echo "==> Fetching latest tag for https://github.com/$REPO"
 fetchGithubLatestTag
 echo "go-openbmclapi LATEST TAG: $LATEST_TAG"
 echo
 
 fetchBlob service/go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.service 0644
 
-[ -d "$BASE_PATH" ] || { mkdir -p /opt/openbmclapi && chmod 0755 "$BASE_PATH"; } || exit $?
+[ -d "$BASE_PATH" ] || { mkdir -p "$BASE_PATH" && chmod 0755 "$BASE_PATH"; } || exit $?
 
 fetchBlob service/start-server.sh "$BASE_PATH/start-server.sh" 0744 || exit $?
 fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0744 || exit $?
@@ -61,10 +66,11 @@ fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0744 || exit $?
 
 
 arch=$(uname -m)
-source="$REPO/releases/download/$LATEST_TAG/go-opembmclapi-linux-$arch"
+latest_src="https://github.com/$REPO/releases/download/$LATEST_TAG"
+source="$latest_src/go-opembmclapi-linux-$arch"
 echo "==> Downloading $source"
-if ! curl -L -o ./service-linux-go-openbmclapi "$source"; then
-	source="$REPO/releases/download/$LATEST_TAG/go-opembmclapi-linux-amd64"
+if ! curl -L -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"; then
+	source="$latest_src/go-opembmclapi-linux-amd64"
 	echo "==> Downloading fallback binary $source"
 	curl -L -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || exit $?
 fi

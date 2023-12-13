@@ -1,17 +1,17 @@
-
 [Unit]
-Description=GO-OpenBmclAPI Service
-Documentation=https://github.com/KpnmServer/go-openbmclapi
+Description=Go-OpenBmclAPI Service
+Documentation=https://github.com/LiterMC/go-openbmclapi
 Wants=basic.target
+After=network.target
 
 [Service]
 Type=simple
-ExecStart=/var/openbmclapi/start-server.sh
-ExecReload=/var/openbmclapi/reload-server.sh
-ExecStop=/var/openbmclapi/stop-server.sh
+ExecStart=/opt/openbmclapi/start-server.sh
+ExecReload=/opt/openbmclapi/reload-server.sh
+ExecStop=/opt/openbmclapi/stop-server.sh
 RestartSec=30
 Restart=on-failure
 TimeoutSec=6
 
 [Install]
-WantedBy=basic.target
+WantedBy=multi-user.target

@@ -319,8 +319,12 @@ func (cr *Cluster) queryURLHeader(method string, url string, header map[string]s
 	})
 }
 
-func (cr *Cluster) getHashPath(hash string) string {
-	return ufile.JoinPath(cr.cacheDir, hash[:2], hash)
+func (cr *Cluster) joinHashPath(hash string) string {
+	return filepath.Join(hash[:2], hash)
+}
+
+func (cr *Cluster) getCachedHashPath(hash string) string {
+	return filepath.Join(cr.cacheDir, cr.joinHashPath(hash))
 }
 
 type FileInfo struct {
@@ -443,7 +447,7 @@ RESYNC:
 			flag = true
 		} else {
 			for _, f := range files2 {
-				p := cr.getHashPath(f.Hash)
+				p := cr.getCachedHashPath(f.Hash)
 				if ufile.IsNotExist(p) {
 					flag = true
 					break
@@ -487,7 +491,7 @@ WAIT_SLOT:
 				goto RETRY
 			}
 			stats.fcount.Add(1)
-			p := cr.getHashPath(f.Hash)
+			p := cr.getCachedHashPath(f.Hash)
 			if ufile.IsExist(p) {
 				os.Remove(p)
 			}
@@ -531,7 +535,7 @@ func (cr *Cluster) CheckFiles(files []FileInfo, notf []FileInfo) []FileInfo {
 			logWarn("File check interrupted")
 			return nil
 		}
-		p := cr.getHashPath(files[i].Hash)
+		p := cr.getCachedHashPath(files[i].Hash)
 		fs, err := os.Stat(p)
 		if err == nil {
 			if fs.Size() != files[i].Size {
@@ -565,7 +569,7 @@ func (cr *Cluster) gc(files []FileInfo) {
 	logInfo("Starting garbage collector")
 	fileset := make(map[string]struct{}, 128)
 	for i, _ := range files {
-		fileset[cr.getHashPath(files[i].Hash)] = struct{}{}
+		fileset[cr.getCachedHashPath(files[i].Hash)] = struct{}{}
 	}
 	stack := make([]string, 0, 10)
 	stack = append(stack, cr.cacheDir)
@@ -632,7 +636,7 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 	}
 	if err != nil {
 		if config.Debug {
-			f0, _ := os.Open(cr.getHashPath(f.Hash))
+			f0, _ := os.Open(cr.getCachedHashPath(f.Hash))
 			b0, _ := io.ReadAll(f0)
 			if len(b0) < 16*1024 {
 				logDebug("File path:", tfile, "; for", f.Path)
@@ -641,7 +645,7 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 		return
 	}
 
-	hspt := cr.getHashPath(f.Hash)
+	hspt := cr.getCachedHashPath(f.Hash)
 	if err = os.Rename(tfile, hspt); err != nil {
 		return
 	}

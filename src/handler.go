@@ -38,7 +38,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch {
 	case strings.HasPrefix(rawpath, "/download/"):
 		hash := rawpath[len("/download/"):]
-		path := cr.getHashPath(hash)
+		path := cr.getCachedHashPath(hash)
 		stat, err := os.Stat(path)
 		if errors.Is(err, os.ErrNotExist) {
 			if err := cr.DownloadFile(req.Context(), path); err != nil {
@@ -48,7 +48,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 		name := req.Form.Get("name")
 		if cr.redirectBase != "" {
-			target, err := url.JoinPath(cr.redirectBase, "download", path)
+			target, err := url.JoinPath(cr.redirectBase, "download", cr.joinHashPath(hash))
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return

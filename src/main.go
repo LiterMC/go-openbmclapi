@@ -114,11 +114,12 @@ func readConfig() {
 	}
 }
 
-const cacheDir = "cache"
+const baseDir = "."
 
-var hijackPath = filepath.Join(cacheDir, "__hijack")
-
-const ossMirrorDir = "oss_mirror"
+var (
+	hijackPath   = filepath.Join(baseDir, "__hijack")
+	ossMirrorDir = filepath.Join(baseDir, "oss_mirror")
+)
 
 func main() {
 	defer func() {
@@ -168,15 +169,19 @@ START:
 	if config.UseOss {
 		redirectBase = config.OssRedirectBase
 	}
-	cluster := NewCluster(ctx, cacheDir,
+
+	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
+	cluster, err := NewCluster(ctx, baseDir,
 		config.PublicHost, config.PublicPort,
 		config.ClusterId, config.ClusterSecret,
 		fmt.Sprintf("%s:%d", "0.0.0.0", config.Port),
 		config.Nohttps, dialer,
 		redirectBase,
 	)
-
-	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
+	if err != nil {
+		logError("Cannot init cluster:", err)
+		os.Exit(1)
+	}
 
 	{
 		logInfof("Fetching file list")
@@ -290,6 +295,7 @@ func createOssMirrorDir() {
 		logErrorf("Cannot create OSS mirror folder %q: %v", ossMirrorDir, err)
 		os.Exit(2)
 	}
+	cacheDir := filepath.Join(baseDir, "cache")
 	downloadDir := filepath.Join(ossMirrorDir, "download")
 	os.RemoveAll(downloadDir)
 	if err := os.Mkdir(downloadDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
@@ -361,7 +367,7 @@ func assertOSS(size int) {
 		os.Exit(2)
 	}
 	if n != (int64)(size)*1024*1024 {
-		logErrorf("OSS check request failed %q: expected 10MB, but got %d bytes", target, n)
+		logErrorf("OSS check request failed %q: expected %dMB, but got %d bytes", target, size, n)
 		os.Exit(2)
 	}
 }

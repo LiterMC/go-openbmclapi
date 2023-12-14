@@ -6,8 +6,10 @@
 /test
 /pems
 /cache
+/data
 /logs
 /.tmp
+/__hijack
 /oss_mirror
 
 # binarys

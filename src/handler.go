@@ -55,7 +55,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 			http.Redirect(rw, req, target, http.StatusFound)
 			cr.hits.Add(1)
-			cr.hbytes.Add(stat.Size())
+			cr.hbts.Add(stat.Size())
 			return
 		}
 		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
@@ -69,7 +69,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		counter := &countReader{ReadSeeker: fd}
 		http.ServeContent(rw, req, name, time.Time{}, counter)
 		cr.hits.Add(1)
-		cr.hbytes.Add(counter.n)
+		cr.hbts.Add(counter.n)
 		return
 	case strings.HasPrefix(rawpath, "/measure/"):
 		if req.Header.Get("x-openbmclapi-secret") != cr.password {

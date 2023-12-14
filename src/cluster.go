@@ -38,10 +38,13 @@ type Cluster struct {
 
 	cacheDir string
 	tmpDir   string
+	dataDir  string
 	maxConn  int
-	hits     atomic.Int32
-	hbytes   atomic.Int64
-	issync   atomic.Bool
+
+	stats  Stats
+	hits   atomic.Int32
+	hbts   atomic.Int64
+	issync atomic.Bool
 
 	ctx         context.Context
 	mux         sync.Mutex
@@ -55,13 +58,13 @@ type Cluster struct {
 }
 
 func NewCluster(
-	ctx context.Context, cacheDir string,
+	ctx context.Context, baseDir string,
 	host string, publicPort uint16,
 	username string, password string,
 	address string,
 	byoc bool, dialer *net.Dialer,
 	redirectBase string,
-) (cr *Cluster) {
+) (cr *Cluster, err error) {
 	transport := &http.Transport{}
 	if dialer != nil {
 		transport.DialContext = dialer.DialContext
@@ -79,8 +82,9 @@ func NewCluster(
 
 		redirectBase: redirectBase,
 
-		cacheDir: cacheDir,
-		tmpDir:   filepath.Join(cacheDir, ".tmp"),
+		cacheDir: filepath.Join(baseDir, "cache"),
+		tmpDir:   filepath.Join(baseDir, "cache", ".tmp"),
+		dataDir:  filepath.Join(baseDir, "data"),
 		maxConn:  128,
 
 		client: &http.Client{
@@ -91,9 +95,17 @@ func NewCluster(
 		},
 	}
 	cr.Server.Handler = cr
-	os.MkdirAll(cr.cacheDir, 0755)
+
+	// create folder strcture
 	os.RemoveAll(cr.tmpDir)
-	os.Mkdir(cr.tmpDir, 0700)
+	os.MkdirAll(cr.cacheDir, 0755)
+	os.MkdirAll(cr.dataDir, 0755)
+	os.MkdirAll(cr.tmpDir, 0700)
+
+	// read old stats
+	if err = cr.stats.Load(cr.dataDir); err != nil {
+		return
+	}
 	return
 }
 
@@ -195,13 +207,18 @@ func (cr *Cluster) Enable() (err error) {
 	return
 }
 
+// KeepAlive will fresh hits & hit bytes data and send the keep-alive packet
 func (cr *Cluster) KeepAlive() (ok bool) {
-	hits, hbytes := cr.hits.Swap(0), cr.hbytes.Swap(0)
+	hits, hbts := cr.hits.Swap(0), cr.hbts.Swap(0)
+	cr.stats.AddHits(hits, hbts)
 	data, err := cr.socket.EmitAck("keep-alive", json.JsonObj{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits":  hits,
-		"bytes": hbytes,
+		"bytes": hbts,
 	})
+	if e := cr.stats.Save(cr.dataDir); e != nil {
+		logError("Error when saving status:", e)
+	}
 	if err != nil {
 		logError("Error when keep-alive:", err)
 		return false
@@ -210,7 +227,7 @@ func (cr *Cluster) KeepAlive() (ok bool) {
 		logError("Keep-alive failed:", erro)
 		return false
 	}
-	logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbytes)), data)
+	logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbts)), data)
 	return true
 }
 
@@ -218,7 +235,6 @@ func (cr *Cluster) Disable() (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
-	cr.KeepAlive()
 	if !cr.enabled {
 		logDebug("Extra disable")
 		return true
@@ -231,6 +247,7 @@ func (cr *Cluster) Disable() (ok bool) {
 	if cr.socket == nil {
 		return true
 	}
+	cr.KeepAlive()
 	data, err := cr.socket.EmitAck("disable")
 	cr.enabled = false
 	cr.socket.Close()

@@ -63,6 +63,7 @@
 	// 特殊要求: 重定向到 OSS
 	"use_oss": false, // 是否启用本功能
 	"oss_redirect_base": "https://oss.example.com/base/paths",
+	"oss_skip_measure_gen": false, // 跳过生成measure文件夹
 	// 特殊要求: 劫持 bmclapi 以加速同一局域网请求
 	"hijack": false,                // 是否启动 bmclapi 劫持代理
 	"hijack_port": 8090,            // 劫持代理监听的端口

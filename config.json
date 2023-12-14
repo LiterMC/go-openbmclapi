@@ -9,6 +9,7 @@
   "cluster_secret": "${CLUSTER_SECRET}",
   "use_oss": false,
   "oss_redirect_base": "https://oss.example.com/base/paths",
+  "oss_skip_measure_gen": false,
   "hijack": false,
   "hijack_port": 8090,
   "anti_hijack_dns": "8.8.8.8:53"

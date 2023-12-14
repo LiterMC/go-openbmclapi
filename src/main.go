@@ -34,6 +34,7 @@ type Config struct {
 	ClusterSecret   string `json:"cluster_secret"`
 	UseOss          bool   `json:"use_oss"`
 	OssRedirectBase string `json:"oss_redirect_base"`
+	SkipMeasureGen  bool   `json:"oss_skip_measure_gen"`
 	Hijack          bool   `json:"hijack"`
 	HijackPort      uint16 `json:"hijack_port"`
 	AntiHijackDNS   string `json:"anti_hijack_dns"`
@@ -55,6 +56,7 @@ func readConfig() {
 		ClusterSecret:   "${CLUSTER_SECRET}",
 		UseOss:          false,
 		OssRedirectBase: "https://oss.example.com/base/paths",
+		SkipMeasureGen:  false,
 		Hijack:          false,
 		HijackPort:      8090,
 		AntiHijackDNS:   "8.8.8.8:53",
@@ -309,28 +311,30 @@ func createOssMirrorDir() {
 			os.Exit(2)
 		}
 	}
-	logDebug("Creating measure files")
-	buf := make([]byte, 200 * 1024 * 1024)
-	for i := 1; i <= 200; i++ {
-		size := i * 1024 * 1024
-		t := filepath.Join(measureDir, strconv.Itoa(i))
-		if stat, err := os.Stat(t); err == nil {
-			x := stat.Size()
-			if x == (int64)(size) {
-				logDebug("Skipping", t)
-				continue
+	if !config.SkipMeasureGen {
+		logDebug("Creating measure files")
+		buf := make([]byte, 200*1024*1024)
+		for i := 1; i <= 200; i++ {
+			size := i * 1024 * 1024
+			t := filepath.Join(measureDir, strconv.Itoa(i))
+			if stat, err := os.Stat(t); err == nil {
+				x := stat.Size()
+				if x == (int64)(size) {
+					logDebug("Skipping", t)
+					continue
+				}
+				logDebugf("File [%d] size %d does not match %d", i, x, size)
+			} else {
+				logDebugf("Cannot get stat of %s: %v", t, err)
 			}
-			logDebugf("File [%d] size %d does not match %d", i, x, size)
-		}else{
-			logDebugf("Cannot get stat of %s: %v", t, err)
+			logDebug("Writing", t)
+			if err := os.WriteFile(t, buf[:size], 0644); err != nil {
+				logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
+				os.Exit(2)
+			}
 		}
-		logDebug("Writing", t)
-		if err := os.WriteFile(t, buf[:size], 0644); err != nil {
-			logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
-			os.Exit(2)
-		}
+		logDebug("Measure files created")
 	}
-	logDebug("Measure files created")
 }
 
 func assertOSS(size int) {

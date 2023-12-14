@@ -429,7 +429,7 @@ RESYNC:
 	for i, _ := range files {
 		cr.dlfile(ctx, &stats, &extFileInfo{FileInfo: &files[i], dlerr: nil, trycount: 0})
 	}
-	for i := len(stats.slots); i > 0; i-- {
+	for i := cap(stats.slots); i > 0; i-- {
 		select {
 		case stats.slots <- struct{}{}:
 		case <-ctx.Done():

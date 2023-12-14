@@ -526,7 +526,7 @@ func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
 }
 
 func (cr *Cluster) CheckFiles(files []FileInfo, notf []FileInfo) []FileInfo {
-	logInfo("Starting check files")
+	logInfo("Start checking files")
 	for i, _ := range files {
 		if cr.issync.Load() && notf == nil {
 			logWarn("File check interrupted")

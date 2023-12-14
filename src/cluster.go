@@ -30,7 +30,6 @@ type Cluster struct {
 	publicPort uint16
 	username   string
 	password   string
-	version    string
 	useragent  string
 	prefix     string
 	byoc       bool
@@ -165,7 +164,7 @@ func (cr *Cluster) Enable() (err error) {
 	data, err := cr.socket.EmitAck("enable", json.JsonObj{
 		"host":    cr.host,
 		"port":    cr.publicPort,
-		"version": cr.version,
+		"version": ClusterVersion,
 		"byoc":    cr.byoc,
 	})
 	if err != nil {

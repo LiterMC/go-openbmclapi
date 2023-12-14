@@ -188,16 +188,16 @@ START:
 
 	if config.UseOss {
 		createOssMirrorDir()
-		assertOSS()
+		assertOSS(10)
 		go func() {
-			ticker := time.NewTicker(time.Minute * 10)
+			ticker := time.NewTicker(time.Minute * 5)
 			defer ticker.Stop()
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					assertOSS()
+					assertOSS(1)
 				}
 			}
 		}()
@@ -250,13 +250,14 @@ START:
 		cluster.SyncFiles(fl, ctx)
 	}, SyncFileInterval)
 
+	logDebugf("Receiving signals")
 	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	select {
 	case <-exitCh:
 		return
 	case s := <-signalCh:
-		shutCtx, _ := context.WithTimeout(ctx, 16*time.Second)
+		shutCtx, _ := context.WithTimeout(ctx, 5*time.Second)
 		logWarn("Closing server ...")
 		shutExit := make(chan struct{}, 0)
 		go hjServer.Shutdown(shutCtx)
@@ -332,9 +333,9 @@ func createOssMirrorDir() {
 	logDebug("Measure files created")
 }
 
-func assertOSS() {
+func assertOSS(size int) {
 	logInfo("Checking OSS ...")
-	target, err := url.JoinPath(config.OssRedirectBase, "measure", "10")
+	target, err := url.JoinPath(config.OssRedirectBase, "measure", strconv.Itoa(size))
 	if err != nil {
 		logError("Cannot check OSS server:", err)
 		os.Exit(2)
@@ -355,7 +356,7 @@ func assertOSS() {
 		logErrorf("OSS check request failed %q: %v", target, err)
 		os.Exit(2)
 	}
-	if n != 10*1024*1024 {
+	if n != (int64)(size)*1024*1024 {
 		logErrorf("OSS check request failed %q: expected 10MB, but got %d bytes", target, n)
 		os.Exit(2)
 	}

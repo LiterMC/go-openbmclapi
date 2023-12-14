@@ -48,7 +48,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 		name := req.Form.Get("name")
 		if cr.redirectBase != "" {
-			target, err := url.JoinPath(cr.redirectBase, rawpath)
+			target, err := url.JoinPath(cr.redirectBase, "download", path)
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return

@@ -312,7 +312,7 @@ func createOssMirrorDir() {
 	buf := make([]byte, 200 * 1024 * 1024)
 	logDebug("Node 1, after make 200MB buf")
 	for i := 1; i <= 200; i++ {
-		logDebug("Node 2, before check file", t)
+		logDebug("Node 2, before check file", i)
 		size := i * 1024 * 1024
 		t := filepath.Join(measureDir, strconv.Itoa(i))
 		if stat, err := os.Stat(t); err == nil {

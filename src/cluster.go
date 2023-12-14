@@ -345,11 +345,7 @@ var fileListSchema = avro.MustParse(`{
 }`)
 
 func (cr *Cluster) GetFileList() (files []FileInfo) {
-	var (
-		err error
-		res *http.Response
-	)
-	res, err = cr.queryURL("GET", "/openbmclapi/files")
+	res, err := cr.queryURL("GET", "/openbmclapi/files")
 	if err != nil {
 		logError("Query filelist error:", err)
 		return nil

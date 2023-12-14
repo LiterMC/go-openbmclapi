@@ -311,8 +311,16 @@ func createOssMirrorDir() {
 	logDebug("Creating measure files")
 	var buf [200 * 1024 * 1024]byte
 	for i := 1; i <= 200; i++ {
+		size := i * 1024 * 1024
 		t := filepath.Join(measureDir, strconv.Itoa(i))
-		if err := os.WriteFile(t, buf[:i*1024*1024], 0644); err != nil {
+		if stat, err := os.Stat(t); err == nil {
+			if stat.Size() == size {
+				logDebug("Skipping", t)
+				continue
+			}
+		}
+		logDebug("Writing", t)
+		if err := os.WriteFile(t, buf[:size], 0644); err != nil {
 			logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
 			os.Exit(2)
 		}

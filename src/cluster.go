@@ -178,9 +178,20 @@ func (cr *Cluster) Enable() (err error) {
 	cr.enabled = true
 
 	var keepaliveCtx context.Context
-	keepaliveCtx, cr.keepalive = context.WithCancel(context.TODO())
+	keepaliveCtx, cr.keepalive = context.WithCancel(cr.ctx)
 	createInterval(keepaliveCtx, func() {
-		cr.KeepAlive()
+		if !cr.KeepAlive() {
+			logDebug("Reconnecting due to keepalive failed")
+			cr.Disable()
+			if !cr.Connect() {
+				logError("Cannot reconnect to server, exit.")
+				os.Exit(1)
+			}
+			if err := cr.Enable(); err != nil {
+				logError("Cannot enable cluster:", err, "; exit.")
+				os.Exit(1)
+			}
+		}
 	}, KeepAliveInterval)
 	return
 }
@@ -196,27 +207,19 @@ func (cr *Cluster) KeepAlive() (ok bool) {
 		logError("Error when keep-alive:", err)
 		return false
 	}
-	if len(data) > 1 && data.Get(0) == nil {
-		logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbytes)), data)
-	} else {
-		logInfo("Keep-alive failed:", data.Get(0))
-		cr.Disable()
-		if !cr.Connect() {
-			logError("Cannot reconnect to server, exit.")
-			os.Exit(1)
-		}
-		if err := cr.Enable(); err != nil {
-			logError("Cannot enable cluster:", err, "; exit.")
-			os.Exit(1)
-		}
+	if erro := data.Get(0); len(data) <= 1 || erro != nil {
+		logError("Keep-alive failed:", erro)
+		return false
 	}
+	logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbytes)), data)
 	return true
 }
 
-func (cr *Cluster) Disable() (successed bool) {
+func (cr *Cluster) Disable() (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
+	cr.KeepAlive()
 	if !cr.enabled {
 		logDebug("Extra disable")
 		return true
@@ -236,7 +239,7 @@ func (cr *Cluster) Disable() (successed bool) {
 	if err != nil {
 		return false
 	}
-	logInfo("disable ack:", data)
+	logDebug("disable ack:", data)
 	if !data.GetBool(1) {
 		logError("Disable failed: " + data.String())
 		return false
@@ -270,7 +273,7 @@ func (pair *CertKeyPair) SaveAsFile() (cert, key string, err error) {
 }
 
 func (cr *Cluster) RequestCert() (ckp *CertKeyPair, err error) {
-	logInfo("Requesting cert, please wait ...")
+	logInfo("Requesting certificates, please wait ...")
 	data, err := cr.socket.EmitAck("request-cert")
 	if err != nil {
 		return

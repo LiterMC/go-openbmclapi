@@ -256,14 +256,13 @@ START:
 	case <-exitCh:
 		return
 	case s := <-signalCh:
-		shutCtx, cancelShut := context.WithTimeout(bgctx, 16*time.Second)
+		shutCtx, _ := context.WithTimeout(ctx, 16*time.Second)
 		logWarn("Closing server ...")
-		cancel()
 		shutExit := make(chan struct{}, 0)
 		go hjServer.Shutdown(shutCtx)
 		go func() {
 			defer close(shutExit)
-			defer cancelShut()
+			defer cancel()
 			cluster.Disable()
 			cluster.Server.Shutdown(shutCtx)
 		}()

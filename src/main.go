@@ -310,16 +310,18 @@ func createOssMirrorDir() {
 	}
 	logDebug("Creating measure files")
 	buf := make([]byte, 200 * 1024 * 1024)
-	logDebug("Node 1, after make 200MB buf")
 	for i := 1; i <= 200; i++ {
-		logDebug("Node 2, before check file", i)
 		size := i * 1024 * 1024
 		t := filepath.Join(measureDir, strconv.Itoa(i))
 		if stat, err := os.Stat(t); err == nil {
-			if stat.Size() == (int64)(size) {
+			x := stat.Size()
+			if x == (int64)(size) {
 				logDebug("Skipping", t)
 				continue
 			}
+			logDebugf("File [%d] size %d does not match %d", i, x, size)
+		}else{
+			logDebugf("Cannot get stat of %s: %v", t, err)
 		}
 		logDebug("Writing", t)
 		if err := os.WriteFile(t, buf[:size], 0644); err != nil {

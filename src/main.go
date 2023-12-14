@@ -314,7 +314,7 @@ func createOssMirrorDir() {
 		size := i * 1024 * 1024
 		t := filepath.Join(measureDir, strconv.Itoa(i))
 		if stat, err := os.Stat(t); err == nil {
-			if stat.Size() == size {
+			if stat.Size() == (int64)(size) {
 				logDebug("Skipping", t)
 				continue
 			}

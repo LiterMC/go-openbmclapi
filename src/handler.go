@@ -37,6 +37,8 @@ func (w *statusResponseWriter) WriteHeader(status int) {
 func (cr *Cluster) GetHandler() (handler http.Handler) {
 	handler = cr
 	if config.RecordServeInfo {
+		totalUsedCh := make(chan float64, 1024)
+
 		next := handler
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
 			srw := &statusResponseWriter{ResponseWriter: rw}
@@ -45,8 +47,28 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			next.ServeHTTP(srw, req)
 
 			used := time.Since(start)
-			logInfof("Serve %d | %s %s | %v", srw.status, req.Method, req.URL, used)
+			logInfof("Serve %s | %d | %s | %s %s | %v", req.RemoteAddr, srw.status, req.Proto, req.Method, req.RequestURI, used)
+			totalUsedCh <- used.Seconds()
 		})
+		go func() {
+			var (
+				total int64
+				totalUsed float64
+			)
+			for {
+				select{
+				case used := <-totalUsedCh:
+					totalUsed += used
+					total++
+					if total % 100 == 0 {
+						avg := (time.Duration)(totalUsed / (float64)(total) * (float64)(time.Second))
+						logInfof("Served %d requests, total used %.2fs, avg %v", total, totalUsed, avg)
+					}
+				case <-cr.disabled:
+					return
+				}
+			}
+		}()
 	}
 	return
 }

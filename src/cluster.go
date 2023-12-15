@@ -47,6 +47,7 @@ type Cluster struct {
 
 	mux         sync.Mutex
 	enabled     bool
+	disabled chan struct{}
 	socket      *Socket
 	keepalive   context.CancelFunc
 	downloading map[string]chan struct{}
@@ -80,6 +81,8 @@ func NewCluster(
 		tmpDir:   filepath.Join(baseDir, "cache", ".tmp"),
 		dataDir:  filepath.Join(baseDir, "data"),
 		maxConn:  128,
+
+		disabled: make(chan struct{}, 0),
 
 		client: &http.Client{
 			Transport: transport,
@@ -222,7 +225,7 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		logError("Keep-alive failed:", ero)
 		return false
 	}
-	logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbts)), data)
+	logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbts)), data[1])
 	return true
 }
 
@@ -251,6 +254,14 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	cr.enabled = false
 	cr.socket.Close()
 	cr.socket = nil
+LOOP_SIG:
+	for {
+		select {
+		case cr.disabled <- struct{}{}:
+		default:
+			break LOOP_SIG
+		}
+	}
 	if err != nil {
 		return false
 	}

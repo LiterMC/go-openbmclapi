@@ -709,8 +709,7 @@ func (s *Socket) Close() (err error) {
 	if s.DisconnectHandle != nil {
 		s.DisconnectHandle(s)
 	}
-	s.send(&SPacket{typ: SP_DISCONNECT})
-	return nil
+	return s.send(&SPacket{typ: SP_DISCONNECT})
 }
 
 func (s *Socket) IO() *ESocket {

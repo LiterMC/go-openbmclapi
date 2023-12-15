@@ -278,7 +278,8 @@ START:
 
 	select {
 	case s := <-signalCh:
-		shutCtx, _ := context.WithTimeout(ctx, 10*time.Second)
+		cancel()
+		shutCtx, cancelShut := context.WithTimeout(context.Background(), 10*time.Second)
 		logWarn("Closing server ...")
 		shutExit := make(chan struct{}, 0)
 		if hjServer != nil {
@@ -286,7 +287,7 @@ START:
 		}
 		go func() {
 			defer close(shutExit)
-			defer cancel()
+			defer cancelShut()
 			cluster.Disable(shutCtx)
 			clusterSvr.Shutdown(shutCtx)
 		}()

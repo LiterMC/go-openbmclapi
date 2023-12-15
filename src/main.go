@@ -25,7 +25,7 @@ var (
 
 type Config struct {
 	Debug           bool   `json:"debug"`
-	ShowServeInfo   bool   `json:"show_serve_info"`
+	RecordServeInfo bool   `json:"record_serve_info"`
 	Nohttps         bool   `json:"nohttps"`
 	PublicHost      string `json:"public_host"`
 	PublicPort      uint16 `json:"public_port"`
@@ -47,7 +47,7 @@ func readConfig() {
 
 	config = Config{
 		Debug:           false,
-		ShowServeInfo:   false,
+		RecordServeInfo: false,
 		Nohttps:         false,
 		PublicHost:      "example.com",
 		PublicPort:      8080,
@@ -138,7 +138,6 @@ func main() {
 START:
 	signal.Stop(signalCh)
 
-	exitCh := make(chan struct{}, 0)
 	ctx, cancel := context.WithCancel(bgctx)
 
 	readConfig()
@@ -174,23 +173,12 @@ START:
 	cluster, err := NewCluster(ctx, baseDir,
 		config.PublicHost, config.PublicPort,
 		config.ClusterId, config.ClusterSecret,
-		fmt.Sprintf("%s:%d", "0.0.0.0", config.Port),
 		config.Nohttps, dialer,
 		redirectBase,
 	)
 	if err != nil {
 		logError("Cannot init cluster:", err)
 		os.Exit(1)
-	}
-
-	{
-		logInfof("Fetching file list")
-		fl := cluster.GetFileList()
-		if fl == nil {
-			logError("Cluster filelist is nil, exit")
-			os.Exit(1)
-		}
-		cluster.SyncFiles(fl, ctx)
 	}
 
 	if config.UseOss {
@@ -210,69 +198,97 @@ START:
 		}()
 	}
 
-	if !cluster.Connect() {
+	logDebugf("Receiving signals")
+	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	{
+		logInfof("Fetching file list")
+		fl, err := cluster.GetFileList(ctx)
+		if err != nil {
+			logError("Cannot query cluster file list:", err)
+			os.Exit(1)
+		}
+		cluster.SyncFiles(ctx, fl)
+	}
+
+	if !cluster.Connect(ctx) {
 		os.Exit(1)
 	}
 
-	var certFile, keyFile string
-	if !config.Nohttps {
-		pair, err := cluster.RequestCert()
-		if err != nil {
-			logError("Error when requesting cert key pair:", err)
-			os.Exit(1)
-		}
-		certFile, keyFile, err = pair.SaveAsFile()
-		if err != nil {
-			logError("Error when saving cert key pair:", err)
-			os.Exit(1)
-		}
+	clusterSvr := &http.Server{
+		Addr:        fmt.Sprintf("%s:%d", "0.0.0.0", config.Port),
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 60 * time.Second,
+		Handler:     cluster.GetHandler(),
 	}
 
+	certReqDone := make(chan struct{}, 0)
 	go func() {
-		defer close(exitCh)
-		logInfof("Server start at %q", cluster.Server.Addr)
-		var err error
-		if !config.Nohttps {
-			err = cluster.Server.ListenAndServeTLS(certFile, keyFile)
-		} else {
-			err = cluster.Server.ListenAndServe()
+		listener, err := net.Listen("tcp", clusterSvr.Addr)
+		if err != nil {
+			logErrorf("Cannot listen on %s: %v", clusterSvr.Addr, err)
+			os.Exit(1)
 		}
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		defer listener.Close()
+
+		if !config.Nohttps {
+			tctx, cancel := context.WithTimeout(ctx, time.Minute * 10)
+			pair, err := cluster.RequestCert(tctx)
+			cancel()
+			if err != nil {
+				logError("Error when requesting cert key pair:", err)
+				os.Exit(1)
+			}
+			certFile, keyFile, err := pair.SaveAsFile()
+			if err != nil {
+				logError("Error when saving cert key pair:", err)
+				os.Exit(1)
+			}
+			close(certReqDone)
+			if err = clusterSvr.ServeTLS(listener, certFile, keyFile); !errors.Is(err, http.ErrServerClosed) {
+				logError("Error on server:", err)
+				os.Exit(1)
+			}
+			return
+		}
+		close(certReqDone)
+		if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 			logError("Error on server:", err)
 			os.Exit(1)
 		}
 	}()
 
-	if err := cluster.Enable(); err != nil {
-		logError("Cannot enable cluster:", err)
-		os.Exit(1)
-	}
-
-	createInterval(ctx, func() {
-		fl := cluster.GetFileList()
-		if fl == nil {
-			logError("Cannot get cluster file list, exit")
+	go func(){
+		<-certReqDone
+		if err := cluster.Enable(ctx); err != nil {
+			logError("Cannot enable cluster:", err)
 			os.Exit(1)
 		}
-		cluster.SyncFiles(fl, ctx)
-	}, SyncFileInterval)
 
-	logDebugf("Receiving signals")
-	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+		createInterval(ctx, func() {
+			logInfof("Fetching file list")
+			fl, err := cluster.GetFileList(ctx)
+			if err != nil {
+				logError("Cannot query cluster file list:", err)
+				os.Exit(1)
+			}
+			cluster.SyncFiles(ctx, fl)
+		}, SyncFileInterval)
+	}()
 
 	select {
-	case <-exitCh:
-		return
 	case s := <-signalCh:
-		shutCtx, _ := context.WithTimeout(ctx, 5*time.Second)
+		shutCtx, _ := context.WithTimeout(ctx, 10*time.Second)
 		logWarn("Closing server ...")
 		shutExit := make(chan struct{}, 0)
-		go hjServer.Shutdown(shutCtx)
+		if hjServer != nil {
+			go hjServer.Shutdown(shutCtx)
+		}
 		go func() {
 			defer close(shutExit)
 			defer cancel()
-			cluster.Disable()
-			cluster.Server.Shutdown(shutCtx)
+			cluster.Disable(shutCtx)
+			clusterSvr.Shutdown(shutCtx)
 		}()
 		select {
 		case <-shutExit:

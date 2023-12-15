@@ -24,20 +24,48 @@ func (r *countReader) Read(buf []byte) (n int, err error) {
 	return
 }
 
+type statusResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (cr *Cluster) GetHandler() (handler http.Handler) {
+	handler = cr
+	if config.RecordServeInfo {
+		next := handler
+		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+			srw := &statusResponseWriter{ResponseWriter: rw}
+			start := time.Now()
+
+			next.ServeHTTP(srw, req)
+
+			used := time.Since(start)
+			logInfof("Serve %d | %s %s | %v", srw.status, req.Method, req.URL, used)
+		})
+	}
+	return
+}
+
 func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	u := req.URL
 	rawpath := u.EscapedPath()
-	if config.ShowServeInfo {
-		logInfo("serve url:", u.String())
-	}
-	if method != http.MethodGet {
+	if method != http.MethodGet && method != http.MethodHead {
 		http.Error(rw, "404 Status Not Found", http.StatusNotFound)
 		return
 	}
 	switch {
 	case strings.HasPrefix(rawpath, "/download/"):
 		hash := rawpath[len("/download/"):]
+		if len(hash) < 4 {
+			http.Error(rw, "404 Status Not Found", http.StatusNotFound)
+			return
+		}
 		path := cr.getCachedHashPath(hash)
 		stat, err := os.Stat(path)
 		if errors.Is(err, os.ErrNotExist) {
@@ -65,6 +93,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 		defer fd.Close()
+		rw.Header().Set("Content-Type", "application/octet-stream")
 		rw.Header().Set("X-Bmclapi-Hash", hash)
 		counter := &countReader{ReadSeeker: fd}
 		http.ServeContent(rw, req, name, time.Time{}, counter)

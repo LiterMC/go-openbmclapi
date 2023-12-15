@@ -79,9 +79,6 @@ func (d *statData) update(hits int32, bytes int64) {
 					}
 				}
 			}
-			if d.Years == nil {
-				d.Years = make(map[string]statInstData, 2)
-			}
 			d.Years[strconv.Itoa(d.Date.Year)] = inst
 			// update history data
 			if iscont {
@@ -193,6 +190,10 @@ func (s *Stats) Load(dir string) (err error) {
 		return json.Unmarshal(buf, &s.statData)
 	}); err != nil {
 		return
+	}
+
+	if s.Years == nil {
+		s.Years = make(map[string]statInstData, 2)
 	}
 	return
 }

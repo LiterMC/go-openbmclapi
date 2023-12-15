@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,8 +14,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	json "github.com/KpnmServer/go-util/json"
 	"github.com/gorilla/websocket"
+)
+
+var (
+	ErrSocketConnected = errors.New("Engine.io: Socket already connected")
 )
 
 type EPacketType int8
@@ -236,18 +241,13 @@ type SPacket struct {
 	typ  SPacketType
 	nsp  string
 	id   uint64
-	data any
+	data []byte
 	// attachments
 }
 
 func (p *SPacket) Bytes() []byte {
-	var dbuf []byte
-	if p.data != nil {
-		dbuf = json.EncodeJson(p.data)
-	}
 	ids := strconv.FormatUint(p.id, 10)
-	buf := bytes.NewBuffer(nil)
-	buf.Grow(3 + len(p.nsp) + len(ids) + len(dbuf)) // (1 + 1 + len(p.nsp) + 1 + len(ids)? + len(dbuf))
+	buf := bytes.NewBuffer(make([]byte, 0, 3+len(p.nsp)+len(ids)+len(p.data))) // (1 + 1 + len(p.nsp) + 1 + len(ids)? + len(dbuf))
 	buf.WriteString(p.typ.ID())
 	if len(p.nsp) > 0 {
 		buf.WriteString("/" + p.nsp + ",")
@@ -255,9 +255,7 @@ func (p *SPacket) Bytes() []byte {
 	if p.id > 0 {
 		buf.WriteString(ids)
 	}
-	if len(dbuf) > 0 {
-		buf.Write(dbuf)
-	}
+	buf.Write(p.data)
 	return buf.Bytes()
 }
 
@@ -365,8 +363,12 @@ func (p *SPacket) ParseBuffer(r *bytes.Reader) (err error) {
 	if err != nil {
 		return
 	}
-	err = json.DecodeJson(buf, &p.data)
+	err = json.Unmarshal(buf, &p.data)
 	return
+}
+
+func (p *SPacket) ParseData(o_ptr any) error {
+	return json.Unmarshal(p.data, o_ptr)
 }
 
 var WsDialer *websocket.Dialer = &websocket.Dialer{
@@ -377,16 +379,24 @@ var WsDialer *websocket.Dialer = &websocket.Dialer{
 	},
 }
 
-type ESocket struct {
-	mux sync.Mutex
+const (
+	ESocketIdle int32 = iota
+	ESocketDialing
+	ESocketConnected
+)
 
-	connected  bool
-	connecting bool
-	connsign   chan struct{}
-	msgbuf     []*EPacket
-	url        string
-	header     http.Header
-	sid        string
+const maxReconnectCount = 10
+
+type ESocket struct {
+	mux    sync.Mutex
+
+	sid    string
+	status atomic.Int32
+	url    string
+	header http.Header
+
+	msgbuf, msgbuf2 []*EPacket
+	errCount        int
 
 	ConnectHandle    func(s *ESocket)
 	DisconnectHandle func(s *ESocket)
@@ -398,140 +408,119 @@ type ESocket struct {
 	wsconn *websocket.Conn
 }
 
-func NewESocket(_d ...*websocket.Dialer) *ESocket {
+func NewESocket(_d ...*websocket.Dialer) (s *ESocket) {
 	d := *WsDialer
 	if len(_d) > 0 {
 		d = *_d[0]
 	}
-	return &ESocket{
-		connected:  false,
-		connecting: false,
-		connsign:   make(chan struct{}, 0),
-		msgbuf:     make([]*EPacket, 0),
-		sid:        "",
-
+	s = &ESocket{
 		Dialer: &d,
-		wsconn: nil,
+	}
+	return
+}
+
+func (s *ESocket) Status() int32 {
+	return s.status.Load()
+}
+
+func (s *ESocket) Connected() bool {
+	return s.Status() == ESocketConnected
+}
+
+type ESocketDialOptions func(s *ESocket)
+
+func WithHeader(header http.Header) ESocketDialOptions {
+	return func(s *ESocket) {
+		s.header = header
 	}
 }
 
-func (s *ESocket) Dial(url string, _h ...http.Header) (err error) {
-	if s.wsconn != nil {
-		panic("s.wsconn != nil")
+func (s *ESocket) Dial(url string, opts ...ESocketDialOptions) (err error) {
+	if !s.status.CompareAndSwap(ESocketIdle, ESocketDialing) {
+		return ErrSocketConnected
 	}
+
 	s.url = url
-	s.header = http.Header{}
-	if len(_h) > 0 {
-		s.header = _h[0]
+
+	for _, opt := range opts {
+		opt(s)
 	}
-	var wsconn *websocket.Conn
-	wsconn, _, err = s.Dialer.Dial(s.url, s.header)
+
+	wsconn, _, err := s.Dialer.Dial(s.url, s.header)
 	if err != nil {
+		s.status.Store(ESocketIdle)
 		return
 	}
 	s.wsconn = wsconn
-	s.connected = true
-	s.connecting = true
+	s.errCount = 0
 
-	oldclose := s.wsconn.CloseHandler()
-	s.wsconn.SetCloseHandler(func(code int, text string) (err error) {
+	oldclose := wsconn.CloseHandler()
+	wsconn.SetCloseHandler(func(code int, text string) (err error) {
 		err = oldclose(code, text)
 		s.wsCloseHandler(code, text)
 		return
 	})
+
+	s.status.Store(ESocketConnected)
+
 	go s._reader()
+
+	s.mux.Lock()
+	mb := s.msgbuf
+	s.msgbuf, s.msgbuf2 = s.msgbuf2[:0], s.msgbuf
+	s.mux.Unlock()
+	for _, p := range mb {
+		s.Emit(p)
+	}
 	return nil
 }
 
 func (s *ESocket) wsCloseHandler(code int, text string) (err error) {
-	s.connecting = false
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
+	s.status.Store(ESocketIdle)
+
+	wer := &websocket.CloseError{code, text}
 	if code == websocket.CloseNormalClosure {
-		logWarn("Websocket disconnected")
+		logWarn("Engine.io: Websocket disconnected")
 	} else {
-		err := fmt.Errorf("Websocket disconnected(%d): %s", code, text)
-		logError(err)
-		// s.Reconnect()
+		logError("Engine.io: Websocket disconnected:", wer)
+		if s.errCount++; s.errCount > maxReconnectCount {
+			return wer
+		}
+		logDebug("Engine.io: Reconnecting ...")
+		if err = s.Dial(s.url); err != nil {
+			logError("Engine.io: Reconnect failed:", err)
+			return
+		}
 		if s.ErrorHandle != nil {
-			s.ErrorHandle(s, err)
+			s.ErrorHandle(s, wer)
 		}
 	}
 	return
-}
-
-func (s *ESocket) Reconnect() (err error) {
-	if s.connecting {
-		return nil
-	}
-	if s.wsconn == nil {
-		return nil
-	}
-	var wsconn *websocket.Conn
-	wsconn, _, err = s.Dialer.Dial(s.url, s.header)
-	if err != nil {
-		return
-	}
-	s.wsconn = wsconn
-	s.connecting = true
-	oldclose := s.wsconn.CloseHandler()
-	s.wsconn.SetCloseHandler(func(code int, text string) (err error) {
-		err = oldclose(code, text)
-		s.wsCloseHandler(code, text)
-		return
-	})
-	mb := s.msgbuf
-	s.msgbuf = make([]*EPacket, 0)
-	for _, p := range mb {
-		s.Emit(p)
-	}
-	select {
-	case <-s.connsign:
-	default:
-	}
-	return nil
 }
 
 func (s *ESocket) Close() (err error) {
-	if !s.connecting {
-		return nil
+	if !s.status.CompareAndSwap(ESocketConnected, ESocketIdle) {
+		return
 	}
-	s.connecting = false
 	err = s.wsconn.Close()
 	s.wsconn = nil
-	select {
-	case <-s.connsign:
-	default:
-	}
 	return
 }
 
-func (s *ESocket) IsConn() bool {
-	return s.connecting
-}
-
 func (s *ESocket) _reader() {
-	var (
-		code int
-		r    io.Reader
-		err  error
-		pkt  *EPacket
-	)
-	var (
-		obj json.JsonObj
-	)
-	for s.wsconn != nil {
-		if !s.connecting {
-			logDebug("Waiting for reconnect")
-			s.connsign <- struct{}{}
-			if s.wsconn == nil {
-				return
-			}
-			logDebug("Reconnect successed")
+	defer s.wsconn.Close()
+	for {
+		if s.Status() != ESocketConnected {
+			logDebug("Engine.io: Connection", s, "broke")
+			return
 		}
-		logDebug("reading message")
-		code, r, err = s.wsconn.NextReader()
+		logDebug("Engine.io: reading message")
+		code, r, err := s.wsconn.NextReader()
 		if err != nil {
-			logError("Error when try read websocket:", err)
-			s.wsconn.Close()
+			logError("Engine.io: Error when getting next message:", err)
 			if s.ErrorHandle != nil {
 				s.ErrorHandle(s, err)
 			}
@@ -540,25 +529,27 @@ func (s *ESocket) _reader() {
 		if code != websocket.TextMessage {
 			continue
 		}
-		pkt = &EPacket{}
+		pkt := &EPacket{}
 		_, err = pkt.ReadFrom(r)
 		if err != nil {
-			logError("Error when parsing packet:", err)
+			logError("Engine.io: Error when parsing packet:", err)
 			continue
 		}
-		logDebug("Engine.io: recv packet:", string(pkt.Bytes()))
+		logDebug("Engine.io: recv packet:", (string)(pkt.Bytes()))
 		switch pkt.typ {
 		case EP_OPEN:
-			err = json.DecodeJson(pkt.data, &obj)
-			if err == nil {
-				s.sid = obj.GetString("sid")
+			var obj struct {
+				Sid string `json:"sid"`
+			}
+			if err = json.Unmarshal(pkt.data, &obj); err == nil {
+				s.sid = obj.Sid
 				logDebug("Engine.io: connected id:", s.sid)
 				if s.ConnectHandle != nil {
 					s.ConnectHandle(s)
 				}
 			}
 		case EP_CLOSE:
-			logDebug("disconnecting", s)
+			logDebug("Engine.io: disconnecting", s)
 			if s.wsconn != nil {
 				if s.DisconnectHandle != nil {
 					s.DisconnectHandle(s)
@@ -567,7 +558,8 @@ func (s *ESocket) _reader() {
 			}
 			return
 		case EP_PING:
-			s.Emit(&EPacket{typ: EP_PONG, data: pkt.data})
+			pkt.typ = EP_PONG
+			s.Emit(pkt)
 		case EP_PONG:
 			if s.PongHandle != nil {
 				s.PongHandle(s, pkt.data)
@@ -577,22 +569,23 @@ func (s *ESocket) _reader() {
 				s.MessageHandle(s, pkt.data)
 			}
 		default:
-			logError("Unknown engine.io packet:", pkt.typ)
+			logError("Engine.io: Unknown packet type:", pkt.typ)
 		}
 		if err != nil {
-			logError("Error when decode message:", err)
+			logError("Engine.io: Error when decode message:", err)
 		}
 	}
 }
 
 func (s *ESocket) Emit(p *EPacket) (err error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-
-	if !s.connecting {
+	if s.Status() != ESocketConnected {
 		s.msgbuf = append(s.msgbuf, p)
 		return
 	}
+
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	var w io.WriteCloser
 	w, err = s.wsconn.NextWriter(websocket.TextMessage)
 	if err != nil {
@@ -603,83 +596,68 @@ func (s *ESocket) Emit(p *EPacket) (err error) {
 		w.Close()
 		return
 	}
-	logDebug("Send message:", string(p.Bytes()))
+	logDebug("Engine.io: sent message:", (string)(p.Bytes()))
 	return w.Close()
 }
 
-type Socket struct {
-	connecting bool
-	ctx        context.Context
-	cancel     context.CancelCauseFunc
+const (
+	SSocketIdle int32 = iota
+	SSocketDialing
+	SSocketConnected
+)
 
+type Socket struct {
+	io         *ESocket
+	status atomic.Int32
+
+	sid     string
 	ackid   atomic.Uint64
 	ackMux  sync.Mutex
-	ackcall map[uint64]chan json.JsonArr
+	ackcall map[uint64]chan []any
 
 	ConnectHandle    func(s *Socket)
 	DisconnectHandle func(s *Socket)
 	ErrorHandle      func(s *Socket)
-	handles          map[string]func(string, json.JsonArr)
-	sid              string
-
-	io *ESocket
+	handles          map[string]func(string, []any)
 }
 
-func NewSocket(ctx context.Context, io *ESocket) (s *Socket) {
+func NewSocket(io *ESocket) (s *Socket) {
 	s = &Socket{
-		connecting: false,
-
-		ackcall: make(map[uint64]chan json.JsonArr),
-
-		handles: make(map[string]func(string, json.JsonArr)),
-		sid:     "",
-
-		io: io,
-	}
-	s.ctx, s.cancel = context.WithCancelCause(ctx)
-	s.io.ConnectHandle = func(*ESocket) {
-		s.send(&SPacket{typ: SP_CONNECT})
-	}
-	s.io.DisconnectHandle = func(*ESocket) {
-		s.Close()
-	}
-	s.io.ErrorHandle = func(_ *ESocket, err error) {
-		s.cancel(err)
-		if s.ErrorHandle != nil {
-			s.ErrorHandle(s)
-		}
+		io:      io,
+		ackcall: make(map[uint64]chan []any),
+		handles: make(map[string]func(string, []any)),
 	}
 	s.io.MessageHandle = func(_ *ESocket, data []byte) {
-		var (
-			err error
-			obj json.JsonObj
-			arr json.JsonArr
-		)
 		pkt := &SPacket{}
-		err = pkt.ParseBuffer(bytes.NewReader(data))
+		err := pkt.ParseBuffer(bytes.NewReader(data))
 		if err != nil {
-			logError("Error when parsing sio packet:", err)
+			logError("Error when parsing socket.io packet:", err)
 			return
 		}
-		err = nil
 		switch pkt.typ {
 		case SP_CONNECT:
-			if d, ok := pkt.data.(map[string]any); ok {
-				obj = (json.JsonObj)(d)
-				s.sid = obj.GetString("sid")
+			var obj struct {
+				Sid string `json:"sid"`
+			}
+			if err := pkt.ParseData(&obj); err == nil {
+				s.sid = obj.Sid
 				logDebug("Socket.io: connected id:", s.sid)
-				s.connecting = true
+				s.status.Store(SSocketConnected)
 				if s.ConnectHandle != nil {
 					s.ConnectHandle(s)
 				}
 			}
 		case SP_DISCONNECT:
-			s.DisconnectHandle(s)
+			if s.DisconnectHandle != nil {
+				s.DisconnectHandle(s)
+			}
 		case SP_EVENT:
-			arr = (json.JsonArr)(pkt.data.([]any))
-			e := arr.GetString(0)
-			if h, ok := s.handles[e]; ok {
-				h(e, arr[1:])
+			var arr []any
+			if err := pkt.ParseData(&arr); err == nil {
+				e := arr[0].(string)
+				if h, ok := s.handles[e]; ok {
+					h(e, arr[1:])
+				}
 			}
 		case SP_ACK:
 			s.ackMux.Lock()
@@ -687,11 +665,15 @@ func NewSocket(ctx context.Context, io *ESocket) (s *Socket) {
 			logDebug("ackcall:", pkt.id, s.ackcall)
 			if h, ok := s.ackcall[pkt.id]; ok {
 				delete(s.ackcall, pkt.id)
-				arr = (json.JsonArr)(pkt.data.([]any))
+				var arr []any
+				pkt.ParseData(&arr)
 				h <- arr
 			}
 		case SP_CONNECT_ERROR:
 			logError("Socket.io: connect error:", pkt.data)
+			if s.ErrorHandle != nil {
+				s.ErrorHandle(s)
+			}
 			panic(pkt.data)
 		// case SP_BINARY_EVENT:
 		// 	// TODO
@@ -704,33 +686,39 @@ func NewSocket(ctx context.Context, io *ESocket) (s *Socket) {
 			logError("Error when decode message:", err)
 		}
 	}
-	if s.io.IsConn() {
-		s.io.ConnectHandle(s.io)
+	s.io.DisconnectHandle = func(*ESocket) {
+		s.Close()
+	}
+	s.io.ErrorHandle = func(*ESocket, error) {
+		if s.ErrorHandle != nil {
+			s.ErrorHandle(s)
+		}
+	}
+	s.io.ConnectHandle = func(*ESocket) {
+		s.send(&SPacket{typ: SP_CONNECT})
+	}
+	if s.io.Connected() {
+		s.send(&SPacket{typ: SP_CONNECT})
 	}
 	return
 }
 
 func (s *Socket) Close() (err error) {
-	if !s.connecting {
+	if !s.status.CompareAndSwap(SSocketConnected, SSocketIdle) {
 		return nil
 	}
 	if s.DisconnectHandle != nil {
 		s.DisconnectHandle(s)
 	}
 	s.send(&SPacket{typ: SP_DISCONNECT})
-	s.connecting = false
 	return nil
 }
 
-func (s *Socket) IsConn() bool {
-	return s.connecting
-}
-
-func (s *Socket) GetIO() *ESocket {
+func (s *Socket) IO() *ESocket {
 	return s.io
 }
 
-func (s *Socket) On(event string, call func(string, json.JsonArr)) *Socket {
+func (s *Socket) On(event string, call func(string, []any)) *Socket {
 	s.handles[event] = call
 	return s
 }
@@ -740,25 +728,38 @@ func (s *Socket) send(p *SPacket) (err error) {
 }
 
 func (s *Socket) Emit(event string, objs ...any) (err error) {
-	return s.send(&SPacket{typ: SP_EVENT, data: (json.JsonArr)(append([]any{event}, objs...))})
-}
-
-func (s *Socket) EmitAck(event string, objs ...any) (res json.JsonArr, err error) {
-	id := s.ackid.Add(1)
-	err = s.send(&SPacket{typ: SP_EVENT, id: id, data: (json.JsonArr)(append([]any{event}, objs...))})
+	pkt := &SPacket{typ: SP_EVENT}
+	pkt.data, err = json.Marshal(append([]any{event}, objs...))
 	if err != nil {
 		return
 	}
-	resCh := make(chan json.JsonArr, 1)
+	return s.send(pkt)
+}
+
+func (s *Socket) EmitAckContext(ctx context.Context, event string, objs ...any) (res []any, err error) {
+	id := s.ackid.Add(1)
+	pkt := &SPacket{typ: SP_EVENT, id: id}
+	pkt.data, err = json.Marshal(append([]any{event}, objs...))
+	if err != nil {
+		return
+	}
+	if err = s.send(pkt); err != nil {
+		return
+	}
+	resCh := make(chan []any, 1)
 
 	s.ackMux.Lock()
 	s.ackcall[id] = resCh
 	s.ackMux.Unlock()
 	select {
 	case ret := <-resCh:
-		res = ret.GetArray(0)
-	case <-s.ctx.Done():
-		err = context.Cause(s.ctx)
+		res = ret[0].([]any)
+	case <-ctx.Done():
+		err = context.Cause(ctx)
 	}
 	return
+}
+
+func (s *Socket) EmitAck(event string, objs ...any) (res []any, err error) {
+	return s.EmitAckContext(context.Background(), event, objs...)
 }

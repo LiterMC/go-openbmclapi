@@ -17,7 +17,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	ufile "github.com/KpnmServer/go-util/file"
 	json "github.com/KpnmServer/go-util/json"
 	"github.com/hamba/avro/v2"
 	"github.com/klauspost/compress/zstd"
@@ -46,7 +45,6 @@ type Cluster struct {
 	hbts   atomic.Int64
 	issync atomic.Bool
 
-	ctx         context.Context
 	mux         sync.Mutex
 	enabled     bool
 	socket      *Socket
@@ -54,14 +52,12 @@ type Cluster struct {
 	downloading map[string]chan struct{}
 
 	client *http.Client
-	Server *http.Server
 }
 
 func NewCluster(
 	ctx context.Context, baseDir string,
 	host string, publicPort uint16,
 	username string, password string,
-	address string,
 	byoc bool, dialer *net.Dialer,
 	redirectBase string,
 ) (cr *Cluster, err error) {
@@ -70,8 +66,6 @@ func NewCluster(
 		transport.DialContext = dialer.DialContext
 	}
 	cr = &Cluster{
-		ctx: ctx,
-
 		host:       host,
 		publicPort: publicPort,
 		username:   username,
@@ -90,13 +84,7 @@ func NewCluster(
 		client: &http.Client{
 			Transport: transport,
 		},
-		Server: &http.Server{
-			Addr: address,
-			ReadTimeout: 30 * time.Second,
-			IdleTimeout: 60 * time.Second,
-		},
 	}
-	cr.Server.Handler = cr
 
 	// create folder strcture
 	os.RemoveAll(cr.tmpDir)
@@ -111,7 +99,7 @@ func NewCluster(
 	return
 }
 
-func (cr *Cluster) Connect() bool {
+func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
@@ -130,43 +118,43 @@ func (cr *Cluster) Connect() bool {
 		close(connectCh)
 	})
 
-	cr.socket = NewSocket(cr.ctx, NewESocket())
+	cr.socket = NewSocket(NewESocket())
 	cr.socket.ConnectHandle = func(*Socket) {
 		connected()
 	}
 	cr.socket.DisconnectHandle = func(*Socket) {
 		connected()
-		cr.Disable()
+		cr.Disable(ctx)
 	}
 	cr.socket.ErrorHandle = func(*Socket) {
 		connected()
 		go func() {
-			cr.Disable()
-			if !cr.Connect() {
+			cr.Disable(ctx)
+			if !cr.Connect(ctx) {
 				logError("Cannot reconnect to server, exit.")
 				os.Exit(1)
 			}
-			if err := cr.Enable(); err != nil {
+			if err := cr.Enable(ctx); err != nil {
 				logError("Cannot enable cluster:", err, "; exit.")
 				os.Exit(1)
 			}
 		}()
 	}
 	logInfof("Dialing %s", strings.ReplaceAll(wsurl, cr.password, "<******>"))
-	err := cr.socket.GetIO().Dial(wsurl, header)
+	err := cr.socket.IO().Dial(wsurl, WithHeader(header))
 	if err != nil {
 		logError("Websocket connect error:", err)
 		return false
 	}
 	select {
-	case <-cr.ctx.Done():
+	case <-ctx.Done():
 		return false
 	case <-connectCh:
 	}
 	return true
 }
 
-func (cr *Cluster) Enable() (err error) {
+func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
@@ -175,7 +163,7 @@ func (cr *Cluster) Enable() (err error) {
 		return
 	}
 	logInfo("Sending enable packet")
-	data, err := cr.socket.EmitAck("enable", json.JsonObj{
+	data, err := cr.socket.EmitAckContext(ctx, "enable", json.JsonObj{
 		"host":    cr.host,
 		"port":    cr.publicPort,
 		"version": ClusterVersion,
@@ -184,23 +172,28 @@ func (cr *Cluster) Enable() (err error) {
 	if err != nil {
 		return
 	}
-	if len(data) < 2 || !data.GetBool(1) {
-		return errors.New(data.String())
-	}
 	logInfo("get enable ack:", data)
+	if ero := data[0]; ero != nil {
+		return fmt.Errorf("Enable failed: %v", ero)
+	}
+	if !data[1].(bool) {
+		return errors.New("Enable ack non true value")
+	}
 	cr.enabled = true
 
 	var keepaliveCtx context.Context
-	keepaliveCtx, cr.keepalive = context.WithCancel(cr.ctx)
+	keepaliveCtx, cr.keepalive = context.WithCancel(ctx)
 	createInterval(keepaliveCtx, func() {
-		if !cr.KeepAlive() {
+		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval / 2)
+		defer cancel()
+		if !cr.KeepAlive(ctx) {
 			logDebug("Reconnecting due to keepalive failed")
-			cr.Disable()
-			if !cr.Connect() {
+			cr.Disable(keepaliveCtx)
+			if !cr.Connect(keepaliveCtx) {
 				logError("Cannot reconnect to server, exit.")
 				os.Exit(1)
 			}
-			if err := cr.Enable(); err != nil {
+			if err := cr.Enable(keepaliveCtx); err != nil {
 				logError("Cannot enable cluster:", err, "; exit.")
 				os.Exit(1)
 			}
@@ -210,10 +203,10 @@ func (cr *Cluster) Enable() (err error) {
 }
 
 // KeepAlive will fresh hits & hit bytes data and send the keep-alive packet
-func (cr *Cluster) KeepAlive() (ok bool) {
+func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 	hits, hbts := cr.hits.Swap(0), cr.hbts.Swap(0)
 	cr.stats.AddHits(hits, hbts)
-	data, err := cr.socket.EmitAck("keep-alive", json.JsonObj{
+	data, err := cr.socket.EmitAckContext(ctx, "keep-alive", json.JsonObj{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits":  hits,
 		"bytes": hbts,
@@ -225,15 +218,15 @@ func (cr *Cluster) KeepAlive() (ok bool) {
 		logError("Error when keep-alive:", err)
 		return false
 	}
-	if erro := data.Get(0); len(data) <= 1 || erro != nil {
-		logError("Keep-alive failed:", erro)
+	if ero := data[0]; len(data) <= 1 || ero != nil {
+		logError("Keep-alive failed:", ero)
 		return false
 	}
 	logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbts)), data)
 	return true
 }
 
-func (cr *Cluster) Disable() (ok bool) {
+func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
@@ -249,8 +242,12 @@ func (cr *Cluster) Disable() (ok bool) {
 	if cr.socket == nil {
 		return true
 	}
-	cr.KeepAlive()
-	data, err := cr.socket.EmitAck("disable")
+	{
+		tctx, cancel := context.WithTimeout(ctx, time.Second * 10)
+		cr.KeepAlive(tctx)
+		cancel()
+	}
+	data, err := cr.socket.EmitAckContext(ctx, "disable")
 	cr.enabled = false
 	cr.socket.Close()
 	cr.socket = nil
@@ -258,8 +255,12 @@ func (cr *Cluster) Disable() (ok bool) {
 		return false
 	}
 	logDebug("disable ack:", data)
-	if !data.GetBool(1) {
-		logError("Disable failed: " + data.String())
+	if ero := data[0]; ero != nil {
+		logErrorf("Disable failed: %v", ero)
+		return false
+	}
+	if !data[1].(bool) {
+		logError("Disable failed: ack non true value")
 		return false
 	}
 	return true
@@ -290,28 +291,28 @@ func (pair *CertKeyPair) SaveAsFile() (cert, key string, err error) {
 	return
 }
 
-func (cr *Cluster) RequestCert() (ckp *CertKeyPair, err error) {
+func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
 	logInfo("Requesting certificates, please wait ...")
-	data, err := cr.socket.EmitAck("request-cert")
+	data, err := cr.socket.EmitAckContext(ctx, "request-cert")
 	if err != nil {
 		return
 	}
-	if erv := data.Get(0); erv != nil {
-		err = fmt.Errorf("socket.io remote error: %v", erv)
+	if ero := data[0]; ero != nil {
+		err = fmt.Errorf("socket.io remote error: %v", ero)
 		return
 	}
-	pair := data.GetObj(1)
+	pair := data[1].(map[string]any)
 	ckp = &CertKeyPair{
-		Cert: pair.GetString("cert"),
-		Key:  pair.GetString("key"),
+		Cert: pair["cert"].(string),
+		Key:  pair["key"].(string),
 	}
 	logInfo("Certificate requested")
 	return
 }
 
-func (cr *Cluster) queryFunc(method string, url string, call func(*http.Request)) (res *http.Response, err error) {
+func (cr *Cluster) queryFunc(ctx context.Context, method string, url string, call func(*http.Request)) (res *http.Response, err error) {
 	var req *http.Request
-	req, err = http.NewRequest(method, cr.prefix+url, nil)
+	req, err = http.NewRequestWithContext(ctx, method, cr.prefix+url, nil)
 	if err != nil {
 		return
 	}
@@ -324,12 +325,12 @@ func (cr *Cluster) queryFunc(method string, url string, call func(*http.Request)
 	return
 }
 
-func (cr *Cluster) queryURL(method string, url string) (res *http.Response, err error) {
-	return cr.queryFunc(method, url, nil)
+func (cr *Cluster) queryURL(ctx context.Context, method string, url string) (res *http.Response, err error) {
+	return cr.queryFunc(ctx, method, url, nil)
 }
 
-func (cr *Cluster) queryURLHeader(method string, url string, header map[string]string) (res *http.Response, err error) {
-	return cr.queryFunc(method, url, func(req *http.Request) {
+func (cr *Cluster) queryURLHeader(ctx context.Context, method string, url string, header map[string]string) (res *http.Response, err error) {
+	return cr.queryFunc(ctx, method, url, func(req *http.Request) {
 		if header != nil {
 			for k, v := range header {
 				req.Header.Set(k, v)
@@ -366,31 +367,27 @@ var fileListSchema = avro.MustParse(`{
   }
 }`)
 
-func (cr *Cluster) GetFileList() (files []FileInfo) {
-	res, err := cr.queryURL("GET", "/openbmclapi/files")
+func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error) {
+	res, err := cr.queryURL(ctx, "GET", "/openbmclapi/files")
 	if err != nil {
-		logError("Query filelist error:", err)
-		return nil
+		return
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		logErrorf("Query filelist error: Unexpected status code: %d %s", res.StatusCode, res.Status)
 		data, _ := io.ReadAll(res.Body)
-		logErrorf("Response Body:\n%s", (string)(data))
-		return nil
+		err = fmt.Errorf("Unexpected status code: %d %s Body:\n%s", res.StatusCode, res.Status, (string)(data))
+		return
 	}
 	logDebug("Parsing filelist body ...")
 	zr, err := zstd.NewReader(res.Body)
 	if err != nil {
-		logError("Parse filelist body error:", err)
-		return nil
+		return
 	}
 	defer zr.Close() // TODO: reuse the decoder?
 	if err = avro.NewDecoderForSchema(fileListSchema, zr).Decode(&files); err != nil {
-		logError("Parse filelist body error:", err)
-		return nil
+		return
 	}
-	return files
+	return
 }
 
 type extFileInfo struct {
@@ -407,7 +404,7 @@ type syncStats struct {
 	fl         int
 }
 
-func (cr *Cluster) SyncFiles(files0 []FileInfo, ctx context.Context) {
+func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
 	logInfo("Preparing to sync files...")
 	if !cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
@@ -416,13 +413,7 @@ func (cr *Cluster) SyncFiles(files0 []FileInfo, ctx context.Context) {
 	defer cr.issync.Store(false)
 
 RESYNC:
-	var files []FileInfo
-	if !withContext(ctx, func() {
-		files = cr.CheckFiles(files0, make([]FileInfo, 0, 16))
-	}) {
-		logWarn("File sync interrupted")
-		return
-	}
+	files := cr.CheckFiles(files0, make([]FileInfo, 0, 16))
 
 	fl := len(files)
 	if fl == 0 {
@@ -445,7 +436,10 @@ RESYNC:
 	start := time.Now()
 
 	for i, _ := range files {
-		cr.dlfile(ctx, &stats, &extFileInfo{FileInfo: &files[i], dlerr: nil, trycount: 0})
+		if err := cr.dlfile(ctx, &stats, &extFileInfo{FileInfo: &files[i], dlerr: nil, trycount: 0}); err != nil {
+			logWarn("File sync interrupted")
+			return
+		}
 	}
 	for i := cap(stats.slots); i > 0; i-- {
 		select {
@@ -461,13 +455,17 @@ RESYNC:
 	var flag bool = false
 	if use > SyncFileInterval {
 		logWarn("Synchronization time was more than 10 min, re-check now.")
-		files2 := cr.GetFileList()
+		files2, err := cr.GetFileList(ctx)
+		if err != nil {
+			logError("Cannot query file list:", err)
+			return
+		}
 		if len(files2) != len(files0) {
 			flag = true
 		} else {
 			for _, f := range files2 {
 				p := cr.getCachedHashPath(f.Hash)
-				if ufile.IsNotExist(p) {
+				if stat, e := os.Stat(p); errors.Is(e, os.ErrNotExist) || stat.Size() != f.Size {
 					flag = true
 					break
 				}
@@ -482,14 +480,72 @@ RESYNC:
 	go cr.gc(files0)
 }
 
-func (cr *Cluster) dlfile(ctx context.Context, stats *syncStats, f *extFileInfo) {
+func (cr *Cluster) CheckFiles(files []FileInfo, failed []FileInfo) []FileInfo {
+	logInfo("Start checking files")
+	for i, _ := range files {
+		p := cr.getCachedHashPath(files[i].Hash)
+		stat, err := os.Stat(p)
+		if err == nil {
+			if sz := stat.Size(); sz != files[i].Size {
+				logInfof("Found modified file: size of %q is %s but expect %s",
+					p, bytesToUnit((float64)(sz)), bytesToUnit((float64)(files[i].Size)))
+				failed = append(failed, files[i])
+			}
+		} else {
+			failed = append(failed, files[i])
+			if errors.Is(err, os.ErrNotExist) {
+				os.MkdirAll(filepath.Dir(p), 0755)
+			} else {
+				os.Remove(p)
+			}
+		}
+	}
+	logInfo("File check finished")
+	return failed
+}
+
+func (cr *Cluster) gc(files []FileInfo) {
+	logInfo("Starting garbage collector")
+	fileset := make(map[string]struct{}, 128)
+	for i, _ := range files {
+		fileset[cr.getCachedHashPath(files[i].Hash)] = struct{}{}
+	}
+	stack := make([]string, 0, 10)
+	stack = append(stack, cr.cacheDir)
+	for len(stack) > 0 {
+		p := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		fil, err := os.ReadDir(p)
+		if err != nil {
+			continue
+		}
+		for _, f := range fil {
+			if cr.issync.Load() {
+				logWarn("Global cleanup interrupted")
+				return
+			}
+			n := filepath.Join(p, f.Name())
+			if stat, err := os.Stat(n); err == nil {
+				if stat.IsDir() {
+					stack = append(stack, n)
+				} else if _, ok := fileset[n]; !ok {
+					logInfo("Found outdated file:", n)
+					os.Remove(n)
+				}
+			}
+		}
+	}
+	logInfo("Garbage collector finished")
+}
+
+func (cr *Cluster) dlfile(ctx context.Context, stats *syncStats, f *extFileInfo) error {
 WAIT_SLOT:
 	for {
 		select {
 		case stats.slots <- struct{}{}:
 			break WAIT_SLOT
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		}
 	}
 	go func() {
@@ -510,10 +566,6 @@ WAIT_SLOT:
 				goto RETRY
 			}
 			stats.fcount.Add(1)
-			p := cr.getCachedHashPath(f.Hash)
-			if ufile.IsExist(p) {
-				os.Remove(p)
-			}
 		} else {
 			stats.downloaded += (float64)(f.Size)
 			stats.fcount.Add(1)
@@ -523,6 +575,7 @@ WAIT_SLOT:
 				stats.downloaded/stats.totalsize*100)
 		}
 	}()
+	return nil
 }
 
 func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
@@ -547,81 +600,12 @@ func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
 	return
 }
 
-func (cr *Cluster) CheckFiles(files []FileInfo, notf []FileInfo) []FileInfo {
-	logInfo("Start checking files")
-	for i, _ := range files {
-		if cr.issync.Load() && notf == nil {
-			logWarn("File check interrupted")
-			return nil
-		}
-		p := cr.getCachedHashPath(files[i].Hash)
-		fs, err := os.Stat(p)
-		if err == nil {
-			if fs.Size() != files[i].Size {
-				logInfof("Found wrong size file: '%s'(%s) expect %s",
-					p, bytesToUnit((float64)(fs.Size())), bytesToUnit((float64)(files[i].Size)))
-				if notf == nil {
-					os.Remove(p)
-				} else {
-					notf = append(notf, files[i])
-				}
-			}
-		} else {
-			if notf != nil {
-				notf = append(notf, files[i])
-			}
-			if os.IsNotExist(err) {
-				p = ufile.DirPath(p)
-				if ufile.IsNotExist(p) {
-					os.MkdirAll(p, 0755)
-				}
-			} else {
-				os.Remove(p)
-			}
-		}
-	}
-	logInfo("File check finished")
-	return notf
-}
-
-func (cr *Cluster) gc(files []FileInfo) {
-	logInfo("Starting garbage collector")
-	fileset := make(map[string]struct{}, 128)
-	for i, _ := range files {
-		fileset[cr.getCachedHashPath(files[i].Hash)] = struct{}{}
-	}
-	stack := make([]string, 0, 10)
-	stack = append(stack, cr.cacheDir)
-	for len(stack) > 0 {
-		p := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		fil, err := os.ReadDir(p)
-		if err != nil {
-			continue
-		}
-		for _, f := range fil {
-			if cr.issync.Load() {
-				logWarn("Global cleanup interrupted")
-				return
-			}
-			n := ufile.JoinPath(p, f.Name())
-			if ufile.IsDir(n) {
-				stack = append(stack, n)
-			} else if _, ok := fileset[n]; !ok {
-				logInfo("Found outdated file:", n)
-				os.Remove(n)
-			}
-		}
-	}
-	logInfo("Garbage collector finished")
-}
-
 func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod crypto.Hash, buf []byte) (err error) {
 	var (
 		res *http.Response
 		fd  *os.File
 	)
-	if res, err = cr.queryURL("GET", f.Path); err != nil {
+	if res, err = cr.queryURL(ctx, "GET", f.Path); err != nil {
 		return
 	}
 	defer res.Body.Close()
@@ -638,13 +622,14 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 		return
 	}
 	tfile := fd.Name()
+	defer os.Remove(tfile)
 
 	_, err = io.CopyBuffer(io.MultiWriter(hw, fd), res.Body, buf)
 	stat, err2 := fd.Stat()
+	fd.Close()
 	if err2 != nil {
 		return err2
 	}
-	fd.Close()
 	if err != nil {
 		return
 	}
@@ -665,6 +650,7 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 	}
 
 	hspt := cr.getCachedHashPath(f.Hash)
+	os.Remove(hspt) // remove the old file if exists
 	if err = os.Rename(tfile, hspt); err != nil {
 		return
 	}

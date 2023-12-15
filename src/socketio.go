@@ -358,12 +358,11 @@ func (p *SPacket) ParseBuffer(r *bytes.Reader) (err error) {
 		}
 	}
 	// parse data
-	buf = make([]byte, r.Len())
-	_, err = r.Read(buf)
+	p.data = make([]byte, r.Len())
+	_, err = r.Read(p.data)
 	if err != nil {
 		return
 	}
-	err = json.Unmarshal(buf, &p.data)
 	return
 }
 

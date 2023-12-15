@@ -255,5 +255,8 @@ func writeFileWithOld(path string, buf []byte, mode os.FileMode) (err error) {
 	if err = os.WriteFile(path, buf, mode); err != nil {
 		return
 	}
+	if err = os.WriteFile(oldpath, buf, mode); err != nil {
+		return
+	}
 	return
 }

@@ -92,6 +92,8 @@ func NewCluster(
 		},
 		Server: &http.Server{
 			Addr: address,
+			ReadTimeout: 30 * time.Second,
+			IdleTimeout: 60 * time.Second,
 		},
 	}
 	cr.Server.Handler = cr

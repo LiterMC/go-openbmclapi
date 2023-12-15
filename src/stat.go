@@ -248,7 +248,7 @@ func writeFileWithOld(path string, buf []byte, mode os.FileMode) (err error) {
 	if err = os.Remove(oldpath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return
 	}
-	if err = os.Rename(path, oldpath); err != nil {
+	if err = os.Rename(path, oldpath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return
 	}
 	if err = os.WriteFile(path, buf, mode); err != nil {

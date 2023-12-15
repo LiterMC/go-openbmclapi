@@ -47,7 +47,8 @@ function fetchBlob(){
 }
 
 if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
-	echo 'WARN: go-openbmclapi.service is already installed, disabled'
+	echo 'WARN: go-openbmclapi.service is already installed, stopping'
+	systemctl stop go-openbmclapi.service
 	systemctl disable go-openbmclapi.service
 fi
 

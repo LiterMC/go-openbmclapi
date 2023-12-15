@@ -4,15 +4,22 @@ import (
 	"context"
 	"crypto"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-
-	ufile "github.com/KpnmServer/go-util/file"
 )
 
+func split(str string, b byte) (l, r string) {
+	i := strings.IndexByte(str, b)
+	if i >= 0 {
+		return str[:i], str[i+1:]
+	}
+	return str, ""
+}
+
 func hashToFilename(hash string) string {
-	return ufile.JoinPath(hash[0:2], hash)
+	return filepath.Join(hash[0:2], hash)
 }
 
 func createInterval(ctx context.Context, do func(), delay time.Duration) {

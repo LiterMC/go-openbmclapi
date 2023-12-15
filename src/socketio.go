@@ -387,7 +387,7 @@ const (
 const maxReconnectCount = 10
 
 type ESocket struct {
-	mux    sync.Mutex
+	mux sync.Mutex
 
 	sid    string
 	status atomic.Int32
@@ -606,7 +606,7 @@ const (
 )
 
 type Socket struct {
-	io         *ESocket
+	io     *ESocket
 	status atomic.Int32
 
 	sid     string

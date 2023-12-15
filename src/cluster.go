@@ -45,14 +45,17 @@ type Cluster struct {
 	hbts   atomic.Int64
 	issync atomic.Bool
 
-	mux         sync.Mutex
-	enabled     bool
-	disabled chan struct{}
+	mux         sync.RWMutex
+	enabled     atomic.Bool
+	disabled    chan struct{}
 	socket      *Socket
 	keepalive   context.CancelFunc
 	downloading map[string]chan struct{}
 
 	client *http.Client
+
+	handlerAPIv0 http.Handler
+	handlerAPIv1 http.Handler
 }
 
 func NewCluster(
@@ -88,6 +91,7 @@ func NewCluster(
 			Transport: transport,
 		},
 	}
+	close(cr.disabled)
 
 	// create folder strcture
 	os.RemoveAll(cr.tmpDir)
@@ -161,7 +165,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
-	if cr.enabled {
+	if cr.enabled.Load() {
 		logDebug("Extra enable")
 		return
 	}
@@ -182,12 +186,13 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	if !data[1].(bool) {
 		return errors.New("Enable ack non true value")
 	}
-	cr.enabled = true
+	cr.disabled = make(chan struct{}, 0)
+	cr.enabled.Store(true)
 
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.keepalive = context.WithCancel(ctx)
 	createInterval(keepaliveCtx, func() {
-		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval / 2)
+		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		defer cancel()
 		if !cr.KeepAlive(ctx) {
 			logDebug("Reconnecting due to keepalive failed")
@@ -233,7 +238,7 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
-	if !cr.enabled {
+	if !cr.enabled.Load() {
 		logDebug("Extra disable")
 		return true
 	}
@@ -246,22 +251,15 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 		return true
 	}
 	{
-		tctx, cancel := context.WithTimeout(ctx, time.Second * 10)
+		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
 		cr.KeepAlive(tctx)
 		cancel()
 	}
 	data, err := cr.socket.EmitAckContext(ctx, "disable")
-	cr.enabled = false
+	cr.enabled.Store(false)
 	cr.socket.Close()
 	cr.socket = nil
-LOOP_SIG:
-	for {
-		select {
-		case cr.disabled <- struct{}{}:
-		default:
-			break LOOP_SIG
-		}
-	}
+	close(cr.disabled)
 	if err != nil {
 		return false
 	}
@@ -275,6 +273,12 @@ LOOP_SIG:
 		return false
 	}
 	return true
+}
+
+func (cr *Cluster) Disabled() <-chan struct{} {
+	cr.mux.RLock()
+	defer cr.mux.RUnlock()
+	return cr.disabled
 }
 
 type CertKeyPair struct {
@@ -350,12 +354,8 @@ func (cr *Cluster) queryURLHeader(ctx context.Context, method string, url string
 	})
 }
 
-func (cr *Cluster) joinHashPath(hash string) string {
-	return filepath.Join(hash[:2], hash)
-}
-
 func (cr *Cluster) getCachedHashPath(hash string) string {
-	return filepath.Join(cr.cacheDir, cr.joinHashPath(hash))
+	return filepath.Join(cr.cacheDir, hashToFilename(hash))
 }
 
 type FileInfo struct {

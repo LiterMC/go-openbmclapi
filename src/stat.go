@@ -182,6 +182,13 @@ type Stats struct {
 
 const statsFileName = "stat.json"
 
+func (s *Stats)MarshalJSON()([]byte, error){
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+
+	return json.Marshal(&s.statData)
+}
+
 func (s *Stats) Load(dir string) (err error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
@@ -200,8 +207,8 @@ func (s *Stats) Load(dir string) (err error) {
 
 // Save
 func (s *Stats) Save(dir string) (err error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
+	s.mux.RLock()
+	defer s.mux.RUnlock()
 
 	buf, err := json.Marshal(&s.statData)
 	if err != nil {

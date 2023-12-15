@@ -20,8 +20,10 @@ import (
 
 var (
 	SyncFileInterval  = time.Minute * 10
-	KeepAliveInterval = time.Second * 60
+	KeepAliveInterval = time.Second * 59
 )
+
+var startTime = time.Now()
 
 type Config struct {
 	Debug           bool   `json:"debug"`
@@ -222,8 +224,7 @@ START:
 		Handler:     cluster.GetHandler(),
 	}
 
-	certReqDone := make(chan struct{}, 0)
-	go func() {
+	go func(ctx context.Context) {
 		listener, err := net.Listen("tcp", clusterSvr.Addr)
 		if err != nil {
 			logErrorf("Cannot listen on %s: %v", clusterSvr.Addr, err)
@@ -232,7 +233,7 @@ START:
 		defer listener.Close()
 
 		if !config.Nohttps {
-			tctx, cancel := context.WithTimeout(ctx, time.Minute * 10)
+			tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
 			pair, err := cluster.RequestCert(tctx)
 			cancel()
 			if err != nil {
@@ -244,22 +245,23 @@ START:
 				logError("Error when saving cert key pair:", err)
 				os.Exit(1)
 			}
-			close(certReqDone)
-			if err = clusterSvr.ServeTLS(listener, certFile, keyFile); !errors.Is(err, http.ErrServerClosed) {
-				logError("Error on server:", err)
-				os.Exit(1)
-			}
-			return
+			go func() {
+				if err = clusterSvr.ServeTLS(listener, certFile, keyFile); !errors.Is(err, http.ErrServerClosed) {
+					logError("Error on server:", err)
+					os.Exit(1)
+				}
+			}()
+		} else {
+			go func() {
+				if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+					logError("Error on server:", err)
+					os.Exit(1)
+				}
+			}()
 		}
-		close(certReqDone)
-		if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-			logError("Error on server:", err)
-			os.Exit(1)
-		}
-	}()
 
-	go func(){
-		<-certReqDone
+		logInfof("Server public at %s:%d (%s)", config.PublicHost, config.PublicPort, clusterSvr.Addr)
+
 		if err := cluster.Enable(ctx); err != nil {
 			logError("Cannot enable cluster:", err)
 			os.Exit(1)
@@ -270,11 +272,11 @@ START:
 			fl, err := cluster.GetFileList(ctx)
 			if err != nil {
 				logError("Cannot query cluster file list:", err)
-				os.Exit(1)
+				return
 			}
 			cluster.SyncFiles(ctx, fl)
 		}, SyncFileInterval)
-	}()
+	}(ctx)
 
 	select {
 	case s := <-signalCh:

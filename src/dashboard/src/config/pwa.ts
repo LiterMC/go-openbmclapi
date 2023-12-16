@@ -3,10 +3,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default VitePWA({
 	registerType: 'autoUpdate',
 	injectRegister: 'inline',
-	workbox: {
-		globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-	},
-	includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
+	includeAssets: ['favicon.ico'],
 	manifest: {
 		name: 'GoOpemBmclApi Dashboard',
 		short_name: 'GoOpemBmclApiDashboard',
@@ -36,5 +33,8 @@ export default VitePWA({
 				purpose: 'maskable',
 			},
 		],
+	},
+	workbox: {
+		globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
 	},
 })

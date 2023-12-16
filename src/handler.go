@@ -61,7 +61,6 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			}
 		})
 		go func() {
-			defer close(totalUsedCh)
 			<-cr.WaitForEnable()
 			disabled := cr.Disabled()
 			var (

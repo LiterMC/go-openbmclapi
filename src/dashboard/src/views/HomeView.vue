@@ -102,7 +102,7 @@ function getDaysInMonth(): number {
 				</span>
 			</div>
 		</div>
-		<h4>Hourly</h4>
+		<h4>Day</h4>
 		<HitsChart
 			v-if="data && stat"
 			class="hits-chart"
@@ -113,7 +113,7 @@ function getDaysInMonth(): number {
 			:current="stat.date.hour + new Date().getMinutes() / 60"
 			:formatXLabel="formatHour"
 		/>
-		<h4>Daily</h4>
+		<h4>Month</h4>
 		<HitsChart
 			v-if="data && stat"
 			class="hits-chart"
@@ -124,7 +124,7 @@ function getDaysInMonth(): number {
 			:current="stat.date.day + new Date().getHours() / 24"
 			:formatXLabel="formatDay"
 		/>
-		<h4>Monthly</h4>
+		<h4>Year</h4>
 		<HitsChart
 			v-if="data && stat"
 			class="hits-chart"

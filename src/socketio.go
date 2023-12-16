@@ -577,13 +577,13 @@ func (s *ESocket) _reader() {
 }
 
 func (s *ESocket) Emit(p *EPacket) (err error) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	if s.Status() != ESocketConnected {
 		s.msgbuf = append(s.msgbuf, p)
 		return
 	}
-
-	s.mux.Lock()
-	defer s.mux.Unlock()
 
 	var w io.WriteCloser
 	w, err = s.wsconn.NextWriter(websocket.TextMessage)

@@ -203,16 +203,6 @@ START:
 	logDebugf("Receiving signals")
 	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
-	{
-		logInfof("Fetching file list")
-		fl, err := cluster.GetFileList(ctx)
-		if err != nil {
-			logError("Cannot query cluster file list:", err)
-			os.Exit(1)
-		}
-		cluster.SyncFiles(ctx, fl)
-	}
-
 	if !cluster.Connect(ctx) {
 		os.Exit(1)
 	}
@@ -267,10 +257,16 @@ START:
 			logInfof("Server public at http://%s:%d (%s)", config.PublicHost, config.PublicPort, clusterSvr.Addr)
 		}
 
-		if err := cluster.Enable(ctx); err != nil {
-			logError("Cannot enable cluster:", err)
+		logInfof("Fetching file list")
+		fl, err := cluster.GetFileList(ctx)
+		if err != nil {
+			logError("Cannot query cluster file list:", err)
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 			os.Exit(1)
 		}
+		cluster.SyncFiles(ctx, fl)
 
 		createInterval(ctx, func() {
 			logInfof("Fetching file list")
@@ -281,6 +277,11 @@ START:
 			}
 			cluster.SyncFiles(ctx, fl)
 		}, SyncFileInterval)
+
+		if err := cluster.Enable(ctx); err != nil {
+			logError("Cannot enable cluster:", err)
+			os.Exit(1)
+		}
 	}(ctx)
 
 	select {

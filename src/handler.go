@@ -44,6 +44,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 
 		next := handler
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+			ua := req.Header.Get("User-Agent")
 			srw := &statusResponseWriter{ResponseWriter: rw}
 			start := time.Now()
 
@@ -52,11 +53,17 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			used := time.Since(start)
 			if config.RecordServeInfo {
 				addr, _, _ := net.SplitHostPort(req.RemoteAddr)
-				logInfof("Serve %d | %12v | %-15s | %s | %-4s %s", srw.status, used, addr, req.Proto, req.Method, req.RequestURI)
+				logInfof("Serve %d | %12v | %-15s | %s | %-4s %s | %q", srw.status, used, addr, req.Proto, req.Method, req.RequestURI, ua)
 			}
-			totalUsedCh <- used.Seconds()
+			select {
+			case totalUsedCh <- used.Seconds():
+			default:
+			}
 		})
-		go func(disabled <-chan struct{}) {
+		go func() {
+			defer close(totalUsedCh)
+			<-cr.WaitForEnable()
+			disabled := cr.Disabled()
 			var (
 				total     int64
 				totalUsed float64
@@ -74,7 +81,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 					return
 				}
 			}
-		}(cr.Disabled())
+		}()
 	}
 	return
 }

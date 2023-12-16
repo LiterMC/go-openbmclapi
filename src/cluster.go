@@ -51,6 +51,7 @@ type Cluster struct {
 	socket      *Socket
 	keepalive   context.CancelFunc
 	downloading map[string]chan struct{}
+	waitEnable []chan struct{}
 
 	client *http.Client
 
@@ -131,7 +132,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	}
 	cr.socket.DisconnectHandle = func(*Socket) {
 		connected()
-		cr.Disable(ctx)
+		go cr.Disable(ctx)
 	}
 	cr.socket.ErrorHandle = func(*Socket) {
 		connected()
@@ -161,6 +162,19 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	return true
 }
 
+func (cr *Cluster)WaitForEnable()(<-chan struct{}){
+	cr.mux.Lock()
+	defer cr.mux.Unlock()
+
+	ch := make(chan struct{}, 0)
+	if cr.enabled.Load() {
+		close(ch)
+	}else{
+		cr.waitEnable = append(cr.waitEnable, ch)
+	}
+	return ch
+}
+
 func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
@@ -188,6 +202,9 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	}
 	cr.disabled = make(chan struct{}, 0)
 	cr.enabled.Store(true)
+	for _, ch := range cr.waitEnable {
+		close(ch)
+	}
 
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.keepalive = context.WithCancel(ctx)
@@ -195,7 +212,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		defer cancel()
 		if !cr.KeepAlive(ctx) {
-			logDebug("Reconnecting due to keepalive failed")
+			logInfo("Reconnecting due to keepalive failed")
 			cr.Disable(keepaliveCtx)
 			if !cr.Connect(keepaliveCtx) {
 				logError("Cannot reconnect to server, exit.")

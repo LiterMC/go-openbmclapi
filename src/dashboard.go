@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+//go:generate npm -C dashboard ci
 //go:generate npm -C dashboard run build
 
 //go:embed dashboard/dist

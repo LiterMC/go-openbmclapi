@@ -2,6 +2,10 @@
   "extends": "@vue/tsconfig/tsconfig.web.json",
   "include": ["env.d.ts", "src/**/*", "src/**/*.vue"],
   "compilerOptions": {
+    "lib":[
+      "es2020",
+      "dom",
+    ],
     "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {

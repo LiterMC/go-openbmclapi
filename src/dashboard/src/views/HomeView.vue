@@ -1,27 +1,129 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRequest } from 'vue-request'
 import axios from 'axios'
 import { formatNumber, formatBytes } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
+import type { StatInstData, APIStatus } from '@/api/v0'
 
-const { data, loading } = useRequest(async () => (await axios.get('/api/status.json')).data, {
+const { data, loading } = useRequest(async () => (await axios.get<APIStatus>('/api/status')).data, {
 	pollingInterval: 5000,
 })
 
-// const days = new Date(stat.date.year, stat.date.month + 1, 0).getDate();
+const stat = computed(() => {
+	if (!data.value) {
+		return
+	}
+	const stat = data.value.stats
+	stat.days = cutDays(stat.days, stat.date.year, stat.date.month)
+	stat.prev.days = cutDays(stat.prev.days, stat.date.year, stat.date.month - 1)
+
+	stat.days[stat.date.day] = stat.hours.reduce((sum, v) => ({
+		hits: sum.hits + v.hits,
+		bytes: sum.bytes + v.bytes,
+	}))
+	stat.months[stat.date.month] = stat.days.reduce((sum, v) => ({
+		hits: sum.hits + v.hits,
+		bytes: sum.bytes + v.bytes,
+	}))
+	stat.years[stat.date.year.toString()] = stat.months.reduce((sum, v) => ({
+		hits: sum.hits + v.hits,
+		bytes: sum.bytes + v.bytes,
+	}))
+	return stat
+})
+
+function formatHour(hour: number): string {
+	const offset = -new Date().getTimezoneOffset()
+	let min = hour * 60 + offset
+	hour = Math.floor(min / 60) % 24
+	min %= 60
+	if (hour < 0) {
+		hour += 24
+	}
+	if (min < 0) {
+		min += 60
+	}
+	return `${hour}:${min.toString().padStart(2, '0')}`
+}
+
+function cutDays(days: StatInstData[], year: number, month: number): StatInstData[] {
+	const dayCount = new Date(year, month, 0).getDate()
+	days.length = dayCount
+	return days
+}
+
+function formatDay(day: number): string {
+	if(!stat.value){
+		return ''
+	}
+	const date = new Date(Date.UTC(stat.value.date.year, stat.value.date.month, day))
+	return `${date.getMonth() + 1}-${date.getDate()}`
+}
+
+function formatMonth(month: number): string {
+	if(!stat.value){
+		return ''
+	}
+	const date = new Date(Date.UTC(stat.value.date.year, month + 1, 1))
+	return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`
+}
+
+function getDaysInMonth(): number {
+	const date = new Date()
+	const days = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+	return date.getDate() / days
+}
 </script>
 
 <template>
 	<main>
+		<h4>Hourly</h4>
+		<HitsChart
+			v-if="data && stat"
+			class="hits-chart"
+			:max="24"
+			:offset="22"
+			:data="stat.hours"
+			:oldData="stat.prev.hours"
+			:current="stat.date.hour + new Date().getMinutes() / 60"
+			:formatXLabel="formatHour"
+		/>
 		<h4>Daily</h4>
 		<HitsChart
-			v-if="data"
-			:max="24"
-			:data="data.stat.hours"
-			:oldData="data.stat.prev.hours"
-			:current="data.stat.date.hour + new Date().getMinutes() / 60"
-			:formatXLabel="(i) => `${i + 1}:00`"
+			v-if="data && stat"
+			class="hits-chart"
+			:max="31"
+			:offset="29"
+			:data="stat.days"
+			:oldData="stat.prev.days"
+			:current="stat.date.day + new Date().getHours() / 24"
+			:formatXLabel="formatDay"
 		/>
+		<h4>Monthly</h4>
+		<HitsChart
+			v-if="data && stat"
+			class="hits-chart"
+			:max="12"
+			:offset="10"
+			:data="stat.months"
+			:oldData="stat.prev.months"
+			:current="stat.date.month + getDaysInMonth()"
+			:formatXLabel="formatMonth"
+		/>
+		<!-- TODO: show yearly chart -->
 	</main>
 </template>
+<style scoped>
+.hits-chart {
+	width: 45rem;
+	height: 13rem;
+}
+
+@media (max-width: 50rem) {
+	.hits-chart {
+		width: 100%;
+		height: 13rem;
+	}
+}
+</style>

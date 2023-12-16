@@ -2,17 +2,15 @@
 import { onMounted, ref, computed, watch } from 'vue'
 import Chart from 'primevue/chart'
 import { formatNumber, formatBytes } from '@/utils'
+import type { StatInstData } from '@/api/v0'
 
 const props = defineProps<{
+	width?: number | string
+	height?: number | string
 	max: number
-	data: {
-		hits: number
-		bytes: number
-	}[]
-	oldData: {
-		hits: number
-		bytes: number
-	}[]
+	offset: number
+	data: StatInstData[]
+	oldData: StatInstData[]
 	current: number
 	formatXLabel: (index: number) => string
 }>()
@@ -22,34 +20,51 @@ const maxX = props.max
 const chartObj = ref()
 const chartData = ref()
 const chartOptions = ref()
+const chartCurrentLineX = ref(-1)
+var xOffset = 0
 
 const getChartData = () => {
 	const documentStyle = getComputedStyle(document.documentElement)
 
-	const labels = []
-	for (let i = 0; i < maxX; i++) {
-		labels.push(`${i + 1}`)
-	}
-	const hits = Array(maxX).fill(0)
-	const bytes = Array(maxX).fill(0)
-	for (let i = 0; i < maxX; i++) {
-		hits[i] = props.data[i].hits
-		bytes[i] = props.data[i].bytes
-	}
-	watch(
-		() => props.data,
-		(stat) => {
-			for (let i = 0; i < maxX; i++) {
-				hits[i] = stat[i].hits
-				bytes[i] = stat[i].bytes
+	const labels = Array(maxX)
+	const hits = Array(maxX)
+	const bytes = Array(maxX)
+	const updateStat = (stats: StatInstData[], current: number) => {
+		const oldStats = props.oldData
+		const offset = Math.floor(current - props.offset)
+		if (offset >= 0) {
+			let i = 0
+			for (; i + offset < stats.length; i++) {
+				hits[i] = stats[i + offset].hits
+				bytes[i] = stats[i + offset].bytes
 			}
-			chartObj.value.refresh()
-		},
-	)
+			for (; i < maxX; i++) {
+				hits[i] = 0
+				bytes[i] = 0
+			}
+		} else if (offset < 0) {
+			let i = 0
+			for (; i + offset < 0; i++) {
+				let j = i + offset + oldStats.length
+				hits[i] = oldStats[j].hits
+				bytes[i] = oldStats[j].bytes
+			}
+			for (; i < maxX; i++) {
+				hits[i] = stats[i + offset].hits
+				bytes[i] = stats[i + offset].bytes
+			}
+		}
+		for (let i = 0; i < maxX; i++) {
+			labels[i] = props.formatXLabel(i + offset + 1)
+		}
+		xOffset = offset
+		chartCurrentLineX.value = current - offset - 1
+	}
+	updateStat(props.data, props.current)
 	watch(
-		() => props.current,
-		(current) => {
-			chartObj.value.options.plugins['custom-vertical-line'].lineX = current
+		(): [StatInstData[], number] => [props.data, props.current],
+		([stat, current]) => {
+			updateStat(stat, current)
 			chartObj.value.refresh()
 		},
 	)
@@ -95,7 +110,7 @@ const getChartOptions = () => {
 				callbacks: {
 					title: (context: any) => {
 						const i = context[0].dataIndex
-						return `${props.formatXLabel(i)} ~ ${props.formatXLabel(i + 1)}`
+						return `${props.formatXLabel(xOffset + i)} ~ ${props.formatXLabel(xOffset + i + 1)}`
 					},
 					label: (context: any) => {
 						switch (context.dataset.yAxisID) {
@@ -115,14 +130,13 @@ const getChartOptions = () => {
 				},
 			},
 			'custom-vertical-line': {
-				lineX: props.current,
+				lineX: chartCurrentLineX,
 			},
 		},
 		scales: {
 			x: {
 				ticks: {
 					color: textColorSecondary,
-					callback: props.formatXLabel,
 				},
 				grid: {
 					color: surfaceBorder,
@@ -169,6 +183,6 @@ onMounted(() => {
 		type="line"
 		:data="chartData"
 		:options="chartOptions"
-		style="height: 16rem"
+		:style="{ height: height, width: width }"
 	/>
 </template>

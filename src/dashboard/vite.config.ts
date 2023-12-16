@@ -17,7 +17,7 @@ export default defineConfig(async ({ command, mode }) => {
 			},
 		},
 		mode: mode,
-		base: '/main',
+		base: '/dashboard',
 		build: {
 			minify: minify,
 		},

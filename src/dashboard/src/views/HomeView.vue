@@ -86,7 +86,7 @@ function getDaysInMonth(): number {
 
 <template>
 	<main>
-		<h1>Go-OpemBmclAPI Dashboard</h1>
+		<h1>Go-OpenBmclAPI Dashboard</h1>
 		<div class="basic-info">
 			<div
 				class="info-status"

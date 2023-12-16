@@ -672,7 +672,6 @@ func NewSocket(io *ESocket) (s *Socket) {
 					logError("Socket.io: Couldn't send ack packet through the channel")
 				}
 			}
-			s.ackMux.Unlock()
 		case SP_CONNECT_ERROR:
 			logError("Socket.io: connect error:", pkt.data)
 			if s.ErrorHandle != nil {

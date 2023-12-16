@@ -16,3 +16,15 @@ body {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
+
+@keyframes flash {
+	0% {
+		--flash-out: var(--flash-from);
+	}
+	50% {
+		--flash-out: var(--flash-to);
+	}
+	100% {
+		--flash-out: var(--flash-from);
+	}
+}

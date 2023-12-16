@@ -660,14 +660,19 @@ func NewSocket(io *ESocket) (s *Socket) {
 			}
 		case SP_ACK:
 			s.ackMux.Lock()
-			defer s.ackMux.Unlock()
-			logDebug("ackcall:", pkt.id, s.ackcall)
-			if h, ok := s.ackcall[pkt.id]; ok {
-				delete(s.ackcall, pkt.id)
+			ch, ok := s.ackcall[pkt.id]
+			delete(s.ackcall, pkt.id)
+			s.ackMux.Unlock()
+			if ok {
 				var arr []any
 				pkt.ParseData(&arr)
-				h <- arr
+				select{
+				case ch <- arr:
+				default:
+					logError("Socket.io: Couldn't send ack packet through the channel")
+				}
 			}
+			s.ackMux.Unlock()
 		case SP_CONNECT_ERROR:
 			logError("Socket.io: connect error:", pkt.data)
 			if s.ErrorHandle != nil {
@@ -753,7 +758,7 @@ func (s *Socket) EmitAckContext(ctx context.Context, event string, objs ...any) 
 	case ret := <-resCh:
 		res = ret[0].([]any)
 	case <-ctx.Done():
-		err = context.Cause(ctx)
+		err = ctx.Err()
 	}
 	return
 }

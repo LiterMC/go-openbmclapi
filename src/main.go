@@ -296,6 +296,7 @@ START:
 			defer close(shutExit)
 			defer cancelShut()
 			cluster.Disable(shutCtx)
+			logInfo("Cluster disabled, closing http server")
 			clusterSvr.Shutdown(shutCtx)
 		}()
 		select {

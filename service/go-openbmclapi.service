@@ -6,9 +6,9 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/opt/openbmclapi/start-server.sh
-ExecReload=/opt/openbmclapi/reload-server.sh
-ExecStop=/opt/openbmclapi/stop-server.sh
+WorkingDirectory=/opt/openbmclapi
+ExecStart=/opt/openbmclapi/service-linux-go-openbmclapi
+ExecReload=kill -s HUP $PID
 RestartSec=30
 Restart=on-failure
 TimeoutSec=6

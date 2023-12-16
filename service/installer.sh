@@ -65,13 +65,15 @@ fetchBlob service/go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.
 
 [ -d "$BASE_PATH" ] || { mkdir -p "$BASE_PATH" && chmod 0755 "$BASE_PATH"; } || exit $?
 
-fetchBlob service/start-server.sh "$BASE_PATH/start-server.sh" 0744 || exit $?
-fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0744 || exit $?
-fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0744 || exit $?
+# fetchBlob service/start-server.sh "$BASE_PATH/start-server.sh" 0755 || exit $?
+# fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0755 || exit $?
+# fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0755 || exit $?
 
+latest_src="https://github.com/$REPO/releases/download/$LATEST_TAG"
 
 arch=$(uname -m)
-latest_src="https://github.com/$REPO/releases/download/$LATEST_TAG"
+[ "$arch" = 'x86_64' ] && arch=amd64
+
 source="$latest_src/go-opembmclapi-linux-$arch"
 echo "==> Downloading $source"
 if ! curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"; then
@@ -79,7 +81,7 @@ if ! curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"; then
 	echo "==> Downloading fallback binary $source"
 	curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || exit $?
 fi
-chmod 0744 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
+chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
 
 
 echo "==> Enable go-openbmclapi.service"

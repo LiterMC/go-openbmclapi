@@ -52,7 +52,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			used := time.Since(start)
 			if config.RecordServeInfo {
 				addr, _, _ := net.SplitHostPort(req.RemoteAddr)
-				logInfof("Serve %d | %6v | %-15s | %s | %-4s %s", srw.status, used, addr, req.Proto, req.Method, req.RequestURI)
+				logInfof("Serve %d | %12v | %-15s | %s | %-4s %s", srw.status, used, addr, req.Proto, req.Method, req.RequestURI)
 			}
 			totalUsedCh <- used.Seconds()
 		})

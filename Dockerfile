@@ -17,8 +17,9 @@ RUN npm run build || { cat /root/.npm/_logs/*; exit 1; }
 
 FROM golang:${GO_VERSION}-alpine AS BUILD
 
-ARG REPO
 ARG TAG
+ARG REPO
+ARG NPM_DIR
 
 COPY ./go.mod ./go.sum "/go/src/${REPO}/"
 COPY ./src "/go/src/${REPO}/src"

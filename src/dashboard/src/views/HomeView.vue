@@ -2,13 +2,21 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRequest } from 'vue-request'
 import axios from 'axios'
-import { formatNumber, formatBytes } from '@/utils'
+import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import type { StatInstData, APIStatus } from '@/api/v0'
 
-const { data, loading } = useRequest(async () => (await axios.get<APIStatus>('/api/v0/status')).data, {
-	pollingInterval: 5000,
-})
+const now = ref(new Date())
+setInterval(() => {
+	now.value = new Date()
+}, 1000)
+
+const { data, error, loading } = useRequest(
+	async () => (await axios.get<APIStatus>('/api/v0/status')).data,
+	{
+		pollingInterval: 5000,
+	},
+)
 
 const stat = computed(() => {
 	if (!data.value) {
@@ -54,7 +62,7 @@ function cutDays(days: StatInstData[], year: number, month: number): StatInstDat
 }
 
 function formatDay(day: number): string {
-	if(!stat.value){
+	if (!stat.value) {
 		return ''
 	}
 	const date = new Date(Date.UTC(stat.value.date.year, stat.value.date.month, day))
@@ -62,7 +70,7 @@ function formatDay(day: number): string {
 }
 
 function formatMonth(month: number): string {
-	if(!stat.value){
+	if (!stat.value) {
 		return ''
 	}
 	const date = new Date(Date.UTC(stat.value.date.year, month + 1, 1))
@@ -78,6 +86,22 @@ function getDaysInMonth(): number {
 
 <template>
 	<main>
+		<h1>Go-OpemBmclAPI Dashboard</h1>
+		<div class="basic-info">
+			<div
+				class="info-status"
+				:status="error ? 'error' : data && data.enabled ? 'enabled' : 'disabled'"
+			></div>
+			<div v-if="error">
+				<b>{{ error }}</b>
+			</div>
+			<div v-else-if="data">
+				Server has been running for
+				<span class="info-uptime">
+					{{ formatTime(now - new Date(data.startAt)) }}
+				</span>
+			</div>
+		</div>
 		<h4>Hourly</h4>
 		<HitsChart
 			v-if="data && stat"
@@ -115,6 +139,78 @@ function getDaysInMonth(): number {
 	</main>
 </template>
 <style scoped>
+.basic-info {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	font-weight: 200;
+}
+
+.basic-info > div {
+	display: inline-block;
+}
+
+.info-status {
+	--flash-from: unset;
+	--flash-out: var(--flash-from);
+	display: inline-flex !important;
+	flex-direction: row;
+	align-items: center;
+	padding: 0.5rem;
+	margin: 0.5rem;
+	border-radius: 0.2rem;
+	font-weight: 800;
+	user-select: none;
+	cursor: pointer;
+}
+
+.info-status[status='enabled'] {
+	--status-text: 'Running';
+	--flash-from: #fff;
+	--flash-to: #11dfc3;
+	color: #fff;
+	background-color: #28a745;
+	animation: flash 1s infinite;
+}
+
+.info-status[status='disabled'] {
+	--status-text: 'Starting';
+	--flash-from: #fff;
+	--flash-to: #e61a05;
+	color: #fff;
+	background-color: #f89f1b;
+	animation: flash 3s infinite;
+}
+
+.info-status[status='error'] {
+	--status-text: 'Disconnected';
+	--flash-from: #8a8dac;
+	color: #fff;
+	background-color: #bfadad;
+}
+
+.info-status::before {
+	content: ' ';
+	display: inline-block;
+	width: 1.05rem;
+	height: 1.05rem;
+	margin-right: 0.5rem;
+	border: solid #fff 0.25rem;
+	border-radius: 50%;
+	background-color: var(--flash-out);
+	box-shadow: #fff8 inset 0 0 2px;
+	transition: background-color 0.15s;
+}
+
+.info-status::after {
+	content: var(--status-text);
+}
+
+.info-uptime {
+	font-weight: 700;
+	font-style: italic;
+}
+
 .hits-chart {
 	width: 45rem;
 	height: 13rem;

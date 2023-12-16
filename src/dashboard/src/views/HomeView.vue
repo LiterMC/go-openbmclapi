@@ -98,7 +98,7 @@ function getDaysInMonth(): number {
 			<div v-else-if="data">
 				Server has been running for
 				<span class="info-uptime">
-					{{ formatTime(now - new Date(data.startAt)) }}
+					{{ formatTime(now.getTime() - new Date(data.startAt).getTime()) }}
 				</span>
 			</div>
 		</div>

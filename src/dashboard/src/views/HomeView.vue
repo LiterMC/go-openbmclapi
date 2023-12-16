@@ -6,7 +6,7 @@ import { formatNumber, formatBytes } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import type { StatInstData, APIStatus } from '@/api/v0'
 
-const { data, loading } = useRequest(async () => (await axios.get<APIStatus>('/api/status')).data, {
+const { data, loading } = useRequest(async () => (await axios.get<APIStatus>('/api/v0/status')).data, {
 	pollingInterval: 5000,
 })
 

@@ -287,7 +287,7 @@ START:
 	select {
 	case s := <-signalCh:
 		cancel()
-		shutCtx, cancelShut := context.WithTimeout(context.Background(), 10*time.Second)
+		shutCtx, cancelShut := context.WithTimeout(context.Background(), 20*time.Second)
 		logWarn("Closing server ...")
 		shutExit := make(chan struct{}, 0)
 		if hjServer != nil {

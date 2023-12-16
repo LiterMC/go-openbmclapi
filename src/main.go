@@ -230,7 +230,6 @@ START:
 			logErrorf("Cannot listen on %s: %v", clusterSvr.Addr, err)
 			os.Exit(1)
 		}
-		defer listener.Close()
 
 		if !config.Nohttps {
 			tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
@@ -240,27 +239,33 @@ START:
 				logError("Error when requesting cert key pair:", err)
 				os.Exit(1)
 			}
+			publicHost, _ := parseCertCommonName(([]byte)(pair.Cert))
 			certFile, keyFile, err := pair.SaveAsFile()
 			if err != nil {
 				logError("Error when saving cert key pair:", err)
 				os.Exit(1)
 			}
 			go func() {
+				defer listener.Close()
 				if err = clusterSvr.ServeTLS(listener, certFile, keyFile); !errors.Is(err, http.ErrServerClosed) {
 					logError("Error on server:", err)
 					os.Exit(1)
 				}
 			}()
+			if publicHost == "" {
+				publicHost = config.PublicHost
+			}
+			logInfof("Server public at https://%s:%d (%s)", publicHost, config.PublicPort, clusterSvr.Addr)
 		} else {
 			go func() {
+				defer listener.Close()
 				if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 					logError("Error on server:", err)
 					os.Exit(1)
 				}
 			}()
+			logInfof("Server public at http://%s:%d (%s)", config.PublicHost, config.PublicPort, clusterSvr.Addr)
 		}
-
-		logInfof("Server public at %s:%d (%s)", config.PublicHost, config.PublicPort, clusterSvr.Addr)
 
 		if err := cluster.Enable(ctx); err != nil {
 			logError("Cannot enable cluster:", err)

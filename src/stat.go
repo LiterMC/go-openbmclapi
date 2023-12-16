@@ -182,7 +182,7 @@ type Stats struct {
 
 const statsFileName = "stat.json"
 
-func (s *Stats)MarshalJSON()([]byte, error){
+func (s *Stats) MarshalJSON() ([]byte, error) {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 

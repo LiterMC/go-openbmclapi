@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -105,4 +107,23 @@ func getHashMethod(l int) (hashMethod crypto.Hash, err error) {
 		err = fmt.Errorf("Unknown hash length %d", l)
 	}
 	return
+}
+
+func parseCertCommonName(cert []byte) (string, error) {
+	rest := cert
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return "", nil
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return "", err
+		}
+		return cert.Subject.CommonName, nil
+	}
 }

@@ -494,7 +494,7 @@ func (s *ESocket) wsCloseHandler(code int, text string) (err error) {
 			return
 		}
 		if s.ErrorHandle != nil {
-			s.ErrorHandle(s, wer)
+			go s.ErrorHandle(s, wer)
 		}
 	}
 	return
@@ -745,14 +745,18 @@ func (s *Socket) EmitAckContext(ctx context.Context, event string, objs ...any) 
 	if err != nil {
 		return
 	}
-	if err = s.send(pkt); err != nil {
-		return
-	}
 	resCh := make(chan []any, 1)
-
-	s.ackMux.Lock()
-	s.ackcall[id] = resCh
-	s.ackMux.Unlock()
+	go func(){
+		if err = s.send(pkt); err != nil {
+			return
+		}
+		if err = ctx.Err(); err != nil {
+			return
+		}
+		s.ackMux.Lock()
+		s.ackcall[id] = resCh
+		s.ackMux.Unlock()
+	}()
 	select {
 	case ret := <-resCh:
 		res = ret[0].([]any)

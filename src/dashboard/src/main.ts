@@ -3,6 +3,7 @@ import PrimeVue from 'primevue/config'
 import App from './App.vue'
 import router from './router'
 import './utils/chart'
+import './registerServiceWorker'
 
 import 'primevue/resources/themes/lara-light-green/theme.css'
 import './assets/main.css'

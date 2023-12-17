@@ -6,6 +6,7 @@ import router from './router'
 import './utils/chart'
 
 import 'primevue/resources/themes/lara-light-green/theme.css'
+import 'primeicons/primeicons.css'
 import './assets/main.css'
 
 registerSW({ immediate: true })

@@ -2,6 +2,8 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRequest } from 'vue-request'
 import axios from 'axios'
+import ProgressSpinner from 'primevue/progressspinner'
+import Skeleton from 'primevue/skeleton'
 import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import type { StatInstData, APIStatus } from '@/api/v0'
@@ -16,6 +18,8 @@ const { data, error, loading } = useRequest(
 	async () => (await axios.get<APIStatus>('/api/v0/status')).data,
 	{
 		pollingInterval: 5000,
+		loadingDelay: 500,
+		loadingKeep: 3000,
 	},
 )
 
@@ -98,6 +102,8 @@ function getDaysInMonth(): number {
 					'--status-text': `'${tr(`badge.server.status.${status}`)}'`,
 				}"
 			></div>
+
+			<ProgressSpinner v-if="loading" class="polling" strokeWidth="6"/>
 			<div v-if="error">
 				<b>{{ error }}</b>
 			</div>
@@ -108,39 +114,48 @@ function getDaysInMonth(): number {
 				</span>
 			</div>
 		</div>
-		<h4>Day</h4>
-		<HitsChart
-			v-if="data && stat"
-			class="hits-chart"
-			:max="25"
-			:offset="23"
-			:data="stat.hours"
-			:oldData="stat.prev.hours"
-			:current="stat.date.hour + new Date().getMinutes() / 60"
-			:formatXLabel="formatHour"
-		/>
-		<h4>Month</h4>
-		<HitsChart
-			v-if="data && stat"
-			class="hits-chart"
-			:max="31"
-			:offset="29"
-			:data="stat.days"
-			:oldData="stat.prev.days"
-			:current="stat.date.day + new Date().getHours() / 24"
-			:formatXLabel="formatDay"
-		/>
-		<h4>Year</h4>
-		<HitsChart
-			v-if="data && stat"
-			class="hits-chart"
-			:max="14"
-			:offset="12"
-			:data="stat.months"
-			:oldData="stat.prev.months"
-			:current="stat.date.month + getDaysInMonth()"
-			:formatXLabel="formatMonth"
-		/>
+		<div class="chart-card">
+			<h3>Day</h3>
+			<HitsChart
+				v-if="data && stat"
+				class="hits-chart"
+				:max="25"
+				:offset="23"
+				:data="stat.hours"
+				:oldData="stat.prev.hours"
+				:current="stat.date.hour + new Date().getMinutes() / 60"
+				:formatXLabel="formatHour"
+			/>
+			<Skeleton v-else class="hits-chart"/>
+		</div>
+		<div class="chart-card">
+			<h3>Month</h3>
+			<HitsChart
+				v-if="data && stat"
+				class="hits-chart"
+				:max="31"
+				:offset="29"
+				:data="stat.days"
+				:oldData="stat.prev.days"
+				:current="stat.date.day + new Date().getHours() / 24"
+				:formatXLabel="formatDay"
+			/>
+			<Skeleton v-else class="hits-chart"/>
+		</div>
+		<div class="chart-card">
+			<h3>Year</h3>
+			<HitsChart
+				v-if="data && stat"
+				class="hits-chart"
+				:max="14"
+				:offset="12"
+				:data="stat.months"
+				:oldData="stat.prev.months"
+				:current="stat.date.month + getDaysInMonth()"
+				:formatXLabel="formatMonth"
+			/>
+			<Skeleton v-else class="hits-chart"/>
+		</div>
 		<!-- TODO: show yearly chart -->
 	</main>
 </template>
@@ -149,6 +164,7 @@ function getDaysInMonth(): number {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
+	height: 4rem;
 	font-weight: 200;
 }
 
@@ -209,20 +225,28 @@ function getDaysInMonth(): number {
 	content: var(--status-text);
 }
 
+.polling {
+	width: 1.5rem;
+	margin-right: 0.2rem;
+}
+
 .info-uptime {
 	font-weight: 700;
 	font-style: italic;
 }
 
+.chart-card {
+	margin-bottom: 1rem;
+}
+
 .hits-chart {
-	width: 45rem;
-	height: 13rem;
+	width: 45rem !important;
+	height: 13rem !important;
 }
 
 @media (max-width: 50rem) {
 	.hits-chart {
-		width: 100%;
-		height: 13rem;
+		width: 100% !important;
 	}
 }
 </style>

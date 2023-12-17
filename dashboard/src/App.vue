@@ -54,8 +54,8 @@ const langNameMap: { [key: string]: string } = {
 			</span>
 		</address>
 		<p>
-			Copyright &copy; 2023 All rights reserved.
-			This website is under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0 License</a>
+			Copyright &copy; 2023 All rights reserved. <br/>
+			This website is under <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0 License</a>
 		</p>
 	</footer>
 </template>

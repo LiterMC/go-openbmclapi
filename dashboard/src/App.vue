@@ -5,11 +5,14 @@ import Dropdown from 'primevue/dropdown'
 import { type Lang, avaliableLangs, getLang, setLang } from '@/lang'
 
 const languages = avaliableLangs.map((v) => v.code)
-const selectedLang = computed(() => getLang())
-
-function updateLang(value: Lang){
-	setLang(value)
-}
+const selectedLang = computed({
+	get(){
+		return getLang()
+	},
+	set(value){
+		setLang(value)
+	}
+})
 
 const langNameMap: { [key: string]: string } = {
 	'en-US': 'English',
@@ -22,7 +25,7 @@ const langNameMap: { [key: string]: string } = {
 	<header id="header">
 		<img class="header-logo" src="/logo.png" />
 		<div class="lang-selector-box">
-			<Dropdown :model-value="selectedLang" @update:model-value="updateLang" class="lang-selector"
+			<Dropdown v-model="selectedLang" class="lang-selector"
 				:options="languages" placeholder="Language">
 				<template #value="slotProps">
 					<span class="flex-row-center">

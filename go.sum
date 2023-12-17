@@ -1,5 +1,3 @@
-github.com/KpnmServer/go-util v0.0.0-20210918230454-6dd48583efa9 h1:LyU67yR1rC+0A4mhLswKhDiA7DD2T9imvD6vr47BsoY=
-github.com/KpnmServer/go-util v0.0.0-20210918230454-6dd48583efa9/go.mod h1:JTFdrUnCWJ015ks16Ajs7xvmd1X9KtbphWIPN3NTghU=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

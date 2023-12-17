@@ -3,7 +3,6 @@ module github.com/LiterMC/go-openbmclapi
 go 1.21
 
 require (
-	github.com/KpnmServer/go-util v0.0.0-20210918230454-6dd48583efa9
 	github.com/gorilla/websocket v1.5.1
 	github.com/hamba/avro/v2 v2.18.0
 	github.com/klauspost/compress v1.17.4

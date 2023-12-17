@@ -1,6 +1,6 @@
 {
   "debug": false,
-  "show_serve_info": false,
+  "record_serve_info": false,
   "nohttps": false,
   "public_host": "example.com",
   "public_port": 8080,

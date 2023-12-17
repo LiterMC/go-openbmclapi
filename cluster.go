@@ -2,7 +2,7 @@
  * OpenBmclAPI (Golang Edition)
  * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
- * 
+ *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
@@ -35,7 +35,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	json "github.com/KpnmServer/go-util/json"
 	"github.com/hamba/avro/v2"
 	"github.com/klauspost/compress/zstd"
 )
@@ -69,7 +68,7 @@ type Cluster struct {
 	socket      *Socket
 	keepalive   context.CancelFunc
 	downloading map[string]chan struct{}
-	waitEnable []chan struct{}
+	waitEnable  []chan struct{}
 
 	client *http.Client
 
@@ -167,7 +166,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		}()
 	}
 	logInfof("Dialing %s", strings.ReplaceAll(wsurl, cr.password, "<******>"))
-	err := cr.socket.IO().Dial(wsurl, WithHeader(header))
+	err := cr.socket.IO().DialContext(ctx, wsurl, WithHeader(header))
 	if err != nil {
 		logError("Websocket connect error:", err)
 		return false
@@ -180,14 +179,14 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	return true
 }
 
-func (cr *Cluster)WaitForEnable()(<-chan struct{}){
+func (cr *Cluster) WaitForEnable() <-chan struct{} {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
 	ch := make(chan struct{}, 0)
 	if cr.enabled.Load() {
 		close(ch)
-	}else{
+	} else {
 		cr.waitEnable = append(cr.waitEnable, ch)
 	}
 	return ch
@@ -202,7 +201,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 	logInfo("Sending enable packet")
-	data, err := cr.socket.EmitAckContext(ctx, "enable", json.JsonObj{
+	data, err := cr.socket.EmitAckContext(ctx, "enable", Map{
 		"host":    cr.host,
 		"port":    cr.publicPort,
 		"version": ClusterVersion,
@@ -249,7 +248,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 	hits, hbts := cr.hits.Swap(0), cr.hbts.Swap(0)
 	cr.stats.AddHits(hits, hbts)
-	data, err := cr.socket.EmitAckContext(ctx, "keep-alive", json.JsonObj{
+	data, err := cr.socket.EmitAckContext(ctx, "keep-alive", Map{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits":  hits,
 		"bytes": hbts,

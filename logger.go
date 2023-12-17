@@ -2,7 +2,7 @@
  * OpenBmclAPI (Golang Edition)
  * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
- * 
+ *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
@@ -20,13 +20,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
-
-	ufile "github.com/KpnmServer/go-util/file"
 )
 
 var logdir string = "logs"
@@ -109,10 +109,10 @@ func logErrorf(format string, args ...any) {
 }
 
 func flushLogfile() {
-	if ufile.IsNotExist(logdir) {
-		ufile.CreateDir(logdir)
+	if _, err := os.Stat(logdir); errors.Is(err, os.ErrNotExist) {
+		os.MkdirAll(logdir, 0755)
 	}
-	lfile, err := os.OpenFile(ufile.JoinPath(logdir, time.Now().Format("20060102-15.log")),
+	lfile, err := os.OpenFile(filepath.Join(logdir, time.Now().Format("20060102-15.log")),
 		os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 	if err != nil {
 		logError("Create new log file error:", err)

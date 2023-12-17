@@ -2,7 +2,7 @@
  * OpenBmclAPI (Golang Edition)
  * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
- * 
+ *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
@@ -390,7 +390,7 @@ func (p *SPacket) ParseData(o_ptr any) error {
 
 var WsDialer *websocket.Dialer = &websocket.Dialer{
 	Proxy:            http.ProxyFromEnvironment,
-	HandshakeTimeout: 45 * time.Second,
+	HandshakeTimeout: 30 * time.Second,
 	TLSClientConfig: &tls.Config{
 		InsecureSkipVerify: true, // Skip verify because the author was lazy
 	},
@@ -452,7 +452,7 @@ func WithHeader(header http.Header) ESocketDialOptions {
 	}
 }
 
-func (s *ESocket) Dial(url string, opts ...ESocketDialOptions) (err error) {
+func (s *ESocket) DialContext(ctx context.Context, url string, opts ...ESocketDialOptions) (err error) {
 	if !s.status.CompareAndSwap(ESocketIdle, ESocketDialing) {
 		return ErrSocketConnected
 	}
@@ -463,7 +463,7 @@ func (s *ESocket) Dial(url string, opts ...ESocketDialOptions) (err error) {
 		opt(s)
 	}
 
-	wsconn, _, err := s.Dialer.Dial(s.url, s.header)
+	wsconn, _, err := s.Dialer.DialContext(ctx, s.url, s.header)
 	if err != nil {
 		s.status.Store(ESocketIdle)
 		return
@@ -507,7 +507,7 @@ func (s *ESocket) wsCloseHandler(code int, text string) (err error) {
 			return wer
 		}
 		logDebug("Engine.io: Reconnecting ...")
-		if err = s.Dial(s.url); err != nil {
+		if err = s.DialContext(context.TODO(), s.url); err != nil {
 			logError("Engine.io: Reconnect failed:", err)
 			return
 		}
@@ -684,7 +684,7 @@ func NewSocket(io *ESocket) (s *Socket) {
 			if ok {
 				var arr []any
 				pkt.ParseData(&arr)
-				select{
+				select {
 				case ch <- arr:
 				default:
 					logError("Socket.io: Couldn't send ack packet through the channel")
@@ -764,7 +764,7 @@ func (s *Socket) EmitAckContext(ctx context.Context, event string, objs ...any) 
 		return
 	}
 	resCh := make(chan []any, 1)
-	go func(){
+	go func() {
 		if err = s.send(pkt); err != nil {
 			return
 		}

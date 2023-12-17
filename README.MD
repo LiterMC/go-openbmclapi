@@ -1,12 +1,18 @@
 
-> 注: 本仓库代码按照<https://github.com/bangbang93/openbmclapi>编写, **非**官方, **不保证**稳定性/时效性
+# Go OpemBmclAPI
+
+Golang 版的 [OpemBmclAPI](https://github.com/bangbang93/openbmclapi)
+
+> 注: 本仓库部分代码按照 <https://github.com/bangbang93/openbmclapi> 编写, **非官方, 不保证稳定性/时效性**
 
 ## 特性
 
 - 使用协程/多线程, 超高的文件同步速度
 - 不依赖大量的三方包, 体积小巧
-- 静态文件, 无需配置依赖
-- 支持一些小众的奇怪需求
+- 静态文件, 无需配置任何依赖
+- 得益于 Golang 强大的跨平台编译器, 支持大部分主流平台/处理器
+- 内置一个实时更新的状态面板
+- 支持一些小众的~~奇怪~~需求
 - ~~更好的压榨节点~~
 
 ## 安装

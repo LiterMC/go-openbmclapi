@@ -22,11 +22,11 @@ ARG REPO
 ARG NPM_DIR
 
 COPY ./go.mod ./go.sum "/go/src/${REPO}/"
-COPY ./src "/go/src/${REPO}/src"
+COPY . "/go/src/${REPO}"
 COPY --from=WEB_BUILD "/web/dist" "/go/src/${REPO}/${NPM_DIR}/dist"
 
 RUN --mount=type=cache,target=/root/.cache/go-build cd "/go/src/${REPO}" && \
- CGO_ENABLED=0 go build -v -o "/go/bin/application" -ldflags="-X 'main.BuildVersion=${TAG}'" "./src"
+ CGO_ENABLED=0 go build -v -o "/go/bin/application" -ldflags="-X 'main.BuildVersion=${TAG}'" "."
 
 FROM alpine:latest
 

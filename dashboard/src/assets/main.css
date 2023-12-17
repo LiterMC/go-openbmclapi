@@ -1,8 +1,14 @@
 @import './base.css';
 
 #app {
-	max-width: 1280px;
+	width: 100vw;
 	margin: 0 auto;
 
 	font-weight: normal;
+}
+
+.flex-row-center {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
 }

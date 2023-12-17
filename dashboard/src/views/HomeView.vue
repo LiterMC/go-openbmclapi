@@ -4,6 +4,7 @@ import { useRequest } from 'vue-request'
 import axios from 'axios'
 import ProgressSpinner from 'primevue/progressspinner'
 import Skeleton from 'primevue/skeleton'
+import Button from 'primevue/button'
 import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import type { StatInstData, APIStatus } from '@/api/v0'
@@ -95,13 +96,12 @@ function getDaysInMonth(): number {
 	<main>
 		<h1>Go-OpenBmclAPI {{ tr('title.dashboard') }}</h1>
 		<div class="basic-info">
-			<div
+			<Button
 				class="info-status"
 				:status="status"
-				:style="{
-					'--status-text': `'${tr(`badge.server.status.${status}`)}'`,
-				}"
-			></div>
+			>
+				{{ tr(`badge.server.status.${status}`) }}
+			</Button>
 
 			<ProgressSpinner v-if="loading" class="polling" strokeWidth="6"/>
 			<div v-if="error">
@@ -178,12 +178,16 @@ function getDaysInMonth(): number {
 	display: inline-flex !important;
 	flex-direction: row;
 	align-items: center;
+	width: 10rem;
+	height: 2.7rem;
 	padding: 0.5rem;
 	margin: 0.5rem;
+	border: none;
 	border-radius: 0.2rem;
 	font-weight: 800;
 	user-select: none;
 	cursor: pointer;
+	transition: 1s background-color ease-out;
 }
 
 .info-status[status='enabled'] {
@@ -221,10 +225,6 @@ function getDaysInMonth(): number {
 	transition: background-color 0.15s;
 }
 
-.info-status::after {
-	content: var(--status-text);
-}
-
 .polling {
 	width: 1.5rem;
 	margin-right: 0.2rem;
@@ -244,7 +244,7 @@ function getDaysInMonth(): number {
 	height: 13rem !important;
 }
 
-@media (max-width: 50rem) {
+@media (max-width: 48rem) {
 	.hits-chart {
 		width: 100% !important;
 	}

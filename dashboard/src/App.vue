@@ -11,13 +11,29 @@ function updateLang(value: Lang){
 	setLang(value)
 }
 
+const langNameMap: { [key: string]: string } = {
+	'en-US': 'English',
+	'zh-CN': '简体中文',
+}
+
 </script>
 
 <template>
 	<header id="header">
+		<img class="header-logo" src="/logo.png" />
 		<div class="lang-selector-box">
 			<Dropdown :model-value="selectedLang" @update:model-value="updateLang" class="lang-selector"
-				:options="languages" placeholder="Language" />
+				:options="languages" placeholder="Language">
+				<template #value="slotProps">
+					<span class="flex-row-center">
+						<i class="pi pi-globe"></i>
+						{{ langNameMap[slotProps.value.toString()] }}
+					</span>
+				</template>
+				<template #option="slotProps">
+					{{ langNameMap[slotProps.option.toString()] }}
+				</template>
+			</Dropdown>
 		</div>
 		<a class="nav-github" target="_blank" tabindex="-1" href="https://github.com/LiterMC/go-openbmclapi">
 			<i class="pi pi-github"></i>
@@ -28,6 +44,20 @@ function updateLang(value: Lang){
 	<div id="body">
 		<RouterView />
 	</div>
+	<footer id="footer">
+		<p>
+			Powered by <a href="https://vuejs.org/">Vue.js</a>
+		</p>
+		<address>
+			<span>
+				Author: <a href="mailto:zyxkad@gmail.com">Kevin Z &lt;zyxkad@gmail.com&gt;</a>
+			</span>
+		</address>
+		<p>
+			Copyright &copy; 2023 All rights reserved.
+			This website is under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0 License</a>
+		</p>
+	</footer>
 </template>
 
 <style scoped>
@@ -43,8 +73,20 @@ function updateLang(value: Lang){
 	width: 100vw;
 	height: 4rem;
 	padding: 0 2rem;
-	background-color: #f8fffe;
+	background-color: color-mix(in srgb, var(--primary-50), transparent);
 	box-shadow: #0008 0 0 1rem -0.5rem;
+	backdrop-filter: blur(0.4rem);
+}
+
+.header-logo {
+	width: 3rem;
+	height: 3rem;
+	position: absolute;
+	left: 2rem;
+}
+
+.lang-selector .pi-globe {
+	margin-right: 0.3rem;
 }
 
 .nav-github {
@@ -79,4 +121,24 @@ function updateLang(value: Lang){
 	padding: 5rem 2rem 4rem 2rem;
 	min-height: 100vh;
 }
+
+#footer {
+	padding: 2rem;
+	font-family: var(--font-family);
+	color: var(--primary-color-text);
+	background-color: var(--primary-color);
+}
+
+#footer a {
+	color: var(--primary-100);
+	text-decoration: none;
+	transition: 0.4s color, 0.2s background-color ease;
+}
+
+#footer a:hover {
+	color: var(--highlight-text-color);
+	background-color: var(--highlight-bg);
+	text-decoration: underline;
+}
+
 </style>

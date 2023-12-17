@@ -35,6 +35,7 @@ function updateLang(value: Lang){
 	position: fixed;
 	top: 0;
 	left: 0;
+	z-index: 999999;
 	display: flex;
 	flex-direction: row;
 	align-items: center;

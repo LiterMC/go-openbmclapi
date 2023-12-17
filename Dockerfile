@@ -2,7 +2,7 @@
 
 ARG GO_VERSION=1.21
 ARG REPO=github.com/LiterMC/go-openbmclapi
-ARG NPM_DIR=src/dashboard
+ARG NPM_DIR=dashboard
 
 FROM node:21 AS WEB_BUILD
 

@@ -28,7 +28,7 @@ const langNameMap: { [key: string]: string } = {
 			<Dropdown v-model="selectedLang" class="lang-selector"
 				:options="languages" placeholder="Language">
 				<template #value="slotProps">
-					<span class="flex-row-center">
+					<span class="flex-row-center" style="margin-right: -0.75rem;">
 						<i class="pi pi-globe"></i>
 						{{ langNameMap[slotProps.value.toString()] }}
 					</span>

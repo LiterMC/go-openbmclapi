@@ -1,7 +1,11 @@
 {
 	"lang": "English",
 	"title": {
-		"dashboard": "Dashboard"
+		"dashboard": "Dashboard",
+		"day": "Day requests",
+		"month": "Month requests",
+		"year": "Year requests",
+		"total": "Total requests"
 	},
 	"message": {
 		"server": {

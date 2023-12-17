@@ -12,7 +12,7 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU Affero General Public License for more details.
- * 
+ *
  *  You should have received a copy of the GNU Affero General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
@@ -176,6 +176,10 @@ START:
 
 	readConfig()
 
+	httpcli := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
 	var (
 		dialer   *net.Dialer
 		hjproxy  *HjProxy
@@ -217,8 +221,13 @@ START:
 
 	if config.UseOss {
 		createOssMirrorDir()
-		assertOSS(10)
-		go func() {
+		supportRange, err := checkOSS(ctx, httpcli, 10)
+		if err != nil {
+			logError(err)
+			os.Exit(2)
+		}
+		cluster.ossSupportRange = supportRange
+		go func(ctx context.Context) {
 			ticker := time.NewTicker(time.Minute * 5)
 			defer ticker.Stop()
 			for {
@@ -226,10 +235,18 @@ START:
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					assertOSS(1)
+					supportRange, err := checkOSS(ctx, httpcli, 1)
+					if err != nil {
+						if errors.Is(err, context.Canceled) {
+							return
+						}
+						logError(err)
+						os.Exit(2)
+					}
+					_ = supportRange
 				}
 			}
-		}()
+		}(ctx)
 	}
 
 	logDebugf("Receiving signals")
@@ -401,31 +418,40 @@ func createOssMirrorDir() {
 	}
 }
 
-func assertOSS(size int) {
-	logInfo("Checking OSS ...")
+func checkOSS(ctx context.Context, client *http.Client, size int) (supportRange bool, err error) {
+	targetSize := (int64)(size) * 1024 * 1024
+	logInfof("Checking OSS for %d bytes ...", targetSize)
+
 	target, err := url.JoinPath(config.OssRedirectBase, "measure", strconv.Itoa(size))
 	if err != nil {
-		logError("Cannot check OSS server:", err)
-		os.Exit(2)
+		return false, fmt.Errorf("Cannot check OSS server: %w", err)
 	}
-	res, err := http.Get(target)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		logErrorf("OSS check request failed %q: %v", target, err)
-		os.Exit(2)
+		return
+	}
+	req.Header.Set("Range", "bytes=1-")
+	res, err := client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("OSS check request failed %q: %w", target, err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		logErrorf("OSS check request failed %q: %d %s", target, res.StatusCode, res.Status)
-		os.Exit(2)
+	if supportRange = res.StatusCode == http.StatusPartialContent; supportRange {
+		logDebug("OSS support range header!")
+		targetSize--
+	} else if res.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("OSS check request failed %q: %d %s", target, res.StatusCode, res.Status)
 	}
 	logDebug("reading OSS response")
+	start := time.Now()
 	n, err := io.Copy(io.Discard, res.Body)
 	if err != nil {
-		logErrorf("OSS check request failed %q: %v", target, err)
-		os.Exit(2)
+		return false, fmt.Errorf("OSS check request failed %q: %w", target, err)
 	}
-	if n != (int64)(size)*1024*1024 {
-		logErrorf("OSS check request failed %q: expected %dMB, but got %d bytes", target, size, n)
-		os.Exit(2)
+	used := time.Since(start)
+	if n != targetSize {
+		return false, fmt.Errorf("OSS check request failed %q: expected %dMB, but got %d bytes", target, size, n)
 	}
+	logInfof("OSS check finished, used %v, %s/s", used, bytesToUnit((float64)(n)/used.Seconds()))
+	return
 }

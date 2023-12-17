@@ -12,7 +12,7 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU Affero General Public License for more details.
- * 
+ *
  *  You should have received a copy of the GNU Affero General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
@@ -28,6 +28,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 )
 
 var zeroBuffer [1024 * 1024]byte
@@ -128,17 +130,31 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 		}
 		name := req.Form.Get("name")
+
+		// if use OSS redirect
 		if cr.redirectBase != "" {
 			target, err := url.JoinPath(cr.redirectBase, "download", hashToFilename(hash))
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			size := stat.Size()
+			if cr.ossSupportRange { // fix the size for Ranged request
+				rg := req.Header.Get("Range")
+				rgs, err := gosrc.ParseRange(rg, size)
+				if err == nil {
+					size = 0
+					for _, r := range rgs {
+						size += r.Length
+					}
+				}
+			}
 			http.Redirect(rw, req, target, http.StatusFound)
 			cr.hits.Add(1)
-			cr.hbts.Add(stat.Size())
+			cr.hbts.Add(size)
 			return
 		}
+
 		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
 		fd, err := os.Open(path)
 		if err != nil {

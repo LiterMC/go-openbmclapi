@@ -115,7 +115,7 @@ function getDaysInMonth(): number {
 			</div>
 		</div>
 		<div class="chart-card">
-			<h3>Day</h3>
+			<h3>{{ tr('title.day') }}</h3>
 			<HitsChart
 				v-if="data && stat"
 				class="hits-chart"
@@ -129,7 +129,7 @@ function getDaysInMonth(): number {
 			<Skeleton v-else class="hits-chart"/>
 		</div>
 		<div class="chart-card">
-			<h3>Month</h3>
+			<h3>{{ tr('title.month') }}</h3>
 			<HitsChart
 				v-if="data && stat"
 				class="hits-chart"
@@ -143,12 +143,12 @@ function getDaysInMonth(): number {
 			<Skeleton v-else class="hits-chart"/>
 		</div>
 		<div class="chart-card">
-			<h3>Year</h3>
+			<h3><h3>{{ tr('title.year') }}</h3></h3>
 			<HitsChart
 				v-if="data && stat"
 				class="hits-chart"
-				:max="14"
-				:offset="12"
+				:max="13"
+				:offset="11"
 				:data="stat.months"
 				:oldData="stat.prev.months"
 				:current="stat.date.month + getDaysInMonth()"
@@ -242,6 +242,7 @@ function getDaysInMonth(): number {
 .hits-chart {
 	width: 45rem !important;
 	height: 13rem !important;
+	user-select: none;
 }
 
 @media (max-width: 48rem) {

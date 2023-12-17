@@ -2,12 +2,12 @@
 import { computed } from 'vue'
 import { RouterView } from 'vue-router'
 import Dropdown from 'primevue/dropdown'
-import { avaliableLangs, getLang, setLang } from '@/lang'
+import { type Lang, avaliableLangs, getLang, setLang } from '@/lang'
 
 const languages = avaliableLangs.map((v) => v.code)
 const selectedLang = computed(() => getLang())
 
-function updateLang(value){
+function updateLang(value: Lang){
 	setLang(value)
 }
 

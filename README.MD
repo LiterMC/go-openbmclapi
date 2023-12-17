@@ -15,6 +15,11 @@ Golang 版的 [OpemBmclAPI](https://github.com/bangbang93/openbmclapi)
 - 支持一些小众的~~奇怪~~需求
 - ~~更好的压榨节点~~
 
+## FAQ
+
+Q: 没有适合我的平台的程序怎么办?
+A: 检查 [Go Platform Values](https://gist.github.com/asukakenji/f15ba7e588ac42795f421b48b8aede63#platform-values), 如果您的系统/架构存在, 那么可以发个 issue
+
 ## 安装
 
 ### 无依赖直接运行

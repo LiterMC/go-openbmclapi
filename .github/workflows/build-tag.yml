@@ -20,14 +20,13 @@ jobs:
           go-version: '1.21'
       -
         name: Generate
-        run: go generate ./...
+        run: go generate .
       -
         name: Test
-        run: go test -v ./src
+        run: go test -v .
       -
         name: Build
-        run: |
-          bash ./src/build.sh
+        run: bash ./build.sh
       -
         name: Create Release
         id: create_release

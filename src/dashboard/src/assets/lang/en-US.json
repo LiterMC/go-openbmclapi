@@ -1,0 +1,30 @@
+{
+	"lang": "English",
+	"title": {
+		"dashboard": "Dashboard"
+	},
+	"message": {
+		"server": {
+			"run-for": "Server has been running for"
+		}
+	},
+	"badge": {
+		"server": {
+			"status": {
+				"error": "Disconnected",
+				"enabled": "Running",
+				"disabled": "Disabled"
+			}
+		}
+	},
+	"unit": {
+		"time": {
+			"ms": "ms",
+			"s": "s",
+			"min": "min",
+			"hour": "hour",
+			"day": "day",
+			"year": "year"
+		}
+	}
+}

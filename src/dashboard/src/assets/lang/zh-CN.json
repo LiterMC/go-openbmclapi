@@ -1,0 +1,30 @@
+{
+	"lang": "简体中文",
+	"title": {
+		"dashboard": "仪表盘"
+	},
+	"message": {
+		"server": {
+			"run-for": "服务器已运行"
+		}
+	},
+	"badge": {
+		"server": {
+			"status": {
+				"error": "连接已断开",
+				"enabled": "运行中",
+				"disabled": "已停止"
+			}
+		}
+	},
+	"unit": {
+		"time": {
+			"ms": "毫秒",
+			"s": "秒",
+			"min": "分钟",
+			"hour": "小时",
+			"day": "天",
+			"year": "年"
+		}
+	}
+}

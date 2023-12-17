@@ -5,6 +5,7 @@ import axios from 'axios'
 import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import type { StatInstData, APIStatus } from '@/api/v0'
+import { tr } from '@/lang'
 
 const now = ref(new Date())
 setInterval(() => {
@@ -17,6 +18,8 @@ const { data, error, loading } = useRequest(
 		pollingInterval: 5000,
 	},
 )
+
+const status = computed(() => error.value ? 'error' : data.value && data.value.enabled ? 'enabled' : 'disabled')
 
 const stat = computed(() => {
 	if (!data.value) {
@@ -86,17 +89,20 @@ function getDaysInMonth(): number {
 
 <template>
 	<main>
-		<h1>Go-OpenBmclAPI Dashboard</h1>
+		<h1>Go-OpenBmclAPI {{ tr('title.dashboard') }}</h1>
 		<div class="basic-info">
 			<div
 				class="info-status"
-				:status="error ? 'error' : data && data.enabled ? 'enabled' : 'disabled'"
+				:status="status"
+				:style="{
+					'--status-text': `'${tr(`badge.server.status.${status}`)}'`,
+				}"
 			></div>
 			<div v-if="error">
 				<b>{{ error }}</b>
 			</div>
 			<div v-else-if="data">
-				Server has been running for
+				{{ tr('message.server.run-for') }}
 				<span class="info-uptime">
 					{{ formatTime(now.getTime() - new Date(data.startAt).getTime()) }}
 				</span>
@@ -106,8 +112,8 @@ function getDaysInMonth(): number {
 		<HitsChart
 			v-if="data && stat"
 			class="hits-chart"
-			:max="24"
-			:offset="22"
+			:max="25"
+			:offset="23"
 			:data="stat.hours"
 			:oldData="stat.prev.hours"
 			:current="stat.date.hour + new Date().getMinutes() / 60"
@@ -128,8 +134,8 @@ function getDaysInMonth(): number {
 		<HitsChart
 			v-if="data && stat"
 			class="hits-chart"
-			:max="12"
-			:offset="10"
+			:max="14"
+			:offset="12"
 			:data="stat.months"
 			:oldData="stat.prev.months"
 			:current="stat.date.month + getDaysInMonth()"
@@ -165,7 +171,6 @@ function getDaysInMonth(): number {
 }
 
 .info-status[status='enabled'] {
-	--status-text: 'Running';
 	--flash-from: #fff;
 	--flash-to: #11dfc3;
 	color: #fff;
@@ -174,7 +179,6 @@ function getDaysInMonth(): number {
 }
 
 .info-status[status='disabled'] {
-	--status-text: 'Starting';
 	--flash-from: #fff;
 	--flash-to: #e61a05;
 	color: #fff;
@@ -183,7 +187,6 @@ function getDaysInMonth(): number {
 }
 
 .info-status[status='error'] {
-	--status-text: 'Disconnected';
 	--flash-from: #8a8dac;
 	color: #fff;
 	background-color: #bfadad;

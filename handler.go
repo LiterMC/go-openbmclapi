@@ -77,6 +77,11 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			used := time.Since(start)
 			if config.RecordServeInfo {
 				addr, _, _ := net.SplitHostPort(req.RemoteAddr)
+				if used > time.Minute {
+					used = used.Truncate(time.Second)
+				}else if used > time.Second {
+					used = used.Truncate(time.Microsecond)
+				}
 				logInfof("Serve %d | %12v | %-15s | %s | %-4s %s | %q", srw.status, used, addr, req.Proto, req.Method, req.RequestURI, ua)
 			}
 			if 200 > srw.status && srw.status >= 400 {

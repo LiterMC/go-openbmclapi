@@ -86,22 +86,10 @@ func ParseEPT(id string) EPacketType {
 	if len(id) != 1 {
 		return EP_UNKNOWN
 	}
-	switch id {
-	case "0":
-		return EP_OPEN
-	case "1":
-		return EP_CLOSE
-	case "2":
-		return EP_PING
-	case "3":
-		return EP_PONG
-	case "4":
-		return EP_MESSAGE
-	}
-	return EP_UNKNOWN
+	return EPTFromByte(id[0])
 }
 
-func GetEPT(id byte) EPacketType {
+func EPTFromByte(id byte) EPacketType {
 	switch id {
 	case 0:
 		return EP_OPEN
@@ -174,26 +162,10 @@ func ParseSPT(id string) SPacketType {
 	if len(id) != 1 {
 		return SP_UNKNOWN
 	}
-	switch id {
-	case "0":
-		return SP_CONNECT
-	case "1":
-		return SP_DISCONNECT
-	case "2":
-		return SP_EVENT
-	case "3":
-		return SP_ACK
-	case "4":
-		return SP_CONNECT_ERROR
-	case "5":
-		return SP_BINARY_EVENT
-	case "6":
-		return SP_BINARY_ACK
-	}
-	return SP_UNKNOWN
+	return SPTFromByte(id[0])
 }
 
-func GetSPT(id byte) SPacketType {
+func SPTFromByte(id byte) SPacketType {
 	switch id {
 	case 0:
 		return SP_CONNECT
@@ -238,12 +210,12 @@ func (p *EPacket) WriteTo(w io.Writer) (n int, err error) {
 }
 
 func (p *EPacket) ReadFrom(r io.Reader) (n int, err error) {
-	t := []byte{0}
-	n, err = r.Read(t)
+	var t [1]byte
+	n, err = r.Read(t[:])
 	if err != nil || n == 0 {
 		return
 	}
-	p.typ = GetEPT(t[0] - '0')
+	p.typ = EPTFromByte(t[0] - '0')
 	if p.typ == EP_UNKNOWN {
 		return n, fmt.Errorf("Unexpected packet id %c", t[0])
 	}
@@ -304,7 +276,7 @@ func (p *SPacket) ParseBuffer(r *bytes.Reader) (err error) {
 	if err != nil {
 		return
 	}
-	p.typ = GetSPT(b - '0')
+	p.typ = SPTFromByte(b - '0')
 	if p.typ == SP_UNKNOWN {
 		return fmt.Errorf("Unexpected packet id %c", b)
 	}

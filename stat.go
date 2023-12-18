@@ -139,6 +139,7 @@ func (d *statData) update(newData *statInstData) {
 			for i := d.Date.Month + 1; i < now.Month; i++ {
 				d.Months[i] = statInstData{}
 			}
+			clear(d.Accesses)
 			// update history data
 			if iscont {
 				if now.Day == 0 && d.Date.IsLastDay() {

@@ -32,27 +32,19 @@ const getChartData = () => {
 	const updateStat = (stats: StatInstData[], current: number) => {
 		const oldStats = props.oldData
 		const offset = Math.floor(current - props.offset)
-		if (offset >= 0) {
-			let i = 0
-			for (; i + offset < stats.length; i++) {
-				hits[i] = stats[i + offset].hits
-				bytes[i] = stats[i + offset].bytes
-			}
-			for (; i < maxX; i++) {
-				hits[i] = 0
-				bytes[i] = 0
-			}
-		} else if (offset < 0) {
-			let i = 0
-			for (; i + offset < 0; i++) {
-				let j = i + offset + oldStats.length
-				hits[i] = oldStats[j].hits
-				bytes[i] = oldStats[j].bytes
-			}
-			for (; i < maxX; i++) {
-				hits[i] = stats[i + offset].hits
-				bytes[i] = stats[i + offset].bytes
-			}
+		let i = 0
+		for (; i + offset < 0; i++) {
+			let j = i + offset + oldStats.length
+			hits[i] = oldStats[j].hits
+			bytes[i] = oldStats[j].bytes
+		}
+		for (; i + offset < stats.length; i++) {
+			hits[i] = stats[i + offset].hits
+			bytes[i] = stats[i + offset].bytes
+		}
+		for (; i < maxX; i++) {
+			hits[i] = 0
+			bytes[i] = 0
 		}
 		for (let i = 0; i < maxX; i++) {
 			labels[i] = props.formatXLabel(i + offset + 1)

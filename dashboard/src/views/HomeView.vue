@@ -2,11 +2,13 @@
 import { onMounted, ref, computed } from 'vue'
 import { useRequest } from 'vue-request'
 import axios from 'axios'
+import Button from 'primevue/button'
+import Chart from 'primevue/chart'
 import ProgressSpinner from 'primevue/progressspinner'
 import Skeleton from 'primevue/skeleton'
-import Button from 'primevue/button'
 import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
+import UAChart from '@/components/UAChart.vue'
 import type { StatInstData, APIStatus } from '@/api/v0'
 import { tr } from '@/lang'
 
@@ -95,77 +97,110 @@ function getDaysInMonth(): number {
 <template>
 	<main>
 		<h1>Go-OpenBmclAPI {{ tr('title.dashboard') }}</h1>
-		<div class="basic-info">
-			<Button
-				class="info-status"
-				:status="status"
-			>
-				{{ tr(`badge.server.status.${status}`) }}
-			</Button>
+		<div class="main">
+			<div class="basic-info">
+				<Button
+					class="info-status"
+					:status="status"
+				>
+					{{ tr(`badge.server.status.${status}`) }}
+				</Button>
 
-			<ProgressSpinner v-if="loading" class="polling" strokeWidth="6"/>
-			<div v-if="error">
-				<b>{{ error }}</b>
+				<ProgressSpinner v-if="loading" class="polling" strokeWidth="6"/>
+				<div v-if="error">
+					<b>{{ error }}</b>
+				</div>
+				<div v-else-if="data">
+					{{ tr('message.server.run-for') }}
+					<span class="info-uptime">
+						{{ formatTime(now.getTime() - new Date(data.startAt).getTime()) }}
+					</span>
+				</div>
 			</div>
-			<div v-else-if="data">
-				{{ tr('message.server.run-for') }}
-				<span class="info-uptime">
-					{{ formatTime(now.getTime() - new Date(data.startAt).getTime()) }}
-				</span>
+			<div class="hits-chart-box">
+				<div class="chart-card">
+					<h3>{{ tr('title.day') }}</h3>
+					<HitsChart
+						v-if="stat"
+						class="hits-chart"
+						:max="25"
+						:offset="23"
+						:data="stat.hours"
+						:oldData="stat.prev.hours"
+						:current="stat.date.hour + new Date().getMinutes() / 60"
+						:formatXLabel="formatHour"
+					/>
+					<Skeleton v-else class="hits-chart"/>
+				</div>
+				<div class="chart-card">
+					<h3>{{ tr('title.month') }}</h3>
+					<HitsChart
+						v-if="stat"
+						class="hits-chart"
+						:max="31"
+						:offset="29"
+						:data="stat.days"
+						:oldData="stat.prev.days"
+						:current="stat.date.day + new Date().getHours() / 24"
+						:formatXLabel="formatDay"
+					/>
+					<Skeleton v-else class="hits-chart"/>
+				</div>
+				<div class="chart-card">
+					<h3>{{ tr('title.year') }}</h3>
+					<HitsChart
+						v-if="stat"
+						class="hits-chart"
+						:max="13"
+						:offset="11"
+						:data="stat.months"
+						:oldData="stat.prev.months"
+						:current="stat.date.month + getDaysInMonth()"
+						:formatXLabel="formatMonth"
+					/>
+					<Skeleton v-else class="hits-chart"/>
+				</div>
+				<!-- TODO: show yearly chart -->
+			</div>
+			<div class="info-chart-box">
+				<h3>{{ tr('title.user_agents') }}</h3>
+				<UAChart
+					v-if="stat || 1"
+					class="ua-chart"
+					:max="5"
+					:data="{'HMCL':10, 'test': 1, 'Android': 13, 'x': 1, 'y': 3, 'z':3,'o':9,'pp':12}"
+				/>
 			</div>
 		</div>
-		<div class="chart-card">
-			<h3>{{ tr('title.day') }}</h3>
-			<HitsChart
-				v-if="data && stat"
-				class="hits-chart"
-				:max="25"
-				:offset="23"
-				:data="stat.hours"
-				:oldData="stat.prev.hours"
-				:current="stat.date.hour + new Date().getMinutes() / 60"
-				:formatXLabel="formatHour"
-			/>
-			<Skeleton v-else class="hits-chart"/>
-		</div>
-		<div class="chart-card">
-			<h3>{{ tr('title.month') }}</h3>
-			<HitsChart
-				v-if="data && stat"
-				class="hits-chart"
-				:max="31"
-				:offset="29"
-				:data="stat.days"
-				:oldData="stat.prev.days"
-				:current="stat.date.day + new Date().getHours() / 24"
-				:formatXLabel="formatDay"
-			/>
-			<Skeleton v-else class="hits-chart"/>
-		</div>
-		<div class="chart-card">
-			<h3><h3>{{ tr('title.year') }}</h3></h3>
-			<HitsChart
-				v-if="data && stat"
-				class="hits-chart"
-				:max="13"
-				:offset="11"
-				:data="stat.months"
-				:oldData="stat.prev.months"
-				:current="stat.date.month + getDaysInMonth()"
-				:formatXLabel="formatMonth"
-			/>
-			<Skeleton v-else class="hits-chart"/>
-		</div>
-		<!-- TODO: show yearly chart -->
 	</main>
 </template>
 <style scoped>
+
+.main {
+	display: grid;
+	grid-template:
+		"a a" 4rem
+		"b c" auto
+		/ 46rem auto
+	;
+	grid-gap: 1rem;
+}
+
 .basic-info {
+	grid-area: a;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	height: 4rem;
 	font-weight: 200;
+}
+
+.hits-chart-box {
+	grid-area: b;
+}
+
+.info-chart-box {
+	grid-area: c;
 }
 
 .basic-info > div {
@@ -240,12 +275,23 @@ function getDaysInMonth(): number {
 }
 
 .hits-chart {
+	max-width: 100%;
 	width: 45rem !important;
 	height: 13rem !important;
 	user-select: none;
 }
 
-@media (max-width: 48rem) {
+.ua-chart {
+	width: 25rem !important;
+	height: 13rem !important;
+	user-select: none;
+}
+
+@media (max-width: 60rem) {
+	.main {
+		display: flex;
+		flex-direction: column;
+	}
 	.hits-chart {
 		width: 100% !important;
 	}

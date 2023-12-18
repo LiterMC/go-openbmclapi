@@ -26,4 +26,5 @@ export interface APIStatus {
 	startAt: string
 	stats: Stats
 	enabled: boolean
+	accesses: { [ua: string]: number }
 }

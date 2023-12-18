@@ -7,7 +7,8 @@
 		"year": "Year requests",
 		"total": "Total requests",
 		"hits": "Hits",
-		"bytes": "Bytes"
+		"bytes": "Bytes",
+		"user_agents": "Common User Agents"
 	},
 	"message": {
 		"server": {

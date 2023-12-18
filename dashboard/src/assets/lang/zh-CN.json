@@ -7,7 +7,8 @@
 		"year": "当年请求",
 		"total": "全部请求",
 		"hits": "请求数",
-		"bytes": "流量"
+		"bytes": "流量",
+		"user_agents": "常见用户代理"
 	},
 	"message": {
 		"server": {

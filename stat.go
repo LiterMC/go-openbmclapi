@@ -33,9 +33,9 @@ type statInstData struct {
 	Bytes int64 `json:"bytes"`
 }
 
-func (d *statInstData) update(hits int32, bytes int64) {
-	d.Hits += hits
-	d.Bytes += bytes
+func (d *statInstData) update(o *statInstData) {
+	d.Hits += o.Hits
+	d.Bytes += o.Bytes
 }
 
 // statTime always save a UTC time
@@ -71,9 +71,11 @@ type statData struct {
 	statHistoryData
 	Prev  statHistoryData         `json:"prev"`
 	Years map[string]statInstData `json:"years"`
+
+	Accesses map[string]int `json:"accesses"`
 }
 
-func (d *statData) update(hits int32, bytes int64) {
+func (d *statData) update(newData *statInstData) {
 	now := makeStatTime(time.Now())
 	if d.Date.Year != 0 {
 		switch {
@@ -82,18 +84,15 @@ func (d *statData) update(hits int32, bytes int64) {
 			isMonthCont := iscont && now.Month == 0 && d.Date.Month+1 == len(d.Months)
 			var inst statInstData
 			for i := 0; i < d.Date.Month; i++ {
-				n := d.Months[i]
-				inst.update(n.Hits, n.Bytes)
+				inst.update(&d.Months[i])
 			}
 			if iscont {
 				for i := 0; i <= d.Date.Day; i++ {
-					n := d.Days[i]
-					inst.update(n.Hits, n.Bytes)
+					inst.update(&d.Days[i])
 				}
 				if isMonthCont {
 					for i := 0; i <= d.Date.Hour; i++ {
-						n := d.Hours[i]
-						inst.update(n.Hits, n.Bytes)
+						inst.update(&d.Hours[i])
 					}
 				}
 			}
@@ -128,13 +127,11 @@ func (d *statData) update(hits int32, bytes int64) {
 			iscont := now.Month == d.Date.Month+1
 			var inst statInstData
 			for i := 0; i < d.Date.Day; i++ {
-				n := d.Days[i]
-				inst.update(n.Hits, n.Bytes)
+				inst.update(&d.Days[i])
 			}
 			if iscont {
 				for i := 0; i <= d.Date.Hour; i++ {
-					n := d.Hours[i]
-					inst.update(n.Hits, n.Bytes)
+					inst.update(&d.Hours[i])
 				}
 			}
 			d.Months[d.Date.Month] = inst
@@ -163,8 +160,7 @@ func (d *statData) update(hits int32, bytes int64) {
 		case d.Date.Day != now.Day:
 			var inst statInstData
 			for i := 0; i <= d.Date.Hour; i++ {
-				n := d.Hours[i]
-				inst.update(n.Hits, n.Bytes)
+				inst.update(&d.Hours[i])
 			}
 			d.Days[d.Date.Day] = inst
 			// clean up
@@ -189,7 +185,7 @@ func (d *statData) update(hits int32, bytes int64) {
 		}
 	}
 
-	d.Hours[now.Hour].update(hits, bytes)
+	d.Hours[now.Hour].update(newData)
 	d.Date = now
 }
 
@@ -220,6 +216,9 @@ func (s *Stats) Load(dir string) (err error) {
 	if s.Years == nil {
 		s.Years = make(map[string]statInstData, 2)
 	}
+	if s.Accesses == nil {
+		s.Accesses = make(map[string]int, 5)
+	}
 	return
 }
 
@@ -243,7 +242,10 @@ func (s *Stats) AddHits(hits int32, bytes int64) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
-	s.update(hits, bytes)
+	s.update(&statInstData{
+		Hits:  hits,
+		Bytes: bytes,
+	})
 }
 
 func parseFileOrOld(path string, parser func(buf []byte) error) (err error) {

@@ -6,8 +6,6 @@ import type { StatInstData } from '@/api/v0'
 import { tr } from '@/lang'
 
 const props = defineProps<{
-	width?: number | string
-	height?: number | string
 	max: number
 	offset: number
 	data: StatInstData[]
@@ -93,7 +91,6 @@ const getChartOptions = () => {
 	return {
 		stacked: false,
 		maintainAspectRatio: false,
-		aspectRatio: 0.4,
 		interaction: {
 			mode: 'index',
 			intersect: false,
@@ -138,6 +135,7 @@ const getChartOptions = () => {
 			y: {
 				type: 'linear',
 				display: true,
+				beginAtZero: true,
 				position: 'left',
 				ticks: {
 					color: textColorSecondary,
@@ -150,6 +148,7 @@ const getChartOptions = () => {
 			y1: {
 				type: 'linear',
 				display: true,
+				beginAtZero: true,
 				position: 'right',
 				ticks: {
 					color: textColorSecondary,
@@ -176,6 +175,5 @@ onMounted(() => {
 		type="line"
 		:data="chartData"
 		:options="chartOptions"
-		:style="{ height: height, width: width }"
 	/>
 </template>

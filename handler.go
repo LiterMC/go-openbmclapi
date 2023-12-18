@@ -60,7 +60,11 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 
 	handler = cr
 	{
-		totalUsedCh := make(chan float64, 1024)
+		type record struct {
+			used float64
+			ua string
+		}
+		totalUsedCh := make(chan record, 1024)
 
 		next := handler
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
@@ -75,23 +79,51 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				addr, _, _ := net.SplitHostPort(req.RemoteAddr)
 				logInfof("Serve %d | %12v | %-15s | %s | %-4s %s | %q", srw.status, used, addr, req.Proto, req.Method, req.RequestURI, ua)
 			}
+			if 200 > srw.status && srw.status >= 400 {
+				return
+			}
+			if !strings.HasPrefix(req.URL.Path, "/download/") {
+				return
+			}
+			var rec record
+			rec.used = used.Seconds()
+			rec.ua, _ = split(ua, '/')
 			select {
-			case totalUsedCh <- used.Seconds():
+			case totalUsedCh <- rec:
 			default:
 			}
 		})
 		go func() {
 			<-cr.WaitForEnable()
 			disabled := cr.Disabled()
+
+			updateTicker := time.NewTicker(time.Minute)
+			defer updateTicker.Stop()
+
 			var (
 				total     int64
 				totalUsed float64
+				uas = make(map[string]int, 5)
 			)
 			for {
 				select {
-				case used := <-totalUsedCh:
-					totalUsed += used
+				case <-updateTicker.C:
+					cr.stats.mux.Lock()
+					total = 0
+					totalUsed = 0
+					for ua, v := range uas {
+						if ua == "" {
+							ua = "[Unknown]"
+						}
+						cr.stats.Accesses[ua] += v
+					}
+					clear(uas)
+					cr.stats.mux.Unlock()
+				case record := <-totalUsedCh:
 					total++
+					totalUsed += record.used
+					uas[record.ua]++
+
 					if total%100 == 0 {
 						avg := (time.Duration)(totalUsed / (float64)(total) * (float64)(time.Second))
 						logInfof("Served %d requests, total used %.2fs, avg %v", total, totalUsed, avg)

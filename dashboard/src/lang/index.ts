@@ -1,4 +1,4 @@
-import { type Ref, ref } from 'vue'
+import { type Ref, ref, watch } from 'vue'
 import { Lang } from './lang'
 export * from './lang'
 
@@ -50,13 +50,15 @@ export function getLang(): Lang {
 	return currentLang.value.code
 }
 
-export async function setLang(lang: Lang | string): Promise<Lang | null> {
+export function setLang(lang: Lang | string): Lang | null {
 	for (let a of avaliableLangs) {
 		if (a.code.match(lang)) {
 			localStorage.setItem(TR_LANG_CACHE_KEY, a.code.toString())
 			currentLang.value = a
-			currentTr.value = await a.tr()
-			localStorage.setItem(TR_DATA_CACHE_KEY, JSON.stringify(currentTr.value))
+			a.tr().then((map) => {
+				currentTr.value = map
+				localStorage.setItem(TR_DATA_CACHE_KEY, JSON.stringify(map))
+			})
 			return a.code
 		}
 	}
@@ -64,6 +66,7 @@ export async function setLang(lang: Lang | string): Promise<Lang | null> {
 }
 
 export function tr(key: string, ...values: any[]): string {
+	console.debug('translating:', key)
 	const item = currentLang.value
 	let cur: string | LangMap | null = currentTr.value
 	if (!cur) {

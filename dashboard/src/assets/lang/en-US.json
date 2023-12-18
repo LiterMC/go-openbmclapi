@@ -5,7 +5,9 @@
 		"day": "Day requests",
 		"month": "Month requests",
 		"year": "Year requests",
-		"total": "Total requests"
+		"total": "Total requests",
+		"hits": "Hits",
+		"bytes": "Bytes"
 	},
 	"message": {
 		"server": {

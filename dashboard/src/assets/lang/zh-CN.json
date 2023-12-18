@@ -2,10 +2,12 @@
 	"lang": "简体中文",
 	"title": {
 		"dashboard": "仪表盘",
-		"day": "日请求",
-		"month": "月请求",
-		"year": "年请求",
-		"total": "全部请求"
+		"day": "当日请求",
+		"month": "当月请求",
+		"year": "当年请求",
+		"total": "全部请求",
+		"hits": "请求数",
+		"bytes": "流量"
 	},
 	"message": {
 		"server": {

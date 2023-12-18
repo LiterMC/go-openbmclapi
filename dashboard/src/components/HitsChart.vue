@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, watch } from 'vue'
+import { type Ref, onMounted, ref, computed, watch } from 'vue'
 import Chart from 'primevue/chart'
 import { formatNumber, formatBytes } from '@/utils'
 import type { StatInstData } from '@/api/v0'
+import { tr } from '@/lang'
 
 const props = defineProps<{
 	width?: number | string
@@ -64,7 +65,7 @@ const getChartData = () => {
 		labels: labels,
 		datasets: [
 			{
-				label: 'Hits',
+				label: computed(() => tr('title.hits')),
 				fill: true,
 				borderColor: documentStyle.getPropertyValue('--blue-500'),
 				yAxisID: 'y',
@@ -72,7 +73,7 @@ const getChartData = () => {
 				data: hits,
 			},
 			{
-				label: 'Bytes',
+				label: computed(() => tr('title.bytes')),
 				fill: true,
 				borderColor: documentStyle.getPropertyValue('--green-500'),
 				yAxisID: 'y1',

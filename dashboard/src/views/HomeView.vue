@@ -165,10 +165,10 @@ function getDaysInMonth(): number {
 			<div class="info-chart-box">
 				<h3>{{ tr('title.user_agents') }}</h3>
 				<UAChart
-					v-if="data"
+					v-if="stat"
 					class="ua-chart"
 					:max="5"
-					:data="data.accesses"
+					:data="stat.accesses"
 				/>
 				<Skeleton v-else class="ua-chart"/>
 			</div>

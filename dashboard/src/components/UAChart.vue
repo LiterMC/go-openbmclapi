@@ -24,12 +24,15 @@ const getChartData = () => {
 	const labels = data.value.map(({ua}) => ua)
 	const counts = data.value.map(({count}) => count)
 	watch(data, (data) => {
-		labels.length = 0
-		counts.length = 0
-		data.forEach(({ ua, count }) => {
-			labels.push(ua)
-			counts.push(count)
-		})
+		const length = data.length
+		labels.length = length
+		counts.length = length
+		for(let i = 0; i < length; i++){
+			({
+				ua: labels[i],
+				count: counts[i],
+			} = data[i])
+		}
 		chartObj.value.refresh()
 	})
 
@@ -71,6 +74,7 @@ const getChartOptions = () => {
 			axis: 'y',
 			intersect: false,
 		},
+		animation: {},
 		plugins: {
 			tooltip: {
 				callbacks: {
@@ -123,6 +127,7 @@ onMounted(() => {
 
 <template>
 	<Chart
+		ref="chartObj"
 		type="bar"
 		:data="chartData"
 		:options="chartOptions"

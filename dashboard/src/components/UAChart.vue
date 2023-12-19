@@ -21,11 +21,13 @@ const chartOptions = ref()
 const getChartData = () => {
 	const documentStyle = getComputedStyle(document.documentElement)
 
-	const labels: string[] = []
-	const counts: number[] = []
+	const labels = data.value.map(({ua}) => ua)
+	const counts = data.value.map(({count}) => count)
 	watch(data, (data) => {
-		labels.splice(0, labels.length, ...data.map(({ua}) => ua))
-		counts.splice(0, counts.length, ...data.map(({count}) => count))
+		labels.length = 0
+		counts.length = 0
+		labels.push(...data.map(({ua}) => ua))
+		counts.push(...data.map(({count}) => count))
 	})
 	const colors = [
 		documentStyle.getPropertyValue('--red-500'),

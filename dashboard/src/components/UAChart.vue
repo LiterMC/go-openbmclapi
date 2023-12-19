@@ -26,9 +26,13 @@ const getChartData = () => {
 	watch(data, (data) => {
 		labels.length = 0
 		counts.length = 0
-		labels.push(...data.map(({ua}) => ua))
-		counts.push(...data.map(({count}) => count))
+		data.forEach(({ ua, count }) => {
+			labels.push(ua)
+			counts.push(count)
+		})
+		chartObj.value.refresh()
 	})
+
 	const colors = [
 		documentStyle.getPropertyValue('--red-500'),
 		documentStyle.getPropertyValue('--orange-500'),

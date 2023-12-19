@@ -12,7 +12,7 @@ const props = defineProps<{
 const data = computed(() => Object.entries(props.data).
 	map(([ua, count]) => ({ ua: ua, count: count })).
 	sort((a, b) => b.count - a.count).
-	splice(0, 7))
+	slice(0, 7))
 
 const chartObj = ref()
 const chartData = ref()
@@ -21,11 +21,12 @@ const chartOptions = ref()
 const getChartData = () => {
 	const documentStyle = getComputedStyle(document.documentElement)
 
-	const labels = computed({
-		get: () => data.value.map(({ua}) => ua),
-		set: (value) => {},
+	const labels: string[] = []
+	const counts: number[] = []
+	watch(data, (data) => {
+		labels.splice(0, labels.length, ...data.map(({ua}) => ua))
+		counts.splice(0, counts.length, ...data.map(({count}) => count))
 	})
-	const counts = computed(() => data.value.map(({count}) => count))
 	const colors = [
 		documentStyle.getPropertyValue('--red-500'),
 		documentStyle.getPropertyValue('--orange-500'),

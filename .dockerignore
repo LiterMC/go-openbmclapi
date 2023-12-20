@@ -41,3 +41,4 @@ coverage
 /output
 /build
 /build-all.sh
+/vendor

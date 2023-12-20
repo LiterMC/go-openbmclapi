@@ -21,11 +21,14 @@ ARG TAG
 ARG REPO
 ARG NPM_DIR
 
+WORKDIR "/go/src/${REPO}/"
+
 COPY ./go.mod ./go.sum "/go/src/${REPO}/"
+RUN go mod download
 COPY . "/go/src/${REPO}"
 COPY --from=WEB_BUILD "/web/dist" "/go/src/${REPO}/${NPM_DIR}/dist"
 
-RUN --mount=type=cache,target=/root/.cache/go-build cd "/go/src/${REPO}" && \
+RUN --mount=type=cache,target=/root/.cache/go-build \
  CGO_ENABLED=0 go build -v -o "/go/bin/application" -ldflags="-X 'main.BuildVersion=${TAG}'" "."
 
 FROM alpine:latest

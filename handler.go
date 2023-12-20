@@ -64,7 +64,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			used float64
 			ua string
 		}
-		totalUsedCh := make(chan record, 1024)
+		recordCh := make(chan record, 1024)
 
 		next := handler
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
@@ -84,7 +84,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				}
 				logInfof("Serve %d | %12v | %-15s | %s | %-4s %s | %q", srw.status, used, addr, req.Proto, req.Method, req.RequestURI, ua)
 			}
-			if 200 > srw.status && srw.status >= 400 {
+			if srw.status < 200 && 400 <= srw.status {
 				return
 			}
 			if !strings.HasPrefix(req.URL.Path, "/download/") {
@@ -94,7 +94,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			rec.used = used.Seconds()
 			rec.ua, _ = split(ua, '/')
 			select {
-			case totalUsedCh <- rec:
+			case recordCh <- rec:
 			default:
 			}
 		})
@@ -124,10 +124,10 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 					}
 					clear(uas)
 					cr.stats.mux.Unlock()
-				case record := <-totalUsedCh:
+				case rec := <-recordCh:
 					total++
-					totalUsed += record.used
-					uas[record.ua]++
+					totalUsed += rec.used
+					uas[rec.ua]++
 
 					if total%100 == 0 {
 						avg := (time.Duration)(totalUsed / (float64)(total) * (float64)(time.Second))
@@ -179,7 +179,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			if cr.ossSupportRange { // fix the size for Ranged request
 				rg := req.Header.Get("Range")
 				rgs, err := gosrc.ParseRange(rg, size)
-				if err == nil {
+				if err == nil && len(rgs) > 0 {
 					size = 0
 					for _, r := range rgs {
 						size += r.Length

@@ -24,6 +24,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"math/rand"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -144,4 +145,38 @@ func parseCertCommonName(cert []byte) (string, error) {
 		}
 		return cert.Subject.CommonName, nil
 	}
+}
+
+var rd = func() chan int {
+	ch := make(chan int, 64)
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	go func() {
+		for {
+			ch <- r.Int()
+		}
+	}()
+	return ch
+}()
+
+func randIntn(n int) int {
+	rn := <-rd
+	return rn % n
+}
+
+func forEachSliceFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {
+	if leng <= 0 {
+		return false
+	}
+	start := randIntn(leng)
+	for i := start; i < leng; i++ {
+		if cb(i) {
+			return true
+		}
+	}
+	for i := 0; i < start; i++ {
+		if cb(i) {
+			return true
+		}
+	}
+	return false
 }

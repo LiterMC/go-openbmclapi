@@ -20,8 +20,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +31,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -44,103 +43,9 @@ var (
 
 var startTime = time.Now()
 
-type Config struct {
-	Debug           bool   `json:"debug"`
-	RecordServeInfo bool   `json:"record_serve_info"`
-	Nohttps         bool   `json:"nohttps"`
-	PublicHost      string `json:"public_host"`
-	PublicPort      uint16 `json:"public_port"`
-	Port            uint16 `json:"port"`
-	ClusterId       string `json:"cluster_id"`
-	ClusterSecret   string `json:"cluster_secret"`
-	UseOss          bool   `json:"use_oss"`
-	OssRedirectBase string `json:"oss_redirect_base"`
-	SkipMeasureGen  bool   `json:"oss_skip_measure_gen"`
-	Hijack          bool   `json:"hijack"`
-	HijackPort      uint16 `json:"hijack_port"`
-	AntiHijackDNS   string `json:"anti_hijack_dns"`
-}
-
 var config Config
 
-func readConfig() {
-	const configPath = "config.json"
-
-	config = Config{
-		Debug:           false,
-		RecordServeInfo: false,
-		Nohttps:         false,
-		PublicHost:      "example.com",
-		PublicPort:      8080,
-		Port:            4000,
-		ClusterId:       "${CLUSTER_ID}",
-		ClusterSecret:   "${CLUSTER_SECRET}",
-		UseOss:          false,
-		OssRedirectBase: "https://oss.example.com/base/paths",
-		SkipMeasureGen:  false,
-		Hijack:          false,
-		HijackPort:      8090,
-		AntiHijackDNS:   "8.8.8.8:53",
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			logError("Cannot read config:", err)
-			os.Exit(1)
-		}
-		logError("Config file not exists, create one")
-	} else if err = json.Unmarshal(data, &config); err != nil {
-		logError("Cannot parse config:", err)
-		os.Exit(1)
-	}
-
-	if data, err = json.MarshalIndent(config, "", "  "); err != nil {
-		logError("Cannot encode config:", err)
-		os.Exit(1)
-	}
-	if err = os.WriteFile(configPath, data, 0600); err != nil {
-		logError("Cannot write config:", err)
-		os.Exit(1)
-	}
-
-	if os.Getenv("DEBUG") == "true" {
-		config.Debug = true
-	}
-	if v := os.Getenv("CLUSTER_IP"); v != "" {
-		config.PublicHost = v
-	}
-	if v := os.Getenv("CLUSTER_PORT"); v != "" {
-		if n, err := strconv.Atoi(v); err != nil {
-			logErrorf("Cannot parse CLUSTER_PORT %q: %v", v, err)
-		} else {
-			config.Port = (uint16)(n)
-		}
-	}
-	if v := os.Getenv("CLUSTER_PUBLIC_PORT"); v != "" {
-		if n, err := strconv.Atoi(v); err != nil {
-			logErrorf("Cannot parse CLUSTER_PUBLIC_PORT %q: %v", v, err)
-		} else {
-			config.PublicPort = (uint16)(n)
-		}
-	}
-	if v := os.Getenv("CLUSTER_ID"); v != "" {
-		config.ClusterId = v
-	}
-	if v := os.Getenv("CLUSTER_SECRET"); v != "" {
-		config.ClusterSecret = v
-	}
-	if byoc := os.Getenv("CLUSTER_BYOC"); byoc != "" {
-		config.Nohttps = byoc == "true"
-	}
-}
-
 const baseDir = "."
-
-var (
-	hijackPath   = filepath.Join(baseDir, "__hijack")
-	ossMirrorDir = filepath.Join(baseDir, "oss_mirror")
-)
 
 func main() {
 	printShortLicense()
@@ -174,7 +79,7 @@ START:
 
 	ctx, cancel := context.WithCancel(bgctx)
 
-	readConfig()
+	config = readConfig()
 
 	httpcli := &http.Client{
 		Timeout: 30 * time.Second,
@@ -185,11 +90,11 @@ START:
 		hjproxy  *HjProxy
 		hjServer *http.Server
 	)
-	if config.Hijack {
-		dialer = getDialerWithDNS(config.AntiHijackDNS)
-		hjproxy = NewHjProxy(dialer, hijackPath)
+	if config.Hijack.Enable {
+		dialer = getDialerWithDNS(config.Hijack.AntiHijackDNS)
+		hjproxy = NewHjProxy(dialer, config.Hijack.Path)
 		hjServer = &http.Server{
-			Addr:    fmt.Sprintf("0.0.0.0:%d", config.HijackPort),
+			Addr:    fmt.Sprintf("%s:%d", config.Hijack.ServerHost, config.Hijack.ServerPort),
 			Handler: hjproxy,
 		}
 		go func() {
@@ -202,9 +107,10 @@ START:
 		}()
 		time.Sleep(time.Second * 100000)
 	}
-	redirectBase := ""
-	if config.UseOss {
-		redirectBase = config.OssRedirectBase
+
+	var ossList []*OSSItem
+	if config.Oss.Enable {
+		ossList = config.Oss.List
 	}
 
 	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
@@ -212,41 +118,62 @@ START:
 		config.PublicHost, config.PublicPort,
 		config.ClusterId, config.ClusterSecret,
 		config.Nohttps, dialer,
-		redirectBase,
+		ossList,
 	)
 	if err != nil {
 		logError("Cannot init cluster:", err)
 		os.Exit(1)
 	}
 
-	if config.UseOss {
-		createOssMirrorDir()
-		supportRange, err := checkOSS(ctx, httpcli, 10)
-		if err != nil {
-			logError(err)
+	if config.Oss.Enable {
+		var aliveCount atomic.Int32
+		for _, item := range config.Oss.List {
+			createOssMirrorDir(item)
+			supportRange, err := checkOSS(ctx, httpcli, item, 10)
+			if err != nil {
+				logError(err)
+				continue
+			}
+			aliveCount.Add(1)
+			item.supportRange = supportRange
+			go func(ctx context.Context, item *OSSItem) {
+				ticker := time.NewTicker(time.Minute * 5)
+				defer ticker.Stop()
+
+				online := true
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						supportRange, err := checkOSS(ctx, httpcli, item, 1)
+						if err != nil {
+							if errors.Is(err, context.Canceled) {
+								return
+							}
+							logError(err)
+							if online {
+								online = false
+								if aliveCount.Add(-1) == 0 {
+									logError("All oss mirror failed, exit.")
+									os.Exit(2)
+								}
+							}
+							continue
+						}
+						if !online {
+							online = true
+							aliveCount.Add(1)
+						}
+						_ = supportRange
+					}
+				}
+			}(ctx, item)
+		}
+		if aliveCount.Load() == 0 {
+			logError("All oss mirror failed, exit.")
 			os.Exit(2)
 		}
-		cluster.ossSupportRange = supportRange
-		go func(ctx context.Context) {
-			ticker := time.NewTicker(time.Minute * 5)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					supportRange, err := checkOSS(ctx, httpcli, 1)
-					if err != nil {
-						if errors.Is(err, context.Canceled) {
-							return
-						}
-						logError(err)
-						os.Exit(2)
-					}
-					_ = supportRange
-				}
-			}
-		}(ctx)
 	}
 
 	logDebugf("Receiving signals")
@@ -364,36 +291,38 @@ START:
 	}
 }
 
-func createOssMirrorDir() {
-	logInfof("Creating %s", ossMirrorDir)
-	if err := os.MkdirAll(ossMirrorDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
-		logErrorf("Cannot create OSS mirror folder %q: %v", ossMirrorDir, err)
+func createOssMirrorDir(item *OSSItem) {
+	logInfof("Creating %s", item.FolderPath)
+	if err := os.MkdirAll(item.FolderPath, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		logErrorf("Cannot create OSS mirror folder %q: %v", item.FolderPath, err)
 		os.Exit(2)
 	}
-	cacheDir := filepath.Join(baseDir, "cache")
-	downloadDir := filepath.Join(ossMirrorDir, "download")
-	os.RemoveAll(downloadDir)
-	if err := os.Mkdir(downloadDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
-		logErrorf("Cannot create OSS mirror folder %q: %v", downloadDir, err)
-		os.Exit(2)
-	}
-	measureDir := filepath.Join(ossMirrorDir, "measure")
-	if err := os.Mkdir(measureDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
-		logErrorf("Cannot create OSS mirror folder %q: %v", measureDir, err)
-		os.Exit(2)
-	}
-	for i := 0; i < 0x100; i++ {
-		d := hex.EncodeToString([]byte{(byte)(i)})
-		o := filepath.Join(cacheDir, d)
-		t := filepath.Join(downloadDir, d)
-		os.Mkdir(o, 0755)
-		if err := os.Symlink(filepath.Join("..", "..", o), t); err != nil {
-			logErrorf("Cannot create OSS mirror cache symlink %q: %v", t, err)
+
+	// cacheDir := filepath.Join(baseDir, "cache")
+	// downloadDir := filepath.Join(item.FolderPath, "download")
+	// os.RemoveAll(downloadDir)
+	// if err := os.Mkdir(downloadDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+	// 	logErrorf("Cannot create OSS mirror folder %q: %v", downloadDir, err)
+	// 	os.Exit(2)
+	// }
+	// for i := 0; i < 0x100; i++ {
+	// 	d := hex.EncodeToString([]byte{(byte)(i)})
+	// 	o := filepath.Join(cacheDir, d)
+	// 	t := filepath.Join(downloadDir, d)
+	// 	os.Mkdir(o, 0755)
+	// 	if err := os.Symlink(filepath.Join("..", "..", o), t); err != nil {
+	// 		logErrorf("Cannot create OSS mirror cache symlink %q: %v", t, err)
+	// 		os.Exit(2)
+	// 	}
+	// }
+
+	if !item.SkipMeasureGen {
+		logDebug("Creating measure files")
+		measureDir := filepath.Join(item.FolderPath, "measure")
+		if err := os.Mkdir(measureDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+			logErrorf("Cannot create OSS mirror folder %q: %v", measureDir, err)
 			os.Exit(2)
 		}
-	}
-	if !config.SkipMeasureGen {
-		logDebug("Creating measure files")
 		buf := make([]byte, 200*1024*1024)
 		for i := 1; i <= 200; i++ {
 			size := i * 1024 * 1024
@@ -418,11 +347,11 @@ func createOssMirrorDir() {
 	}
 }
 
-func checkOSS(ctx context.Context, client *http.Client, size int) (supportRange bool, err error) {
+func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int) (supportRange bool, err error) {
 	targetSize := (int64)(size) * 1024 * 1024
 	logInfof("Checking OSS for %d bytes ...", targetSize)
 
-	target, err := url.JoinPath(config.OssRedirectBase, "measure", strconv.Itoa(size))
+	target, err := url.JoinPath(item.RedirectBase, "measure", strconv.Itoa(size))
 	if err != nil {
 		return false, fmt.Errorf("Cannot check OSS server: %w", err)
 	}
@@ -452,6 +381,6 @@ func checkOSS(ctx context.Context, client *http.Client, size int) (supportRange 
 	if n != targetSize {
 		return false, fmt.Errorf("OSS check request failed %q: expected %dMB, but got %d bytes", target, size, n)
 	}
-	logInfof("OSS check finished, used %v, %s/s", used, bytesToUnit((float64)(n)/used.Seconds()))
+	logInfof("OSS check finished, used %v, %s/s; supportRange=%v", used, bytesToUnit((float64)(n)/used.Seconds()), supportRange)
 	return
 }

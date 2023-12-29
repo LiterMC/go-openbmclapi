@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -62,7 +63,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 	{
 		type record struct {
 			used float64
-			ua string
+			ua   string
 		}
 		recordCh := make(chan record, 1024)
 
@@ -79,7 +80,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				addr, _, _ := net.SplitHostPort(req.RemoteAddr)
 				if used > time.Minute {
 					used = used.Truncate(time.Second)
-				}else if used > time.Second {
+				} else if used > time.Second {
 					used = used.Truncate(time.Microsecond)
 				}
 				logInfof("Serve %d | %12v | %-15s | %s | %-4s %s | %q", srw.status, used, addr, req.Proto, req.Method, req.RequestURI, ua)
@@ -108,7 +109,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			var (
 				total     int64
 				totalUsed float64
-				uas = make(map[string]int, 5)
+				uas       = make(map[string]int, 10)
 			)
 			for {
 				select {
@@ -158,38 +159,62 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, "404 Status Not Found", http.StatusNotFound)
 			return
 		}
-		path := cr.getCachedHashPath(hash)
-		stat, err := os.Stat(path)
-		if errors.Is(err, os.ErrNotExist) {
-			if err := cr.DownloadFile(req.Context(), path); err != nil {
-				http.Error(rw, "404 Status Not Found", http.StatusNotFound)
-				return
-			}
-		}
 		name := req.Form.Get("name")
 
 		// if use OSS redirect
-		if cr.redirectBase != "" {
-			target, err := url.JoinPath(cr.redirectBase, "download", hashToFilename(hash))
+		if cr.ossList != nil {
+			var err error
+			forEachSliceFromRandomIndex(len(cr.ossList), func(i int) bool {
+				item := cr.ossList[i]
+
+				// check if the file exists
+				path := filepath.Join(item.FolderPath, hash)
+				var stat os.FileInfo
+				if stat, err = os.Stat(path); errors.Is(err, os.ErrNotExist) {
+					if err := cr.DownloadFile(req.Context(), item.FolderPath, hash); err != nil {
+						return false
+					}
+				}else if err != nil {
+					return false
+				}
+
+				var target string
+				target, err = url.JoinPath(item.RedirectBase, "download", hashToFilename(hash))
+				if err != nil {
+					return false
+				}
+				size := stat.Size()
+				if item.supportRange { // fix the size for Ranged request
+					rg := req.Header.Get("Range")
+					rgs, err := gosrc.ParseRange(rg, size)
+					if err == nil && len(rgs) > 0 {
+						size = 0
+						for _, r := range rgs {
+							size += r.Length
+						}
+					}
+				}
+				http.Redirect(rw, req, target, http.StatusFound)
+				cr.hits.Add(1)
+				cr.hbts.Add(size)
+				return true
+			})
 			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					http.Error(rw, "404 Status Not Found", http.StatusNotFound)
+					return
+				}
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			size := stat.Size()
-			if cr.ossSupportRange { // fix the size for Ranged request
-				rg := req.Header.Get("Range")
-				rgs, err := gosrc.ParseRange(rg, size)
-				if err == nil && len(rgs) > 0 {
-					size = 0
-					for _, r := range rgs {
-						size += r.Length
-					}
-				}
+		}
+
+		path := filepath.Join(cr.cacheDir, hash)
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			if err := cr.DownloadFile(req.Context(), cr.cacheDir, hash); err != nil {
+				http.Error(rw, "404 Status Not Found", http.StatusNotFound)
+				return
 			}
-			http.Redirect(rw, req, target, http.StatusFound)
-			cr.hits.Add(1)
-			cr.hbts.Add(size)
-			return
 		}
 
 		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
@@ -216,8 +241,9 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if cr.redirectBase != "" {
-			target, err := url.JoinPath(cr.redirectBase, rawpath)
+		if cr.ossList != nil {
+			item := cr.ossList[0]
+			target, err := url.JoinPath(item.RedirectBase, rawpath)
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return

@@ -1,0 +1,21 @@
+debug: false
+record_serve_info: false
+nohttps: false
+public_host: example.com
+public_port: 8080
+port: 4000
+cluster_id: ${CLUSTER_ID}
+cluster_secret: ${CLUSTER_SECRET}
+download_max_conn: 64
+oss:
+    enable: false
+    list:
+        - folder_path: oss_mirror
+          redirect_base: https://oss.example.com/base/paths
+          skip_measure_gen: false
+hijack_port:
+    enable: false
+    server_host: ""
+    server_port: 8090
+    path: __hijack
+    anti_hijack_dns: 8.8.8.8:53

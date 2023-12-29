@@ -50,13 +50,11 @@ type Cluster struct {
 	prefix     string
 	byoc       bool
 
-	redirectBase string
-
-	cacheDir        string
-	tmpDir          string
-	dataDir         string
-	maxConn         int
-	ossSupportRange bool
+	cacheDir string
+	tmpDir   string
+	dataDir  string
+	maxConn  int
+	ossList  []*OSSItem
 
 	stats  Stats
 	hits   atomic.Int32
@@ -82,7 +80,7 @@ func NewCluster(
 	host string, publicPort uint16,
 	username string, password string,
 	byoc bool, dialer *net.Dialer,
-	redirectBase string,
+	ossList []*OSSItem,
 ) (cr *Cluster, err error) {
 	transport := &http.Transport{}
 	if dialer != nil {
@@ -97,12 +95,11 @@ func NewCluster(
 		prefix:     "https://openbmclapi.bangbang93.com",
 		byoc:       byoc,
 
-		redirectBase: redirectBase,
-
 		cacheDir: filepath.Join(baseDir, "cache"),
 		tmpDir:   filepath.Join(baseDir, "cache", ".tmp"),
 		dataDir:  filepath.Join(baseDir, "data"),
-		maxConn:  128,
+		maxConn:  config.DownloadMaxConn,
+		ossList:  ossList,
 
 		disabled: make(chan struct{}, 0),
 
@@ -232,6 +229,8 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		if !cr.KeepAlive(ctx) {
 			logInfo("Reconnecting due to keepalive failed")
 			cr.Disable(keepaliveCtx)
+			logError("TODO: figure out what caused infinite reconnect")
+			os.Exit(0xfe)
 			if !cr.Connect(keepaliveCtx) {
 				logError("Cannot reconnect to server, exit.")
 				os.Exit(1)
@@ -389,10 +388,6 @@ func (cr *Cluster) queryURLHeader(ctx context.Context, method string, url string
 	})
 }
 
-func (cr *Cluster) getCachedHashPath(hash string) string {
-	return filepath.Join(cr.cacheDir, hashToFilename(hash))
-}
-
 type FileInfo struct {
 	Path string `json:"path" avro:"path"`
 	Hash string `json:"hash" avro:"hash"`
@@ -450,7 +445,7 @@ type syncStats struct {
 	fl         int
 }
 
-func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
+func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo){
 	logInfo("Preparing to sync files...")
 	if !cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
@@ -458,8 +453,18 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
 	}
 	defer cr.issync.Store(false)
 
-RESYNC:
-	files := cr.CheckFiles(files0, make([]FileInfo, 0, 16))
+	if cr.ossList == nil {
+		cr.syncFiles(ctx, cr.cacheDir, files0)
+	}else{
+		for _, item := range cr.ossList {
+			cr.syncFiles(ctx, filepath.Join(item.FolderPath, "download"), files0)
+		}
+	}
+	go cr.gc(files0)
+}
+
+func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo) {
+	files := cr.CheckFiles(dir, files0, make([]FileInfo, 0, 16))
 
 	fl := len(files)
 	if fl == 0 {
@@ -482,7 +487,7 @@ RESYNC:
 	start := time.Now()
 
 	for i, _ := range files {
-		if err := cr.dlfile(ctx, &stats, &extFileInfo{FileInfo: &files[i], dlerr: nil, trycount: 0}); err != nil {
+		if err := cr.dlfile(ctx, &stats, dir, &extFileInfo{FileInfo: &files[i], dlerr: nil, trycount: 0}); err != nil {
 			logWarn("File sync interrupted")
 			return
 		}
@@ -498,38 +503,12 @@ RESYNC:
 
 	use := time.Since(start)
 	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(stats.totalsize/use.Seconds()))
-	var flag bool = false
-	if use > SyncFileInterval {
-		logWarn("Synchronization time was more than 10 min, re-check now.")
-		files2, err := cr.GetFileList(ctx)
-		if err != nil {
-			logError("Cannot query file list:", err)
-			return
-		}
-		if len(files2) != len(files0) {
-			flag = true
-		} else {
-			for _, f := range files2 {
-				p := cr.getCachedHashPath(f.Hash)
-				if stat, e := os.Stat(p); errors.Is(e, os.ErrNotExist) || stat.Size() != f.Size {
-					flag = true
-					break
-				}
-			}
-		}
-		if flag {
-			files0 = files2
-			logWarn("At least one file has changed during file synchronization, re synchronize now.")
-			goto RESYNC
-		}
-	}
-	go cr.gc(files0)
 }
 
-func (cr *Cluster) CheckFiles(files []FileInfo, failed []FileInfo) []FileInfo {
+func (cr *Cluster) CheckFiles(dir string, files []FileInfo, failed []FileInfo) []FileInfo {
 	logInfo("Start checking files")
 	for i, _ := range files {
-		p := cr.getCachedHashPath(files[i].Hash)
+		p := filepath.Join(dir, hashToFilename(files[i].Hash))
 		stat, err := os.Stat(p)
 		if err == nil {
 			if sz := stat.Size(); sz != files[i].Size {
@@ -551,13 +530,23 @@ func (cr *Cluster) CheckFiles(files []FileInfo, failed []FileInfo) []FileInfo {
 }
 
 func (cr *Cluster) gc(files []FileInfo) {
-	logInfo("Starting garbage collector")
+	if cr.ossList == nil {
+		cr.gcAt(files, cr.cacheDir)
+	}else{
+		for _, item := range cr.ossList {
+			cr.gcAt(files, filepath.Join(item.FolderPath, "download"))
+		}
+	}
+}
+
+func (cr *Cluster) gcAt(files []FileInfo, dir string) {
+	logInfo("Starting garbage collector at", dir)
 	fileset := make(map[string]struct{}, 128)
 	for i, _ := range files {
-		fileset[cr.getCachedHashPath(files[i].Hash)] = struct{}{}
+		fileset[filepath.Join(dir, files[i].Hash)] = struct{}{}
 	}
-	stack := make([]string, 0, 10)
-	stack = append(stack, cr.cacheDir)
+	stack := make([]string, 0, 256)
+	stack = append(stack, dir)
 	for len(stack) > 0 {
 		p := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -567,7 +556,7 @@ func (cr *Cluster) gc(files []FileInfo) {
 		}
 		for _, f := range fil {
 			if cr.issync.Load() {
-				logWarn("Global cleanup interrupted")
+				logWarn("Garbage collector interrupted at", dir)
 				return
 			}
 			n := filepath.Join(p, f.Name())
@@ -581,10 +570,10 @@ func (cr *Cluster) gc(files []FileInfo) {
 			}
 		}
 	}
-	logInfo("Garbage collector finished")
+	logInfo("Garbage collect finished for", dir)
 }
 
-func (cr *Cluster) dlfile(ctx context.Context, stats *syncStats, f *extFileInfo) error {
+func (cr *Cluster) dlfile(ctx context.Context, stats *syncStats, dir string, f *extFileInfo) error {
 WAIT_SLOT:
 	for {
 		select {
@@ -599,7 +588,7 @@ WAIT_SLOT:
 			<-stats.slots
 		}()
 	RETRY:
-		err := cr.dlhandle(ctx, f.FileInfo)
+		err := cr.dlhandle(ctx, dir, f.FileInfo)
 		if err != nil {
 			logErrorf("Download file error: %s [%s/%s ; %d/%d] %.2f%%\n\t%s",
 				f.Path,
@@ -624,7 +613,7 @@ WAIT_SLOT:
 	return nil
 }
 
-func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
+func (cr *Cluster) dlhandle(ctx context.Context, dir string, f *FileInfo) (err error) {
 	logInfof("Downloading: %s [%s]", f.Path, bytesToUnit((float64)(f.Size)))
 	hashMethod, err := getHashMethod(len(f.Hash))
 	if err != nil {
@@ -639,14 +628,14 @@ func (cr *Cluster) dlhandle(ctx context.Context, f *FileInfo) (err error) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err = cr.downloadFileBuf(ctx, f, hashMethod, buf); err == nil {
+		if err = cr.downloadFileBuf(ctx, dir, f, hashMethod, buf); err == nil {
 			return
 		}
 	}
 	return
 }
 
-func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod crypto.Hash, buf []byte) (err error) {
+func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo, hashMethod crypto.Hash, buf []byte) (err error) {
 	var (
 		res *http.Response
 		fd  *os.File
@@ -685,26 +674,19 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 		err = fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)
 	}
 	if err != nil {
-		if config.Debug {
-			f0, _ := os.Open(cr.getCachedHashPath(f.Hash))
-			b0, _ := io.ReadAll(f0)
-			if len(b0) < 16*1024 {
-				logDebug("File path:", tfile, "; for", f.Path)
-			}
-		}
 		return
 	}
 
-	hspt := cr.getCachedHashPath(f.Hash)
+	hspt := filepath.Join(dir, f.Hash)
 	os.Remove(hspt) // remove the old file if exists
 	if err = os.Rename(tfile, hspt); err != nil {
 		return
 	}
 	os.Chmod(hspt, 0644)
 
-	if config.Hijack {
+	if config.Hijack.Enable {
 		if !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
-			target := filepath.Join(hijackPath, filepath.FromSlash(f.Path))
+			target := filepath.Join(config.Hijack.Path, filepath.FromSlash(f.Path))
 			dir := filepath.Dir(target)
 			os.MkdirAll(dir, 0755)
 			if rp, err := filepath.Rel(dir, hspt); err == nil {
@@ -716,7 +698,7 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, f *FileInfo, hashMethod 
 	return
 }
 
-func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
+func (cr *Cluster) DownloadFile(ctx context.Context, dir string, hash string) (err error) {
 	hashMethod, err := getHashMethod(len(hash))
 	if err != nil {
 		return
@@ -733,5 +715,5 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		Hash: hash,
 		Size: -1,
 	}
-	return cr.downloadFileBuf(ctx, f, hashMethod, buf)
+	return cr.downloadFileBuf(ctx, dir, f, hashMethod, buf)
 }

@@ -63,24 +63,51 @@ A: `v<openbmclapi版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 
 #### 注意: 配置文件指定的值会被环境变量的值 _(如果存在)_ 覆盖掉
 
-配置文件应为**运行目录**下的`config.json`文件, 使用`json`格式解析  
+配置文件应为**运行目录**下的`config.yaml`文件, 使用`yaml`格式解析  
 例:
-```javascript
-{
-	"debug": false,                 // 是否打印调试日志, 默认为否
-	"show_serve_info": false,       // 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
-	"public_host": "example.com",   // public host, 同 CLUSTER_IP
-	"public_port": 8080,            // 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
-	"port": 80,                     // 要监听的本地端口, 同 CLUSTER_PORT
-	"cluster_id": "${CLUSTER_ID}",  // CLUSTER_ID
-	"cluster_secret": "${CLUSTER_SECRET}", // CLUSTER_SECRET
-	// 特殊要求: 重定向到 OSS
-	"use_oss": false, // 是否启用本功能
-	"oss_redirect_base": "https://oss.example.com/base/paths",
-	"oss_skip_measure_gen": false, // 跳过生成measure文件夹
-	// 特殊要求: 劫持 bmclapi 以加速同一局域网请求
-	"hijack": false,                // 是否启动 bmclapi 劫持代理
-	"hijack_port": 8090,            // 劫持代理监听的端口
-	"anti_hijack_dns": "8.8.8.8:32" // 用于绕过DNS劫持的DNS服务器
-}
+```yaml
+# 是否打印调试日志, 默认为否
+debug: false
+# 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
+record_serve_info: false
+nohttps: false
+# 实际开放的公网主机名, 同 CLUSTER_IP
+public_host: example.com
+# 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
+public_port: 8080
+# 要监听的本地端口, 同 CLUSTER_PORT
+port: 4000
+# CLUSTER_ID
+cluster_id: ${CLUSTER_ID}
+# CLUSTER_SECRET
+cluster_secret: ${CLUSTER_SECRET}
+# 同步文件时最多打开的连接数量
+download_max_conn: 64
+
+## 特殊要求: 重定向到 OSS
+oss:
+	 # 是否启用该功能
+    enable: false
+    list:
+          # 镜像文件夹路径
+        - folder_path: oss_mirror
+          # 镜像网络路径
+          redirect_base: https://oss.example.com/base/paths
+          # 跳过生成measure文件夹
+          skip_measure_gen: false
+
+## 特殊要求: 劫持 bmclapi 以加速同一局域网请求
+hijack_port:
+	 # 是否启用该功能
+    enable: false
+    # 劫持代理监听的主机名
+    server_host: ""
+    # 劫持代理监听的端口
+    server_port: 8090
+    # 在该路径下生成伪bmclapi路径结构
+    # 注: 该路径下为指向cache文件夹的软连接, 不会占用大量磁盘空间
+    # **不建议手动修改该路径内的内容**
+    path: __hijack
+    # 用于绕过DNS劫持的DNS服务器 (从bmclapi同步时使用)
+    anti_hijack_dns: 8.8.8.8:53
 ```

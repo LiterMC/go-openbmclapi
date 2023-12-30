@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM alpine:latest
 
 WORKDIR /web/work
-COPY ./config.json /web/work/config.json
+COPY ./config.yaml /web/work/config.yaml
 
 COPY --from=BUILD "/go/bin/application" "/web/application"
 

@@ -635,6 +635,23 @@ func (cr *Cluster) dlhandle(ctx context.Context, dir string, f *FileInfo) (err e
 	return
 }
 
+func (cr *Cluster) renameOrCopy(src, dst string, mode os.FileMode) (err error) {
+	if cr.ossList == nil {
+		err = os.Rename(src, dst)
+		os.Chmod(dst, mode)
+	}else{
+		var srcFd, dstFd *os.File
+		if srcFd, err = os.Open(src); err != nil {
+			return
+		}
+		if dstFd, err = os.OpenFile(dst, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, mode); err != nil {
+			return
+		}
+		_, err = io.Copy(dstFd, srcFd)
+	}
+	return
+}
+
 func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo, hashMethod crypto.Hash, buf []byte) (err error) {
 	var (
 		res *http.Response
@@ -679,10 +696,9 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo,
 
 	hspt := filepath.Join(dir, f.Hash)
 	os.Remove(hspt) // remove the old file if exists
-	if err = os.Rename(tfile, hspt); err != nil {
+	if err = cr.renameOrCopy(tfile, hspt, 0644); err != nil {
 		return
 	}
-	os.Chmod(hspt, 0644)
 
 	if config.Hijack.Enable {
 		if !strings.HasPrefix(f.Path, "/openbmclapi/download/") {

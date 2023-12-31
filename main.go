@@ -323,9 +323,10 @@ func createOssMirrorDir(item *OSSItem) {
 			logErrorf("Cannot create OSS mirror folder %q: %v", measureDir, err)
 			os.Exit(2)
 		}
-		buf := make([]byte, 200*1024*1024)
+		const chunkSize = 1024 * 1024
+		var chunk [chunkSize]byte
 		for i := 1; i <= 200; i++ {
-			size := i * 1024 * 1024
+			size := i * chunkSize
 			t := filepath.Join(measureDir, strconv.Itoa(i))
 			if stat, err := os.Stat(t); err == nil {
 				x := stat.Size()
@@ -338,10 +339,18 @@ func createOssMirrorDir(item *OSSItem) {
 				logDebugf("Cannot get stat of %s: %v", t, err)
 			}
 			logDebug("Writing", t)
-			if err := os.WriteFile(t, buf[:size], 0644); err != nil {
+			fd, err := os.Create(t)
+			if err != nil {
 				logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
 				os.Exit(2)
 			}
+			for j := 0; j < i; j++ {
+				if _, err = fd.Write(chunk[:]); err != nil {
+					logErrorf("Cannot write OSS mirror measure file %q: %v", t, err)
+					os.Exit(2)
+				}
+			}
+			fd.Close()
 		}
 		logDebug("Measure files created")
 	}
@@ -349,7 +358,7 @@ func createOssMirrorDir(item *OSSItem) {
 
 func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int) (supportRange bool, err error) {
 	targetSize := (int64)(size) * 1024 * 1024
-	logInfof("Checking OSS for %d bytes ...", targetSize)
+	logInfof("Checking %s for %d bytes ...", item.RedirectBase, targetSize)
 
 	target, err := url.JoinPath(item.RedirectBase, "measure", strconv.Itoa(size))
 	if err != nil {
@@ -381,6 +390,6 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 	if n != targetSize {
 		return false, fmt.Errorf("OSS check request failed %q: expected %dMB, but got %d bytes", target, size, n)
 	}
-	logInfof("OSS check finished, used %v, %s/s; supportRange=%v", used, bytesToUnit((float64)(n)/used.Seconds()), supportRange)
+	logInfof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, bytesToUnit((float64)(n)/used.Seconds()), supportRange)
 	return
 }

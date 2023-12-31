@@ -70,24 +70,24 @@ func httpToWs(origin string) string {
 }
 
 func bytesToUnit(size float64) string {
-	unit := "Byte"
+	if size < 1000 {
+		return fmt.Sprintf("%dByte", (int64)(size))
+	}
+	size /= 1024
+	unit := "KB"
 	if size >= 1000 {
 		size /= 1024
-		unit = "KB"
+		unit = "MB"
 		if size >= 1000 {
 			size /= 1024
-			unit = "MB"
+			unit = "GB"
 			if size >= 1000 {
 				size /= 1024
-				unit = "GB"
-				if size >= 1000 {
-					size /= 1024
-					unit = "TB"
-				}
+				unit = "TB"
 			}
 		}
 	}
-	return fmt.Sprintf("%.1f", size) + unit
+	return fmt.Sprintf("%.1f%s", size, unit)
 }
 
 func withContext(ctx context.Context, call func()) bool {

@@ -454,7 +454,6 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo){
 		logWarn("Another sync task is running!")
 		return
 	}
-	defer cr.issync.Store(false)
 
 	if cr.ossList == nil {
 		cr.syncFiles(ctx, cr.cacheDir, files0)
@@ -463,6 +462,9 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo){
 			cr.syncFiles(ctx, filepath.Join(item.FolderPath, "download"), files0)
 		}
 	}
+
+	cr.issync.Store(false)
+
 	go cr.gc(files0)
 }
 
@@ -472,7 +474,6 @@ func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo)
 	fl := len(files)
 	if fl == 0 {
 		logInfo("All file was synchronized")
-		go cr.gc(files0)
 		return
 	}
 

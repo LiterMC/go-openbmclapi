@@ -112,6 +112,9 @@ func NewCluster(
 	// create folder strcture
 	os.RemoveAll(cr.tmpDir)
 	os.MkdirAll(cr.cacheDir, 0755)
+	for i := 0; i < 0x100; i++ {
+		os.Mkdir(filepath.Join(cr.cacheDir, hex.EncodeToString([]byte{(byte)(i)})), 0755)
+	}
 	os.MkdirAll(cr.dataDir, 0755)
 	os.MkdirAll(cr.tmpDir, 0700)
 
@@ -543,7 +546,7 @@ func (cr *Cluster) gcAt(files []FileInfo, dir string) {
 	logInfo("Starting garbage collector at", dir)
 	fileset := make(map[string]struct{}, 128)
 	for i, _ := range files {
-		fileset[filepath.Join(dir, files[i].Hash)] = struct{}{}
+		fileset[filepath.Join(dir, hashToFilename(files[i].Hash))] = struct{}{}
 	}
 	stack := make([]string, 0, 256)
 	stack = append(stack, dir)
@@ -644,9 +647,11 @@ func (cr *Cluster) renameOrCopy(src, dst string, mode os.FileMode) (err error) {
 		if srcFd, err = os.Open(src); err != nil {
 			return
 		}
+		defer srcFd.Close()
 		if dstFd, err = os.OpenFile(dst, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, mode); err != nil {
 			return
 		}
+		defer dstFd.Close()
 		_, err = io.Copy(dstFd, srcFd)
 	}
 	return
@@ -694,7 +699,7 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo,
 		return
 	}
 
-	hspt := filepath.Join(dir, f.Hash)
+	hspt := filepath.Join(dir, hashToFilename(f.Hash))
 	os.Remove(hspt) // remove the old file if exists
 	if err = cr.renameOrCopy(tfile, hspt, 0644); err != nil {
 		return

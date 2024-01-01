@@ -22,6 +22,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"sync/atomic"
 
 	"gopkg.in/yaml.v3"
 )

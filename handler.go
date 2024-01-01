@@ -168,7 +168,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				item := cr.ossList[i]
 
 				if !item.working.Load() {
-					err = fmt.Errorf("All OSS server is down")
+					err = errors.New("All OSS server is down")
 					return false
 				}
 

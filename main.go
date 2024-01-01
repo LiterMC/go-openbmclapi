@@ -160,8 +160,7 @@ START:
 							}
 							continue
 						}
-						if !online {
-							item.working.Store(true)
+						if item.working.CompareAndSwap(false, true) {
 							aliveCount.Add(1)
 						}
 						_ = supportRange
@@ -375,10 +374,20 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 	defer res.Body.Close()
 	logDebugf("OSS check response status code %d %s", res.StatusCode, res.Status)
 	if supportRange = res.StatusCode == http.StatusPartialContent; supportRange {
-		logDebug("OSS support range header!")
+		logDebug("OSS support Range header!")
 		targetSize--
 	} else if res.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("OSS check request failed %q: %d %s", target, res.StatusCode, res.Status)
+	} else {
+		crange := res.Header.Get("Content-Range")
+		if len(crange) > 0 {
+			logWarn("Non standard http response detected, responsed 'Content-Range' header with status 200, expected status 206")
+			fields := strings.Fields(crange)
+			if len(fields) >= 2 && fields[1] == "bytes" && strings.HasPrefix(fields[2], "1-") {
+				logDebug("OSS support Range header?")
+				targetSize--
+			}
+		}
 	}
 	logDebug("reading OSS response")
 	start := time.Now()

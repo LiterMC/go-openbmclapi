@@ -169,7 +169,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			var err error
 			forEachSliceFromRandomIndex(len(cr.ossList), func(i int) bool {
 				item := cr.ossList[i]
-				logDebugf("[handler]: Checking OSS %d at %s ...", i, item.RedirectBase)
+				logDebugf("[handler]: Checking file on OSS %d at %q ...", i, item.FolderPath)
 
 				if !item.working.Load() {
 					logDebugf("[handler]: OSS %d is not working", i)
@@ -181,9 +181,10 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				path := filepath.Join(item.FolderPath, hashFilename)
 				var stat os.FileInfo
 				if stat, err = os.Stat(path); err != nil {
-					logDebugf("[handler]: File is not exists on OSS %d", i)
+					logDebugf("[handler]: Cannot read file on OSS %d: %v", i, err)
 					if errors.Is(err, os.ErrNotExist) {
 						if e := cr.DownloadFile(req.Context(), item.FolderPath, hash); e != nil {
+							logDebugf("[handler]: Cound not download the file: %v", e)
 							return false
 						}
 					} else {

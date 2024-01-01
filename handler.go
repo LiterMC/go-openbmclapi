@@ -178,12 +178,13 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				}
 
 				// check if the file exists
-				path := filepath.Join(item.FolderPath, hashFilename)
+				downloadDir := filepath.Join(item.FolderPath, "download")
+				path := filepath.Join(downloadDir, hashFilename)
 				var stat os.FileInfo
 				if stat, err = os.Stat(path); err != nil {
 					logDebugf("[handler]: Cannot read file on OSS %d: %v", i, err)
 					if errors.Is(err, os.ErrNotExist) {
-						if e := cr.DownloadFile(req.Context(), item.FolderPath, hash); e != nil {
+						if e := cr.DownloadFile(req.Context(), downloadDir, hash); e != nil {
 							logDebugf("[handler]: Cound not download the file: %v", e)
 							return false
 						}

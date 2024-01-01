@@ -161,21 +161,27 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 		name := req.Form.Get("name")
 
+		hashFilename := hashToFilename(hash)
+
 		// if use OSS redirect
 		if cr.ossList != nil {
+			logDebug("[handler]: Preparing OSS redirect response")
 			var err error
 			forEachSliceFromRandomIndex(len(cr.ossList), func(i int) bool {
 				item := cr.ossList[i]
+				logDebugf("[handler]: Checking OSS %d at %s ...", i, item.RedirectBase)
 
 				if !item.working.Load() {
+					logDebugf("[handler]: OSS %d is not working", i)
 					err = errors.New("All OSS server is down")
 					return false
 				}
 
 				// check if the file exists
-				path := filepath.Join(item.FolderPath, hash)
+				path := filepath.Join(item.FolderPath, hashFilename)
 				var stat os.FileInfo
 				if stat, err = os.Stat(path); err != nil {
+					logDebugf("[handler]: File is not exists on OSS %d", i)
 					if errors.Is(err, os.ErrNotExist) {
 						if e := cr.DownloadFile(req.Context(), item.FolderPath, hash); e != nil {
 							return false
@@ -186,7 +192,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				}
 
 				var target string
-				target, err = url.JoinPath(item.RedirectBase, "download", hashToFilename(hash))
+				target, err = url.JoinPath(item.RedirectBase, "download", hashFilename)
 				if err != nil {
 					return false
 				}
@@ -207,6 +213,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				return true
 			})
 			if err != nil {
+				logDebugf("[handler]: OSS redirect failed: %v", err)
 				if errors.Is(err, os.ErrNotExist) {
 					http.Error(rw, "404 Status Not Found", http.StatusNotFound)
 					return
@@ -214,10 +221,11 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			logDebug("[handler]: OSS redirect successed")
 			return
 		}
 
-		path := filepath.Join(cr.cacheDir, hash)
+		path := filepath.Join(cr.cacheDir, hashFilename)
 		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 			if err := cr.DownloadFile(req.Context(), cr.cacheDir, hash); err != nil {
 				http.Error(rw, "404 Status Not Found", http.StatusNotFound)

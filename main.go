@@ -385,6 +385,7 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 			fields := strings.Fields(crange)
 			if len(fields) >= 2 && fields[0] == "bytes" && strings.HasPrefix(fields[1], "1-") {
 				logDebug("OSS support Range header?")
+				supportRange = true
 				targetSize--
 			}
 		}

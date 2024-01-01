@@ -448,7 +448,7 @@ type syncStats struct {
 	fl         int
 }
 
-func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo){
+func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
 	logInfo("Preparing to sync files...")
 	if !cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
@@ -457,7 +457,7 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo){
 
 	if cr.ossList == nil {
 		cr.syncFiles(ctx, cr.cacheDir, files0)
-	}else{
+	} else {
 		for _, item := range cr.ossList {
 			cr.syncFiles(ctx, filepath.Join(item.FolderPath, "download"), files0)
 		}
@@ -536,7 +536,7 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, failed []FileInfo) [
 func (cr *Cluster) gc(files []FileInfo) {
 	if cr.ossList == nil {
 		cr.gcAt(files, cr.cacheDir)
-	}else{
+	} else {
 		for _, item := range cr.ossList {
 			cr.gcAt(files, filepath.Join(item.FolderPath, "download"))
 		}
@@ -643,13 +643,13 @@ func (cr *Cluster) renameOrCopy(src, dst string, mode os.FileMode) (err error) {
 	if cr.ossList == nil {
 		err = os.Rename(src, dst)
 		os.Chmod(dst, mode)
-	}else{
+	} else {
 		var srcFd, dstFd *os.File
 		if srcFd, err = os.Open(src); err != nil {
 			return
 		}
 		defer srcFd.Close()
-		if dstFd, err = os.OpenFile(dst, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, mode); err != nil {
+		if dstFd, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode); err != nil {
 			return
 		}
 		defer dstFd.Close()

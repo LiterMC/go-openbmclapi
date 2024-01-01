@@ -170,12 +170,14 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				// check if the file exists
 				path := filepath.Join(item.FolderPath, hash)
 				var stat os.FileInfo
-				if stat, err = os.Stat(path); errors.Is(err, os.ErrNotExist) {
-					if err := cr.DownloadFile(req.Context(), item.FolderPath, hash); err != nil {
+				if stat, err = os.Stat(path); err != nil {
+					if errors.Is(err, os.ErrNotExist) {
+						if e := cr.DownloadFile(req.Context(), item.FolderPath, hash); e != nil {
+							return false
+						}
+					} else {
 						return false
 					}
-				}else if err != nil {
-					return false
 				}
 
 				var target string
@@ -207,6 +209,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			return
 		}
 
 		path := filepath.Join(cr.cacheDir, hash)

@@ -292,7 +292,7 @@ START:
 }
 
 func createOssMirrorDir(item *OSSItem) {
-	logInfof("Creating %s", item.FolderPath)
+	logInfof("Creating OSS folder %s", item.FolderPath)
 	if err := os.MkdirAll(item.FolderPath, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 		logErrorf("Cannot create OSS mirror folder %q: %v", item.FolderPath, err)
 		os.Exit(2)
@@ -374,6 +374,7 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 		return false, fmt.Errorf("OSS check request failed %q: %w", target, err)
 	}
 	defer res.Body.Close()
+	logDebugf("OSS check response status code %d %s", res.StatusCode, res.Status)
 	if supportRange = res.StatusCode == http.StatusPartialContent; supportRange {
 		logDebug("OSS support range header!")
 		targetSize--
@@ -388,7 +389,7 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 	}
 	used := time.Since(start)
 	if n != targetSize {
-		return false, fmt.Errorf("OSS check request failed %q: expected %dMB, but got %d bytes", target, size, n)
+		return false, fmt.Errorf("OSS check request failed %q: expected %d bytes, but got %d bytes", target, targetSize, n)
 	}
 	logInfof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, bytesToUnit((float64)(n)/used.Seconds()), supportRange)
 	return

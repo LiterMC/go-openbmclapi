@@ -32,6 +32,7 @@ type OSSItem struct {
 	SkipMeasureGen bool   `yaml:"skip_measure_gen"`
 
 	supportRange bool
+	working      atomic.Bool
 }
 
 type OSSConfig struct {

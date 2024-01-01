@@ -167,6 +167,11 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			forEachSliceFromRandomIndex(len(cr.ossList), func(i int) bool {
 				item := cr.ossList[i]
 
+				if !item.working.Load() {
+					err = fmt.Errorf("All OSS server is down")
+					return false
+				}
+
 				// check if the file exists
 				path := filepath.Join(item.FolderPath, hash)
 				var stat os.FileInfo

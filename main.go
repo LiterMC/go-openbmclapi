@@ -136,11 +136,11 @@ START:
 			}
 			aliveCount.Add(1)
 			item.supportRange = supportRange
+			item.working.Store(true)
 			go func(ctx context.Context, item *OSSItem) {
 				ticker := time.NewTicker(time.Minute * 5)
 				defer ticker.Stop()
 
-				online := true
 				for {
 					select {
 					case <-ctx.Done():
@@ -152,8 +152,7 @@ START:
 								return
 							}
 							logError(err)
-							if online {
-								online = false
+							if item.working.CompareAndSwap(true, false) {
 								if aliveCount.Add(-1) == 0 {
 									logError("All oss mirror failed, exit.")
 									os.Exit(2)
@@ -162,7 +161,7 @@ START:
 							continue
 						}
 						if !online {
-							online = true
+							item.working.Store(true)
 							aliveCount.Add(1)
 						}
 						_ = supportRange

@@ -383,7 +383,7 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 		if len(crange) > 0 {
 			logWarn("Non standard http response detected, responsed 'Content-Range' header with status 200, expected status 206")
 			fields := strings.Fields(crange)
-			if len(fields) >= 2 && fields[1] == "bytes" && strings.HasPrefix(fields[2], "1-") {
+			if len(fields) >= 2 && fields[0] == "bytes" && strings.HasPrefix(fields[1], "1-") {
 				logDebug("OSS support Range header?")
 				targetSize--
 			}

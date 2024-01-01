@@ -188,6 +188,9 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 							logDebugf("[handler]: Cound not download the file: %v", e)
 							return false
 						}
+						if stat, err = os.Stat(path); err != nil {
+							return false
+						}
 					} else {
 						return false
 					}

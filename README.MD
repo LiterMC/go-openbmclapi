@@ -1,7 +1,7 @@
 
-# Go OpemBmclAPI
+# Go OpenBmclAPI
 
-Golang 版的 [OpemBmclAPI](https://github.com/bangbang93/openbmclapi)
+Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 
 > 注: 本仓库部分代码按照 <https://github.com/bangbang93/openbmclapi> 编写, **非官方, 不保证稳定性/时效性**
 

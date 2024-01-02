@@ -21,14 +21,14 @@ Q: 没有适合我的平台的程序怎么办?
 A: 检查 [Go Platform Values](https://gist.github.com/asukakenji/f15ba7e588ac42795f421b48b8aede63#platform-values), 如果您的系统/架构存在, 那么可以发个 issue
 
 Q: 版本号格式  
-A: `v<openbmclapi版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
+A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 
 ## 安装
 
 ### 无依赖直接运行
 
 1. 从 github release 找到**适合您服务器平台**的程序并下载到节点服务器上
-2. 配置配置文件, 可以直接使用与bangbang93的openbmclapi相同的环境变量配置, 也可以从`config.json`配置 _(下文有讲)_
+2. 配置配置文件, 可以直接使用与bangbang93的openbmclapi相同的环境变量配置, 也可以从`config.yaml`进行配置 _(下文有讲)_
 3. 运行程序
 
 ### 从docker运行
@@ -86,7 +86,7 @@ download_max_conn: 64
 
 ## 特殊要求: 重定向到 OSS
 oss:
-	 # 是否启用该功能
+    # 是否启用该功能
     enable: false
     list:
           # 镜像文件夹路径
@@ -98,7 +98,7 @@ oss:
 
 ## 特殊要求: 劫持 bmclapi 以加速同一局域网请求
 hijack_port:
-	 # 是否启用该功能
+    # 是否启用该功能
     enable: false
     # 劫持代理监听的主机名
     server_host: ""

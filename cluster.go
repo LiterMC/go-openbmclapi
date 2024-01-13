@@ -469,7 +469,7 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
 }
 
 func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo) {
-	files := cr.CheckFiles(dir, files0, make([]FileInfo, 0, 16))
+	files := cr.CheckFiles(dir, files0)
 
 	fl := len(files)
 	if fl == 0 {
@@ -483,15 +483,15 @@ func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo)
 	var stats syncStats
 	stats.slots = make(chan struct{}, cr.maxConn)
 	stats.fl = fl
-	for i, _ := range files {
-		stats.totalsize += (float64)(files[i].Size)
+	for _, f := range files {
+		stats.totalsize += (float64)(f.Size)
 	}
 
 	logInfof("Starting sync files, count: %d, total: %s", fl, bytesToUnit(stats.totalsize))
 	start := time.Now()
 
-	for i, _ := range files {
-		if err := cr.dlfile(ctx, &stats, dir, &extFileInfo{FileInfo: &files[i], dlerr: nil, trycount: 0}); err != nil {
+	for _, f := range files {
+		if err := cr.dlfile(ctx, &stats, dir, &extFileInfo{FileInfo: &f, dlerr: nil, trycount: 0}); err != nil {
 			logWarn("File sync interrupted")
 			return
 		}
@@ -509,28 +509,28 @@ func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo)
 	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(stats.totalsize/use.Seconds()))
 }
 
-func (cr *Cluster) CheckFiles(dir string, files []FileInfo, failed []FileInfo) []FileInfo {
-	logInfo("Start checking files")
-	for i, _ := range files {
-		p := filepath.Join(dir, hashToFilename(files[i].Hash))
+func (cr *Cluster) CheckFiles(dir string, files []FileInfo) (missing []FileInfo) {
+	logInfof("Start checking files at %q", dir)
+	for i, f := range files {
+		p := filepath.Join(dir, hashToFilename(f.Hash))
+		logDebugf("Checking file %s [%.2f%%]", p, (float32)(i + 1) / (float32)(len(files)) * 100)
 		stat, err := os.Stat(p)
 		if err == nil {
-			if sz := stat.Size(); sz != files[i].Size {
+			if sz := stat.Size(); sz != f.Size {
 				logInfof("Found modified file: size of %q is %s but expect %s",
-					p, bytesToUnit((float64)(sz)), bytesToUnit((float64)(files[i].Size)))
-				failed = append(failed, files[i])
+					p, bytesToUnit((float64)(sz)), bytesToUnit((float64)(f.Size)))
+				missing = append(missing, f)
 			}
 		} else {
-			failed = append(failed, files[i])
-			if errors.Is(err, os.ErrNotExist) {
-				os.MkdirAll(filepath.Dir(p), 0755)
-			} else {
+			logDebugf("Could not found file %q", p)
+			missing = append(missing, f)
+			if !errors.Is(err, os.ErrNotExist) {
 				os.Remove(p)
 			}
 		}
 	}
 	logInfo("File check finished")
-	return failed
+	return
 }
 
 func (cr *Cluster) gc(files []FileInfo) {
@@ -685,19 +685,16 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo,
 	_, err = io.CopyBuffer(io.MultiWriter(hw, fd), res.Body, buf)
 	stat, err2 := fd.Stat()
 	fd.Close()
+	if err != nil {
+		return
+	}
 	if err2 != nil {
 		return err2
 	}
-	if err != nil {
-		return
-	}
 	if t := stat.Size(); f.Size >= 0 && t != f.Size {
-		err = fmt.Errorf("File size wrong, got %s, expect %s", bytesToUnit((float64)(t)), bytesToUnit((float64)(f.Size)))
+		return fmt.Errorf("File size wrong, got %s, expect %s", bytesToUnit((float64)(t)), bytesToUnit((float64)(f.Size)))
 	} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
-		err = fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)
-	}
-	if err != nil {
-		return
+		return fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)
 	}
 
 	hspt := filepath.Join(dir, hashToFilename(f.Hash))

@@ -443,7 +443,7 @@ type extFileInfo struct {
 type syncStats struct {
 	totalsize  float64
 	downloaded float64
-	slots      chan struct{}
+	slots      chan []byte
 	fcount     atomic.Int32
 	fl         int
 }
@@ -459,7 +459,9 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
 		cr.syncFiles(ctx, cr.cacheDir, files0)
 	} else {
 		for _, item := range cr.ossList {
-			cr.syncFiles(ctx, filepath.Join(item.FolderPath, "download"), files0)
+			if err := cr.syncFiles(ctx, filepath.Join(item.FolderPath, "download"), files0); err != nil {
+				break
+			}
 		}
 	}
 
@@ -468,52 +470,57 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
 	go cr.gc(files0)
 }
 
-func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo) {
+func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo) error {
 	files := cr.CheckFiles(dir, files0)
 
 	fl := len(files)
 	if fl == 0 {
 		logInfo("All file was synchronized")
-		return
+		return nil
 	}
 
 	// sort the files in descending order of size
 	sort.Slice(files, func(i, j int) bool { return files[i].Size > files[j].Size })
 
 	var stats syncStats
-	stats.slots = make(chan struct{}, cr.maxConn)
+	stats.slots = make(chan []byte, cr.maxConn)
 	stats.fl = fl
 	for _, f := range files {
 		stats.totalsize += (float64)(f.Size)
+	}
+	for i := cap(stats.slots); i > 0; i-- {
+		stats.slots <- make([]byte, 1024*1024)
 	}
 
 	logInfof("Starting sync files, count: %d, total: %s", fl, bytesToUnit(stats.totalsize))
 	start := time.Now()
 
 	for _, f := range files {
-		if err := cr.dlfile(ctx, &stats, dir, &extFileInfo{FileInfo: &f, dlerr: nil, trycount: 0}); err != nil {
+		fi := f
+		if err := cr.dlfile(ctx, &stats, dir, &extFileInfo{FileInfo: &fi, dlerr: nil, trycount: 0}); err != nil {
 			logWarn("File sync interrupted")
-			return
+			return err
 		}
 	}
 	for i := cap(stats.slots); i > 0; i-- {
 		select {
-		case stats.slots <- struct{}{}:
+		case <-stats.slots:
 		case <-ctx.Done():
 			logWarn("File sync interrupted")
-			return
+			return ctx.Err()
 		}
 	}
 
 	use := time.Since(start)
 	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(stats.totalsize/use.Seconds()))
+	return nil
 }
 
 func (cr *Cluster) CheckFiles(dir string, files []FileInfo) (missing []FileInfo) {
 	logInfof("Start checking files at %q", dir)
 	for i, f := range files {
 		p := filepath.Join(dir, hashToFilename(f.Hash))
-		logDebugf("Checking file %s [%.2f%%]", p, (float32)(i + 1) / (float32)(len(files)) * 100)
+		logDebugf("Checking file %s [%.2f%%]", p, (float32)(i+1)/(float32)(len(files))*100)
 		stat, err := os.Stat(p)
 		if err == nil {
 			if sz := stat.Size(); sz != f.Size {
@@ -578,10 +585,11 @@ func (cr *Cluster) gcAt(files []FileInfo, dir string) {
 }
 
 func (cr *Cluster) dlfile(ctx context.Context, stats *syncStats, dir string, f *extFileInfo) error {
+	var buf []byte
 WAIT_SLOT:
 	for {
 		select {
-		case stats.slots <- struct{}{}:
+		case buf = <-stats.slots:
 			break WAIT_SLOT
 		case <-ctx.Done():
 			return ctx.Err()
@@ -589,12 +597,26 @@ WAIT_SLOT:
 	}
 	go func() {
 		defer func() {
-			<-stats.slots
+			stats.slots <- buf
 		}()
+
 	RETRY:
-		err := cr.dlhandle(ctx, dir, f.FileInfo)
-		if err != nil {
-			logErrorf("Download file error: %s [%s/%s ; %d/%d] %.2f%%\n\t%s",
+		logInfof("Downloading: %s [%s]", f.Path, bytesToUnit((float64)(f.Size)))
+
+		hashMethod, err := getHashMethod(len(f.Hash))
+		if err == nil {
+			err = cr.downloadFileBuf(ctx, dir, f.FileInfo, hashMethod, buf)
+		}
+
+		if err == nil {
+			stats.downloaded += (float64)(f.Size)
+			stats.fcount.Add(1)
+			logInfof("Downloaded: %s [%s/%s ; %d/%d] %.2f%%", f.Path,
+				bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
+				stats.fcount.Load(), stats.fl,
+				stats.downloaded/stats.totalsize*100)
+		} else {
+			logErrorf("File download error: %s [%s/%s ; %d/%d] %.2f%%\n\t%s",
 				f.Path,
 				bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
 				stats.fcount.Load(), stats.fl,
@@ -605,38 +627,9 @@ WAIT_SLOT:
 				goto RETRY
 			}
 			stats.fcount.Add(1)
-		} else {
-			stats.downloaded += (float64)(f.Size)
-			stats.fcount.Add(1)
-			logInfof("Downloaded: %s [%s/%s ; %d/%d] %.2f%%", f.Path,
-				bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
-				stats.fcount.Load(), stats.fl,
-				stats.downloaded/stats.totalsize*100)
 		}
 	}()
 	return nil
-}
-
-func (cr *Cluster) dlhandle(ctx context.Context, dir string, f *FileInfo) (err error) {
-	logInfof("Downloading: %s [%s]", f.Path, bytesToUnit((float64)(f.Size)))
-	hashMethod, err := getHashMethod(len(f.Hash))
-	if err != nil {
-		return
-	}
-
-	var buf []byte
-	{
-		buf0 := bufPool.Get().(*[]byte)
-		defer bufPool.Put(buf0)
-		buf = *buf0
-	}
-
-	for i := 0; i < 3; i++ {
-		if err = cr.downloadFileBuf(ctx, dir, f, hashMethod, buf); err == nil {
-			return
-		}
-	}
-	return
 }
 
 func (cr *Cluster) renameOrCopy(src, dst string, mode os.FileMode) (err error) {

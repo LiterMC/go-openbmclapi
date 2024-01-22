@@ -60,9 +60,15 @@ func (t statTime) IsLastDay() bool {
 	return time.Date(t.Year, (time.Month)(t.Month+1), t.Day+1+1, 0, 0, 0, 0, time.UTC).Day() == 1
 }
 
+type (
+	statDataHours  [24]statInstData
+	statDataDays   [31]statInstData
+	statDataMonths [12]statInstData
+)
+
 type statHistoryData struct {
-	Hours  [24]statInstData `json:"hours"`
-	Days   [31]statInstData `json:"days"`
+	Hours  statDataHours    `json:"hours"`
+	Days   statDataDays     `json:"days"`
 	Months [12]statInstData `json:"months"`
 }
 
@@ -106,23 +112,25 @@ func (d *statData) update(newData *statInstData) {
 							d.Prev.Hours[i] = statInstData{}
 						}
 					} else {
-						d.Prev.Hours = [len(d.Hours)]statInstData{}
+						d.Prev.Hours = statDataHours{}
 					}
+					d.Hours = statDataHours{}
 					d.Prev.Days = d.Days
 					for i := d.Date.Day + 1; i < len(d.Days); i++ {
 						d.Prev.Days[i] = statInstData{}
 					}
 				} else {
-					d.Prev.Days = [len(d.Days)]statInstData{}
+					d.Prev.Days = statDataDays{}
 				}
+				d.Days = statDataDays{}
 				d.Prev.Months = d.Months
 				for i := d.Date.Month + 1; i < len(d.Months); i++ {
 					d.Prev.Months[i] = statInstData{}
 				}
 			} else {
-				d.Prev.Months = [len(d.Months)]statInstData{}
+				d.Prev.Months = statDataMonths{}
 			}
-			d.Months = [len(d.Months)]statInstData{}
+			d.Months = statDataMonths{}
 		case d.Date.Month != now.Month:
 			iscont := now.Month == d.Date.Month+1
 			var inst statInstData
@@ -148,16 +156,17 @@ func (d *statData) update(newData *statInstData) {
 						d.Prev.Hours[i] = statInstData{}
 					}
 				} else {
-					d.Prev.Hours = [len(d.Hours)]statInstData{}
+					d.Prev.Hours = statDataHours{}
 				}
+				d.Hours = statDataHours{}
 				d.Prev.Days = d.Days
 				for i := d.Date.Day + 1; i < len(d.Days); i++ {
 					d.Prev.Days[i] = statInstData{}
 				}
 			} else {
-				d.Prev.Days = [len(d.Days)]statInstData{}
+				d.Prev.Days = statDataDays{}
 			}
-			d.Days = [len(d.Days)]statInstData{}
+			d.Days = statDataDays{}
 		case d.Date.Day != now.Day:
 			var inst statInstData
 			for i := 0; i <= d.Date.Hour; i++ {
@@ -175,9 +184,9 @@ func (d *statData) update(newData *statInstData) {
 					d.Prev.Hours[i] = statInstData{}
 				}
 			} else {
-				d.Prev.Hours = [24]statInstData{}
+				d.Prev.Hours = statDataHours{}
 			}
-			d.Hours = [24]statInstData{}
+			d.Hours = statDataHours{}
 		case d.Date.Hour != now.Hour:
 			// clean up
 			for i := d.Date.Hour + 1; i < now.Hour; i++ {

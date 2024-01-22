@@ -93,5 +93,5 @@ echo "
   Use 'systemctl start go-openbmclapi.service' to start openbmclapi server
   Use 'systemctl stop go-openbmclapi.service' to stop openbmclapi server
   Use 'systemctl reload go-openbmclapi.service' to reload openbmclapi server configs
-  Use 'journalctl -f -u go-openbmclapi.service' to watch the openbmclapi logs
+  Use 'journalctl -f --output cat -u go-openbmclapi.service' to watch the openbmclapi logs
 "

@@ -24,6 +24,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"math/rand"
 	"path/filepath"
 	"strings"
@@ -180,3 +181,16 @@ func forEachSliceFromRandomIndex(leng int, cb func(i int) (done bool)) (done boo
 	}
 	return false
 }
+
+type nullReader struct{}
+
+var (
+	NullReader = nullReader{}
+
+	_ io.ReaderAt   = NullReader
+	_ io.ReadSeeker = NullReader
+)
+
+func (nullReader) Read([]byte) (int, error)          { return 0, io.EOF }
+func (nullReader) ReadAt([]byte, int64) (int, error) { return 0, io.EOF }
+func (nullReader) Seek(int64, int) (int64, error)    { return 0, nil }

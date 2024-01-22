@@ -125,6 +125,10 @@ func NewCluster(
 	return
 }
 
+func (cr *Cluster) usedOSS() bool {
+	return cr.ossList != nil
+}
+
 func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
@@ -455,14 +459,14 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
 		return
 	}
 
-	if cr.ossList == nil {
-		cr.syncFiles(ctx, cr.cacheDir, files0)
-	} else {
+	if cr.usedOSS() {
 		for _, item := range cr.ossList {
 			if err := cr.syncFiles(ctx, filepath.Join(item.FolderPath, "download"), files0); err != nil {
 				break
 			}
 		}
+	} else {
+		cr.syncFiles(ctx, cr.cacheDir, files0)
 	}
 
 	cr.issync.Store(false)
@@ -518,9 +522,14 @@ func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo)
 
 func (cr *Cluster) CheckFiles(dir string, files []FileInfo) (missing []FileInfo) {
 	logInfof("Start checking files at %q", dir)
+	usedOSS := cr.usedOSS()
 	for i, f := range files {
 		p := filepath.Join(dir, hashToFilename(f.Hash))
 		logDebugf("Checking file %s [%.2f%%]", p, (float32)(i+1)/(float32)(len(files))*100)
+		if usedOSS && f.Size == 0 {
+			logDebugf("Skipped empty file %s", p)
+			continue
+		}
 		stat, err := os.Stat(p)
 		if err == nil {
 			if sz := stat.Size(); sz != f.Size {

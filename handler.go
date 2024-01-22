@@ -19,6 +19,8 @@
 package main
 
 import (
+	"crypto"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -143,6 +145,18 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 	return
 }
 
+var emptyHashes = func() (hashes map[string]struct{}) {
+	hashMethods := []crypto.Hash{
+		crypto.MD5, crypto.SHA1,
+	}
+	hashes = make(map[string]struct{}, len(hashMethods))
+	for _, h := range hashMethods {
+		hs := hex.EncodeToString(h.New().Sum(nil))
+		hashes[hs] = struct{}{}
+	}
+	return
+}()
+
 func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	u := req.URL
@@ -160,6 +174,17 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 		name := req.Form.Get("name")
+
+		if _, ok := emptyHashes[hash]; ok {
+			rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
+			rw.Header().Set("Content-Type", "application/octet-stream")
+			rw.Header().Set("X-Bmclapi-Hash", hash)
+			rw.WriteHeader(http.StatusOK)
+			http.ServeContent(rw, req, name, time.Time{}, NullReader)
+			cr.hits.Add(1)
+			// cr.hbts.Add(0) // empty bytes
+			return
+		}
 
 		hashFilename := hashToFilename(hash)
 

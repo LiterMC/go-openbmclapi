@@ -67,9 +67,9 @@ type (
 )
 
 type statHistoryData struct {
-	Hours  statDataHours    `json:"hours"`
-	Days   statDataDays     `json:"days"`
-	Months [12]statInstData `json:"months"`
+	Hours  statDataHours  `json:"hours"`
+	Days   statDataDays   `json:"days"`
+	Months statDataMonths `json:"months"`
 }
 
 type statData struct {

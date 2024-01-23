@@ -37,6 +37,12 @@ type OSSItem struct {
 	working      atomic.Bool
 }
 
+type ServeLimitConfig struct {
+	Enable     bool `yaml:"enable"`
+	MaxConn    int  `yaml:"max_conn"`
+	UploadRate int  `yaml:"upload_rate"`
+}
+
 type OSSConfig struct {
 	Enable bool       `yaml:"enable"`
 	List   []*OSSItem `yaml:"list"`
@@ -51,18 +57,19 @@ type HijackConfig struct {
 }
 
 type Config struct {
-	Debug           bool         `yaml:"debug"`
-	RecordServeInfo bool         `yaml:"record_serve_info"`
-	Nohttps         bool         `yaml:"nohttps"`
-	NoOpen          bool         `yaml:"noopen"`
-	PublicHost      string       `yaml:"public_host"`
-	PublicPort      uint16       `yaml:"public_port"`
-	Port            uint16       `yaml:"port"`
-	ClusterId       string       `yaml:"cluster_id"`
-	ClusterSecret   string       `yaml:"cluster_secret"`
-	DownloadMaxConn int          `yaml:"download_max_conn"`
-	Oss             OSSConfig    `yaml:"oss"`
-	Hijack          HijackConfig `yaml:"hijack_port"`
+	Debug           bool             `yaml:"debug"`
+	RecordServeInfo bool             `yaml:"record_serve_info"`
+	Nohttps         bool             `yaml:"nohttps"`
+	NoOpen          bool             `yaml:"noopen"`
+	PublicHost      string           `yaml:"public_host"`
+	PublicPort      uint16           `yaml:"public_port"`
+	Port            uint16           `yaml:"port"`
+	ClusterId       string           `yaml:"cluster_id"`
+	ClusterSecret   string           `yaml:"cluster_secret"`
+	DownloadMaxConn int              `yaml:"download_max_conn"`
+	ServeLimit      ServeLimitConfig `yaml:"serve_limit"`
+	Oss             OSSConfig        `yaml:"oss"`
+	Hijack          HijackConfig     `yaml:"hijack_port"`
 }
 
 func readConfig() (config Config) {
@@ -78,6 +85,11 @@ func readConfig() (config Config) {
 		ClusterId:       "${CLUSTER_ID}",
 		ClusterSecret:   "${CLUSTER_SECRET}",
 		DownloadMaxConn: 64,
+		ServeLimit: ServeLimitConfig{
+			Enable:     false,
+			MaxConn:    16384,
+			UploadRate: 1024 * 12, // 12MB
+		},
 
 		Oss: OSSConfig{
 			Enable: false,

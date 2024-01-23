@@ -190,6 +190,12 @@ START:
 			logErrorf("Cannot listen on %s: %v", clusterSvr.Addr, err)
 			os.Exit(1)
 		}
+		if config.ServeLimit.Enable {
+			limited := NewLimitedListener(listener, config.ServeLimit.MaxConn)
+			limited.SetWriteRate(config.ServeLimit.UploadRate * 1024)
+			limited.SetMinWriteRate(1024)
+			listener = limited
+		}
 
 		if !config.Nohttps {
 			tctx, cancel := context.WithTimeout(ctx, time.Minute*10)

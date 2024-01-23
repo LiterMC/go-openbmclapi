@@ -114,13 +114,16 @@ func flushLogfile() {
 		os.MkdirAll(logdir, 0755)
 	}
 	lfile, err := os.OpenFile(filepath.Join(logdir, time.Now().Format("20060102-15.log")),
-		os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
 		logError("Create new log file error:", err)
 		return
 	}
 
-	logfile.Store(lfile)
+	old := logfile.Swap(lfile)
+	if old != nil {
+		old.Close()
+	}
 }
 
 func startFlushLogFile() {

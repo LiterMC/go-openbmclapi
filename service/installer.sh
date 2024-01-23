@@ -57,7 +57,8 @@ LATEST_TAG=$1
 if [ ! -n "$LATEST_TAG" ]; then
 	echo "==> Fetching latest tag for https://github.com/$REPO"
 	fetchGithubLatestTag
-	echo "go-openbmclapi LATEST TAG: $LATEST_TAG"
+	echo
+	echo "*** go-openbmclapi LATEST TAG: $LATEST_TAG ***"
 	echo
 fi
 

@@ -52,11 +52,18 @@ func (r *countReader) Read(buf []byte) (n int, err error) {
 type statusResponseWriter struct {
 	http.ResponseWriter
 	status int
+	wrote  int64
 }
 
 func (w *statusResponseWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusResponseWriter) Write(buf []byte) (n int, err error) {
+	n, err = w.ResponseWriter.Write(buf)
+	w.wrote += (int64)(n)
+	return
 }
 
 func (cr *Cluster) GetHandler() (handler http.Handler) {
@@ -65,8 +72,9 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 	handler = cr
 	{
 		type record struct {
-			used float64
-			ua   string
+			used  float64
+			bytes float64
+			ua    string
 		}
 		recordCh := make(chan record, 1024)
 
@@ -86,7 +94,10 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				} else if used > time.Second {
 					used = used.Truncate(time.Microsecond)
 				}
-				logInfof("Serve %d | %12v | %-15s | %s | %-4s %s | %q", srw.status, used, addr, req.Proto, req.Method, req.RequestURI, ua)
+				logInfof("Serve %d | %12v | %7s | %-15s | %s | %-4s %s | %q",
+					srw.status, used, bytesToUnit((float64)(srw.wrote)),
+					addr, req.Proto,
+					req.Method, req.RequestURI, ua)
 			}
 			if srw.status < 200 && 400 <= srw.status {
 				return
@@ -96,6 +107,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			}
 			var rec record
 			rec.used = used.Seconds()
+			rec.bytes = (float64)(srw.wrote)
 			rec.ua, _ = split(ua, '/')
 			select {
 			case recordCh <- rec:
@@ -110,33 +122,35 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			defer updateTicker.Stop()
 
 			var (
-				total     int64
-				totalUsed float64
-				uas       = make(map[string]int, 10)
+				total      int
+				totalUsed  float64
+				totalBytes float64
+				uas        = make(map[string]int, 10)
 			)
 			for {
 				select {
 				case <-updateTicker.C:
 					cr.stats.mux.Lock()
-					total = 0
-					totalUsed = 0
+
+					logInfof("Served %d requests, %s, used %.2fs, %s/s", total, bytesToUnit(totalBytes), totalUsed, bytesToUnit(totalBytes/totalUsed))
 					for ua, v := range uas {
 						if ua == "" {
 							ua = "[Unknown]"
 						}
 						cr.stats.Accesses[ua] += v
 					}
+
+					total = 0
+					totalUsed = 0
+					totalBytes = 0
 					clear(uas)
+
 					cr.stats.mux.Unlock()
 				case rec := <-recordCh:
 					total++
 					totalUsed += rec.used
+					totalBytes += rec.bytes
 					uas[rec.ua]++
-
-					if total%100 == 0 {
-						avg := (time.Duration)(totalUsed / (float64)(total) * (float64)(time.Second))
-						logInfof("Served %d requests, total used %.2fs, avg %v", total, totalUsed, avg)
-					}
 				case <-disabled:
 					return
 				}

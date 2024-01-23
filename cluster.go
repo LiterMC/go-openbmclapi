@@ -161,15 +161,15 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket.ErrorHandle = func(*Socket) {
 		connected()
 		go func() {
-			logWarn("Reconnecting due to SIO error")
-			if cr.Disable(ctx) {
+			if cr.disconnected() {
+				logWarn("Reconnecting due to SIO error")
 				if !cr.Connect(ctx) {
 					logError("Cannot reconnect to server, exit.")
-					os.Exit(1)
+					os.Exit(0x08)
 				}
 				if err := cr.Enable(ctx); err != nil {
 					logError("Cannot enable cluster:", err, "; exit.")
-					os.Exit(1)
+					os.Exit(0x08)
 				}
 			}
 		}()
@@ -238,8 +238,6 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		defer cancel()
 		if !cr.KeepAlive(ctx) {
-			logError("TODO: Keep alive failed, exit.")
-			os.Exit(0x80)
 			if keepaliveCtx.Err() == nil {
 				logInfo("Reconnecting due to keepalive failed")
 				cr.Disable(keepaliveCtx)
@@ -282,6 +280,22 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 	return true
 }
 
+func (cr *Cluster) disconnected() bool {
+	cr.mux.Lock()
+	defer cr.mux.Unlock()
+
+	if !cr.enabled.Swap(false) {
+		return false
+	}
+	if cr.cancelKeepalive != nil {
+		cr.cancelKeepalive()
+		cr.cancelKeepalive = nil
+	}
+	cr.socket.Close()
+	cr.socket = nil
+	return true
+}
+
 func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
@@ -290,7 +304,6 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 		logDebug("Extra disable")
 		return false
 	}
-	logInfo("Disabling cluster")
 	if cr.cancelKeepalive != nil {
 		cr.cancelKeepalive()
 		cr.cancelKeepalive = nil
@@ -298,6 +311,7 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	if cr.socket == nil {
 		return false
 	}
+	logInfo("Disabling cluster")
 	{
 		logInfo("Making keepalive before disable")
 		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
@@ -326,6 +340,7 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 		logError("Disable failed: ack non true value")
 		return false
 	}
+	logWarn("Cluster disabled")
 	return true
 }
 

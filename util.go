@@ -74,7 +74,7 @@ func httpToWs(origin string) string {
 
 func bytesToUnit(size float64) string {
 	if size < 1000 {
-		return fmt.Sprintf("%dByte", (int64)(size))
+		return fmt.Sprintf("%dB", (int)(size))
 	}
 	size /= 1024
 	unit := "KB"

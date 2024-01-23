@@ -29,24 +29,83 @@ import (
 type LimitedListener struct {
 	net.Listener
 
-	slots      chan struct{}
-	closeOnce  sync.Once
-	closed     chan struct{}
-	writeLimit int // bytes per second
+	slots        chan struct{}
+	writeRate    int // bytes per second
+	minWriteRate int
+
+	mux        sync.Mutex
+	closed     atomic.Bool
+	closeCh    chan struct{}
+	lastWrite  time.Time
+	wroteCount int
 }
 
 var _ net.Listener = (*LimitedListener)(nil)
 
 func NewLimitedListener(l net.Listener, maxConn int) *LimitedListener {
 	return &LimitedListener{
-		Listener: l,
-		slots:    make(chan struct{}, maxConn),
-		closed:   make(chan struct{}, 0),
+		Listener:     l,
+		slots:        make(chan struct{}, maxConn),
+		minWriteRate: 256,
+		closeCh:      make(chan struct{}, 0),
 	}
 }
 
+func (l *LimitedListener) WriteRate() int {
+	return l.writeRate
+}
+
+func (l *LimitedListener) SetWriteRate(rate int) {
+	l.writeRate = rate
+	if rate > 0 && rate < l.minWriteRate {
+		l.minWriteRate = rate
+	}
+}
+
+func (l *LimitedListener) MinWriteRate() int {
+	return l.minWriteRate
+}
+
+func (l *LimitedListener) SetMinWriteRate(rate int) {
+	l.minWriteRate = rate
+}
+
+func (l *LimitedListener) preWrite(n int) (int, time.Duration) {
+	if n <= 0 {
+		return n, 0
+	}
+	writeRate := l.writeRate
+	if writeRate <= 0 {
+		return n, 0
+	}
+
+	l.mux.Lock()
+	defer l.mux.Unlock()
+
+	now := time.Now()
+	diff := time.Second - now.Sub(l.lastWrite)
+	if diff <= 0 {
+		l.lastWrite = now
+		l.wroteCount = 0
+	} else if l.wroteCount >= writeRate {
+		m := l.minWriteRate
+		if m > n {
+			m = n
+		}
+		return m, diff
+	}
+	if n > writeRate {
+		l.wroteCount += writeRate
+		return writeRate, time.Second
+	}
+	l.wroteCount += n
+	return n, 0
+}
+
 func (l *LimitedListener) Close() error {
-	l.closeOnce.Do(func() { close(l.closed) })
+	if l.closed.CompareAndSwap(false, true) {
+		close(l.closeCh)
+	}
 	return l.Listener.Close()
 }
 
@@ -60,7 +119,7 @@ func (l *LimitedListener) Accept() (net.Conn, error) {
 		}
 		conn := &LimitedConn{Conn: c, listener: l}
 		return conn, nil
-	case <-l.closed:
+	case <-l.closeCh:
 		return nil, net.ErrClosed
 	}
 }
@@ -70,8 +129,7 @@ type LimitedConn struct {
 	listener *LimitedListener
 
 	closed     atomic.Bool
-	lastWrite  time.Time
-	writeCount int
+	writeAfter time.Time
 }
 
 var _ net.Conn = (*LimitedConn)(nil)
@@ -81,39 +139,31 @@ func (c *LimitedConn) Read(buf []byte) (n int, err error) {
 }
 
 func (c *LimitedConn) Write(buf []byte) (n int, err error) {
-	writeLimit := c.listener.writeLimit
-	if writeLimit <= 0 {
+	if len(buf) == 0 {
 		return c.Conn.Write(buf)
 	}
-	now := time.Now()
-	if c.lastWrite.IsZero() || c.lastWrite.Add(time.Second).Before(now) {
-		c.lastWrite = now
-	} else if c.writeCount >= writeLimit {
-		time.Sleep(time.Second - now.Sub(c.lastWrite))
-	}
-	if len(buf) <= writeLimit {
-		n, err = c.Conn.Write(buf)
-		c.writeCount += n
-	} else {
-		var n0 int
-		i, j := 0, 0
-		for {
-			j = i + writeLimit
-			if j > len(buf) {
-				j = len(buf)
+	var n0 int
+	for n < len(buf) {
+		now := time.Now()
+		if !c.writeAfter.IsZero() {
+			if dur := c.writeAfter.Sub(now); dur > 0 {
+				time.Sleep(dur)
+				now = time.Now()
 			}
-			n0, err = c.Conn.Write(buf[i:j])
-			n += n0
+		}
+		m, dur := c.listener.preWrite(len(buf) - n)
+		if dur > 0 {
+			c.writeAfter = now.Add(dur)
+		} else {
+			c.writeAfter = time.Time{}
+		}
+		if m > 0 {
+			n0, err = c.Conn.Write(buf[n : n+m])
+			n = n + n0
 			if err != nil {
 				return
 			}
-			if i = j; i >= len(buf) {
-				break
-			}
-			time.Sleep(time.Second)
 		}
-		c.lastWrite = time.Now()
-		c.writeCount = n0
 	}
 	return
 }

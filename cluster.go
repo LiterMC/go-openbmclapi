@@ -40,8 +40,6 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-const ClusterVersion = "1.6.7"
-
 type Cluster struct {
 	host       string
 	publicPort uint16

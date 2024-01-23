@@ -19,4 +19,6 @@
 
 package main
 
+const ClusterVersion = "1.6.10"
+
 var BuildVersion string = "dev"

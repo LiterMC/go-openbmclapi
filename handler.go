@@ -132,7 +132,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				case <-updateTicker.C:
 					cr.stats.mux.Lock()
 
-					logInfof("Served %d requests, %s, used %.2fs, %s/s", total, bytesToUnit(totalBytes), totalUsed, bytesToUnit(totalBytes/totalUsed))
+					logInfof("Served %d requests, %s, used %.2fs, %s/s", total, bytesToUnit(totalBytes), totalUsed, bytesToUnit(totalBytes/60))
 					for ua, v := range uas {
 						if ua == "" {
 							ua = "[Unknown]"

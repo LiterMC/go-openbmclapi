@@ -183,8 +183,8 @@ START:
 
 	clusterSvr := &http.Server{
 		Addr:        fmt.Sprintf("%s:%d", "0.0.0.0", config.Port),
-		ReadTimeout: 30 * time.Second,
-		IdleTimeout: 60 * time.Second,
+		ReadTimeout: 10 * time.Second,
+		IdleTimeout: 5 * time.Second,
 		Handler:     cluster.GetHandler(),
 	}
 

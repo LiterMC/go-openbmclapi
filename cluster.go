@@ -294,6 +294,7 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 		return false
 	}
 	{
+		logInfo("Making keepalive before disable")
 		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
 		cr.KeepAlive(tctx)
 		cancel()

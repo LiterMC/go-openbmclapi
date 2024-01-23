@@ -384,6 +384,13 @@ func (cr *Cluster) queryFunc(ctx context.Context, method string, url string, cal
 	if err != nil {
 		return
 	}
+
+	query := req.URL.Query()
+	if config.NoOpen {
+		query.Set("noopen", "1")
+	}
+	req.URL.RawQuery = query.Encode()
+
 	req.SetBasicAuth(cr.username, cr.password)
 	req.Header.Set("User-Agent", cr.useragent)
 	if call != nil {

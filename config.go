@@ -54,6 +54,7 @@ type Config struct {
 	Debug           bool         `yaml:"debug"`
 	RecordServeInfo bool         `yaml:"record_serve_info"`
 	Nohttps         bool         `yaml:"nohttps"`
+	NoOpen          bool         `yaml:"noopen"`
 	PublicHost      string       `yaml:"public_host"`
 	PublicPort      uint16       `yaml:"public_port"`
 	Port            uint16       `yaml:"port"`
@@ -153,6 +154,12 @@ func readConfig() (config Config) {
 	}
 	if byoc := os.Getenv("CLUSTER_BYOC"); byoc != "" {
 		config.Nohttps = byoc == "true"
+	}
+	switch noopen := os.Getenv("FORCE_NOOPEN"); noopen {
+	case "true":
+		config.NoOpen = true
+	case "false":
+		config.NoOpen = false
 	}
 	return
 }

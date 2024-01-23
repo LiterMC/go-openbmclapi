@@ -65,7 +65,7 @@ type Cluster struct {
 	enabled     atomic.Bool
 	disabled    chan struct{}
 	socket      *Socket
-	keepalive   context.CancelFunc
+	cancelKeepalive   context.CancelFunc
 	downloading map[string]chan struct{}
 	waitEnable  []chan struct{}
 
@@ -159,14 +159,16 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket.ErrorHandle = func(*Socket) {
 		connected()
 		go func() {
-			cr.Disable(ctx)
-			if !cr.Connect(ctx) {
-				logError("Cannot reconnect to server, exit.")
-				os.Exit(1)
-			}
-			if err := cr.Enable(ctx); err != nil {
-				logError("Cannot enable cluster:", err, "; exit.")
-				os.Exit(1)
+			logWarn("Reconnecting due to SIO error")
+			if cr.Disable(ctx) {
+				if !cr.Connect(ctx) {
+					logError("Cannot reconnect to server, exit.")
+					os.Exit(1)
+				}
+				if err := cr.Enable(ctx); err != nil {
+					logError("Cannot enable cluster:", err, "; exit.")
+					os.Exit(1)
+				}
 			}
 		}()
 	}
@@ -229,7 +231,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	}
 
 	var keepaliveCtx context.Context
-	keepaliveCtx, cr.keepalive = context.WithCancel(ctx)
+	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
 	createInterval(keepaliveCtx, func() {
 		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		defer cancel()
@@ -281,15 +283,15 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 
 	if !cr.enabled.Load() {
 		logDebug("Extra disable")
-		return true
+		return false
 	}
 	logInfo("Disabling cluster")
-	if cr.keepalive != nil {
-		cr.keepalive()
-		cr.keepalive = nil
+	if cr.cancelKeepalive != nil {
+		cr.cancelKeepalive()
+		cr.cancelKeepalive = nil
 	}
 	if cr.socket == nil {
-		return true
+		return false
 	}
 	{
 		tctx, cancel := context.WithTimeout(ctx, time.Second*10)

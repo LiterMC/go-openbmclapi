@@ -238,9 +238,12 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		defer cancel()
 		if !cr.KeepAlive(ctx) {
+			logError("TODO: Keep alive failed, exit.")
+			os.Exit(0x80)
 			if keepaliveCtx.Err() == nil {
 				logInfo("Reconnecting due to keepalive failed")
 				cr.Disable(keepaliveCtx)
+				logInfo("Reconnecting ...")
 				if !cr.Connect(keepaliveCtx) {
 					logError("Cannot reconnect to server, exit.")
 					os.Exit(1)

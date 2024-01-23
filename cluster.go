@@ -240,17 +240,17 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		defer cancel()
 		if !cr.KeepAlive(ctx) {
-			logInfo("Reconnecting due to keepalive failed")
-			cr.Disable(keepaliveCtx)
-			logError("TODO: figure out what caused infinite reconnect")
-			os.Exit(0xfe)
-			if !cr.Connect(keepaliveCtx) {
-				logError("Cannot reconnect to server, exit.")
-				os.Exit(1)
-			}
-			if err := cr.Enable(keepaliveCtx); err != nil {
-				logError("Cannot enable cluster:", err, "; exit.")
-				os.Exit(1)
+			if keepaliveCtx.Err() == nil {
+				logInfo("Reconnecting due to keepalive failed")
+				cr.Disable(keepaliveCtx)
+				if !cr.Connect(keepaliveCtx) {
+					logError("Cannot reconnect to server, exit.")
+					os.Exit(1)
+				}
+				if err := cr.Enable(keepaliveCtx); err != nil {
+					logError("Cannot enable cluster:", err, "; exit.")
+					os.Exit(1)
+				}
 			}
 		}
 	}, KeepAliveInterval)
@@ -303,12 +303,17 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 		cr.KeepAlive(tctx)
 		cancel()
 	}
-	data, err := cr.socket.EmitAckContext(ctx, "disable")
+
+	tctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	data, err := cr.socket.EmitAckContext(tctx, "disable")
+	cancel()
+
 	cr.enabled.Store(false)
 	cr.socket.Close()
 	cr.socket = nil
 	close(cr.disabled)
 	if err != nil {
+		logErrorf("Disable failed: %v", err)
 		return false
 	}
 	logDebug("disable ack:", data)
@@ -754,7 +759,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, dir string, hash string) (e
 	if ok {
 		select {
 		case <-done:
-		case <-cr.disabled:
+		case <-cr.Disabled():
 		}
 		return
 	}

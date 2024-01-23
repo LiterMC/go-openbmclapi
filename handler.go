@@ -16,6 +16,7 @@
  *  You should have received a copy of the GNU Affero General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 package main
 
 import (
@@ -179,7 +180,6 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
 			rw.Header().Set("Content-Type", "application/octet-stream")
 			rw.Header().Set("X-Bmclapi-Hash", hash)
-			rw.WriteHeader(http.StatusOK)
 			http.ServeContent(rw, req, name, time.Time{}, NullReader)
 			cr.hits.Add(1)
 			// cr.hbts.Add(0) // empty bytes

@@ -16,6 +16,7 @@
  *  You should have received a copy of the GNU Affero General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 package main
 
 import (
@@ -26,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -180,6 +182,20 @@ func forEachSliceFromRandomIndex(leng int, cb func(i int) (done bool)) (done boo
 		}
 	}
 	return false
+}
+
+func copyFile(src, dst string, mode os.FileMode) (err error) {
+	var srcFd, dstFd *os.File
+	if srcFd, err = os.Open(src); err != nil {
+		return
+	}
+	defer srcFd.Close()
+	if dstFd, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode); err != nil {
+		return
+	}
+	defer dstFd.Close()
+	_, err = io.Copy(dstFd, srcFd)
+	return
 }
 
 type nullReader struct{}

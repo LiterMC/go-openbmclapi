@@ -16,6 +16,7 @@
  *  You should have received a copy of the GNU Affero General Public License
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
 package main
 
 import (
@@ -61,13 +62,14 @@ type Cluster struct {
 	hbts   atomic.Int64
 	issync atomic.Bool
 
-	mux         sync.RWMutex
-	enabled     atomic.Bool
-	disabled    chan struct{}
-	socket      *Socket
-	cancelKeepalive   context.CancelFunc
-	downloading map[string]chan struct{}
-	waitEnable  []chan struct{}
+	mux             sync.RWMutex
+	enabled         atomic.Bool
+	disabled        chan struct{}
+	socket          *Socket
+	cancelKeepalive context.CancelFunc
+	downloadMux     sync.Mutex
+	downloading     map[string]chan struct{}
+	waitEnable      []chan struct{}
 
 	client *http.Client
 
@@ -102,6 +104,8 @@ func NewCluster(
 		ossList:  ossList,
 
 		disabled: make(chan struct{}, 0),
+
+		downloading: make(map[string]chan struct{}),
 
 		client: &http.Client{
 			Transport: transport,
@@ -441,12 +445,6 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 	return
 }
 
-type extFileInfo struct {
-	*FileInfo
-	dlerr    error
-	trycount int
-}
-
 type syncStats struct {
 	totalsize  float64
 	downloaded float64
@@ -455,7 +453,7 @@ type syncStats struct {
 	fl         int
 }
 
-func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
+func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo) {
 	logInfo("Preparing to sync files...")
 	if !cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
@@ -463,36 +461,33 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files0 []FileInfo) {
 	}
 
 	if cr.usedOSS() {
-		for _, item := range cr.ossList {
-			if err := cr.syncFiles(ctx, filepath.Join(item.FolderPath, "download"), files0); err != nil {
-				break
-			}
-		}
+		cr.ossSyncFiles(ctx, files)
 	} else {
-		cr.syncFiles(ctx, cr.cacheDir, files0)
+		cr.syncFiles(ctx, files)
 	}
 
 	cr.issync.Store(false)
 
-	go cr.gc(files0)
+	go cr.gc(files)
 }
 
-func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo) error {
-	files := cr.CheckFiles(dir, files0)
+// syncFiles download objects to the cache folder
+func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo) error {
+	missing := cr.CheckFiles(cr.cacheDir, files)
 
-	fl := len(files)
+	fl := len(missing)
 	if fl == 0 {
-		logInfo("All file was synchronized")
+		logInfo("All files was synchronized")
 		return nil
 	}
 
 	// sort the files in descending order of size
-	sort.Slice(files, func(i, j int) bool { return files[i].Size > files[j].Size })
+	sort.Slice(missing, func(i, j int) bool { return missing[i].Size > missing[j].Size })
 
 	var stats syncStats
 	stats.slots = make(chan []byte, cr.maxConn)
 	stats.fl = fl
-	for _, f := range files {
+	for _, f := range missing {
 		stats.totalsize += (float64)(f.Size)
 	}
 	for i := cap(stats.slots); i > 0; i-- {
@@ -502,12 +497,24 @@ func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo)
 	logInfof("Starting sync files, count: %d, total: %s", fl, bytesToUnit(stats.totalsize))
 	start := time.Now()
 
-	for _, f := range files {
-		fi := f
-		if err := cr.dlfile(ctx, &stats, dir, &extFileInfo{FileInfo: &fi, dlerr: nil, trycount: 0}); err != nil {
+	for _, f := range missing {
+		pathRes, err := cr.fetchFile(ctx, &stats, f)
+		if err != nil {
 			logWarn("File sync interrupted")
 			return err
 		}
+		go func(f FileInfo) {
+			select {
+			case path := <-pathRes:
+				if path != "" {
+					if err := cr.putFileToCache(path, f); err != nil {
+						logErrorf("Could not move file %q to cache:\n\t%v", path, err)
+					}
+				}
+			case <-ctx.Done():
+				return
+			}
+		}(f)
 	}
 	for i := cap(stats.slots); i > 0; i-- {
 		select {
@@ -519,7 +526,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, dir string, files0 []FileInfo)
 	}
 
 	use := time.Since(start)
-	logInfof("All file was synchronized, use time: %v, %s/s", use, bytesToUnit(stats.totalsize/use.Seconds()))
+	logInfof("All files was synchronized, use time: %v, %s/s", use, bytesToUnit(stats.totalsize/use.Seconds()))
 	return nil
 }
 
@@ -596,7 +603,7 @@ func (cr *Cluster) gcAt(files []FileInfo, dir string) {
 	logInfo("Garbage collect finished for", dir)
 }
 
-func (cr *Cluster) dlfile(ctx context.Context, stats *syncStats, dir string, f *extFileInfo) error {
+func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) (<-chan string, error) {
 	var buf []byte
 WAIT_SLOT:
 	for {
@@ -604,66 +611,47 @@ WAIT_SLOT:
 		case buf = <-stats.slots:
 			break WAIT_SLOT
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
 	}
+	pathRes := make(chan string, 1)
 	go func() {
 		defer func() {
 			stats.slots <- buf
 		}()
+		defer close(pathRes)
 
-	RETRY:
-		logInfof("Downloading: %s [%s]", f.Path, bytesToUnit((float64)(f.Size)))
+		for trycount := 1; trycount <= 3; trycount++ {
+			logInfof("Downloading: %s [%s]", f.Path, bytesToUnit((float64)(f.Size)))
 
-		hashMethod, err := getHashMethod(len(f.Hash))
-		if err == nil {
-			err = cr.downloadFileBuf(ctx, dir, f.FileInfo, hashMethod, buf)
-		}
+			hashMethod, err := getHashMethod(len(f.Hash))
+			if err == nil {
+				var path string
+				if path, err = cr.fetchFileWithBuf(ctx, f, hashMethod, buf); err == nil {
+					pathRes <- path
+					stats.downloaded += (float64)(f.Size)
+					stats.fcount.Add(1)
+					logInfof("Downloaded: %s [%s/%s ; %d/%d] %.2f%%", f.Path,
+						bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
+						stats.fcount.Load(), stats.fl,
+						stats.downloaded/stats.totalsize*100)
+					return
+				}
+			}
 
-		if err == nil {
-			stats.downloaded += (float64)(f.Size)
-			stats.fcount.Add(1)
-			logInfof("Downloaded: %s [%s/%s ; %d/%d] %.2f%%", f.Path,
-				bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
-				stats.fcount.Load(), stats.fl,
-				stats.downloaded/stats.totalsize*100)
-		} else {
 			logErrorf("File download error: %s [%s/%s ; %d/%d] %.2f%%\n\t%s",
 				f.Path,
 				bytesToUnit(stats.downloaded), bytesToUnit(stats.totalsize),
 				stats.fcount.Load(), stats.fl,
 				stats.downloaded/stats.totalsize*100,
 				err)
-			if f.trycount < 3 {
-				f.trycount++
-				goto RETRY
-			}
-			stats.fcount.Add(1)
 		}
+		stats.fcount.Add(1)
 	}()
-	return nil
+	return pathRes, nil
 }
 
-func (cr *Cluster) renameOrCopy(src, dst string, mode os.FileMode) (err error) {
-	if cr.ossList == nil {
-		err = os.Rename(src, dst)
-		os.Chmod(dst, mode)
-	} else {
-		var srcFd, dstFd *os.File
-		if srcFd, err = os.Open(src); err != nil {
-			return
-		}
-		defer srcFd.Close()
-		if dstFd, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode); err != nil {
-			return
-		}
-		defer dstFd.Close()
-		_, err = io.Copy(dstFd, srcFd)
-	}
-	return
-}
-
-func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo, hashMethod crypto.Hash, buf []byte) (err error) {
+func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod crypto.Hash, buf []byte) (path string, err error) {
 	var (
 		res *http.Response
 		fd  *os.File
@@ -676,7 +664,8 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo,
 		return
 	}
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("Unexpected status code: %d", res.StatusCode)
+		err = fmt.Errorf("Unexpected status code: %d", res.StatusCode)
+		return
 	}
 
 	hw := hashMethod.New()
@@ -684,8 +673,12 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo,
 	if fd, err = os.CreateTemp(cr.tmpDir, "*.downloading"); err != nil {
 		return
 	}
-	tfile := fd.Name()
-	defer os.Remove(tfile)
+	path = fd.Name()
+	defer func(path string) {
+		if err != nil {
+			os.Remove(path)
+		}
+	}(path)
 
 	_, err = io.CopyBuffer(io.MultiWriter(hw, fd), res.Body, buf)
 	stat, err2 := fd.Stat()
@@ -694,32 +687,49 @@ func (cr *Cluster) downloadFileBuf(ctx context.Context, dir string, f *FileInfo,
 		return
 	}
 	if err2 != nil {
-		return err2
-	}
-	if t := stat.Size(); f.Size >= 0 && t != f.Size {
-		return fmt.Errorf("File size wrong, got %s, expect %s", bytesToUnit((float64)(t)), bytesToUnit((float64)(f.Size)))
-	} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
-		return fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)
-	}
-
-	hspt := filepath.Join(dir, hashToFilename(f.Hash))
-	os.Remove(hspt) // remove the old file if exists
-	if err = cr.renameOrCopy(tfile, hspt, 0644); err != nil {
+		err = err2
 		return
 	}
+	if t := stat.Size(); f.Size >= 0 && t != f.Size {
+		err = fmt.Errorf("File size wrong, got %s, expect %s", bytesToUnit((float64)(t)), bytesToUnit((float64)(f.Size)))
+		return
+	} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
+		err = fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)
+		return
+	}
+	return
+}
+
+func (cr *Cluster) putFileToCache(src string, f FileInfo) (err error) {
+	targetPath := filepath.Join(cr.cacheDir, hashToFilename(f.Hash))
+	os.Remove(targetPath) // remove the old file if exists
+	if err = os.Rename(src, targetPath); err != nil {
+		return
+	}
+	os.Chmod(targetPath, 0644)
 
 	if config.Hijack.Enable {
 		if !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
 			target := filepath.Join(config.Hijack.Path, filepath.FromSlash(f.Path))
 			dir := filepath.Dir(target)
 			os.MkdirAll(dir, 0755)
-			if rp, err := filepath.Rel(dir, hspt); err == nil {
+			if rp, err := filepath.Rel(dir, targetPath); err == nil {
 				os.Symlink(rp, target)
 			}
 		}
 	}
-
 	return
+}
+
+func (cr *Cluster) lockDownloading(target string) (chan struct{}, bool) {
+	cr.downloadMux.Lock()
+	defer cr.downloadMux.Unlock()
+	if ch := cr.downloading[target]; ch != nil {
+		return ch, true
+	}
+	ch := make(chan struct{}, 1)
+	cr.downloading[target] = ch
+	return ch, false
 }
 
 func (cr *Cluster) DownloadFile(ctx context.Context, dir string, hash string) (err error) {
@@ -734,10 +744,24 @@ func (cr *Cluster) DownloadFile(ctx context.Context, dir string, hash string) (e
 		defer bufPool.Put(buf0)
 		buf = *buf0
 	}
-	f := &FileInfo{
+	f := FileInfo{
 		Path: "/openbmclapi/download/" + hash + "?noopen=1",
 		Hash: hash,
 		Size: -1,
 	}
-	return cr.downloadFileBuf(ctx, dir, f, hashMethod, buf)
+	target := filepath.Join(dir, hashToFilename(hash))
+	done, ok := cr.lockDownloading(target)
+	if ok {
+		select {
+		case <-done:
+		case <-cr.disabled:
+		}
+		return
+	}
+	defer close(done)
+	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf)
+	if err != nil {
+		return
+	}
+	return copyFile(path, target, 0644)
 }

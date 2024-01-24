@@ -175,7 +175,9 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		}()
 	}
 	logInfof("Dialing %s", strings.ReplaceAll(wsurl, cr.password, "<******>"))
-	err := cr.socket.IO().DialContext(ctx, wsurl, WithHeader(header))
+	tctx, cancel := context.WithTimeout(ctx, time.Second*15)
+	err := cr.socket.IO().DialContext(tctx, wsurl, WithHeader(header))
+	cancel()
 	if err != nil {
 		logError("Websocket connect error:", err)
 		return false
@@ -210,12 +212,14 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 	logInfo("Sending enable packet")
-	data, err := cr.socket.EmitAckContext(ctx, "enable", Map{
+	tctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	data, err := cr.socket.EmitAckContext(tctx, "enable", Map{
 		"host":    cr.host,
 		"port":    cr.publicPort,
 		"version": ClusterVersion,
 		"byoc":    cr.byoc,
 	})
+	cancel()
 	if err != nil {
 		return
 	}

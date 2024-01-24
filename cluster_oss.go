@@ -96,6 +96,11 @@ func (cr *Cluster) ossSyncFiles(ctx context.Context, files []FileInfo) error {
 			case path := <-pathRes:
 				if path != "" {
 					defer os.Remove(path)
+					// acquire slot here
+					buf := <-stats.slots
+					defer func(){
+						stats.slots <- buf
+					}()
 					var srcFd *os.File
 					if srcFd, err = os.Open(path); err != nil {
 						return
@@ -113,7 +118,7 @@ func (cr *Cluster) ossSyncFiles(ctx context.Context, files []FileInfo) error {
 							logErrorf("Could not seek file %q: %v", path, err)
 							continue
 						}
-						_, err = io.Copy(dstFd, srcFd)
+						_, err = io.CopyBuffer(dstFd, srcFd, buf)
 						dstFd.Close()
 						if err != nil {
 							logErrorf("Could not copy from %q to %q:\n\t%v", path, target, err)

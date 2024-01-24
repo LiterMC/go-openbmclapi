@@ -34,7 +34,6 @@ import (
 )
 
 var (
-	SyncFileInterval  = time.Minute * 10
 	KeepAliveInterval = time.Second * 59
 )
 
@@ -252,7 +251,7 @@ START:
 				return
 			}
 			cluster.SyncFiles(ctx, fl)
-		}, SyncFileInterval)
+		}, (time.Duration)(config.SyncInterval)*time.Minute)
 
 		if err := cluster.Enable(ctx); err != nil {
 			logError("Cannot enable cluster:", err)

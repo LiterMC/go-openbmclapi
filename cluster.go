@@ -239,18 +239,19 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
 	createInterval(keepaliveCtx, func() {
-		ctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
-		defer cancel()
-		if !cr.KeepAlive(ctx) {
+		tctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
+		ok := cr.KeepAlive(tctx)
+		cancel()
+		if !ok {
 			if keepaliveCtx.Err() == nil {
 				logInfo("Reconnecting due to keepalive failed")
-				cr.Disable(keepaliveCtx)
+				cr.Disable(ctx)
 				logInfo("Reconnecting ...")
-				if !cr.Connect(keepaliveCtx) {
+				if !cr.Connect(ctx) {
 					logError("Cannot reconnect to server, exit.")
 					os.Exit(1)
 				}
-				if err := cr.Enable(keepaliveCtx); err != nil {
+				if err := cr.Enable(ctx); err != nil {
 					logError("Cannot enable cluster:", err, "; exit.")
 					os.Exit(1)
 				}

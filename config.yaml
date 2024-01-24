@@ -7,6 +7,7 @@ public_port: 8080
 port: 4000
 cluster_id: ${CLUSTER_ID}
 cluster_secret: ${CLUSTER_SECRET}
+sync_interval: 10
 download_max_conn: 64
 serve_limit:
     enable: false

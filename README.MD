@@ -84,6 +84,8 @@ port: 4000
 cluster_id: ${CLUSTER_ID}
 # CLUSTER_SECRET
 cluster_secret: ${CLUSTER_SECRET}
+# 文件同步间隔 (分钟)
+sync_interval: 10
 # 同步文件时最多打开的连接数量
 download_max_conn: 64
 # 服务器上行限制

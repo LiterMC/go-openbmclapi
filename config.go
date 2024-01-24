@@ -66,6 +66,7 @@ type Config struct {
 	Port            uint16           `yaml:"port"`
 	ClusterId       string           `yaml:"cluster_id"`
 	ClusterSecret   string           `yaml:"cluster_secret"`
+	SyncInterval    int              `yaml:"sync_interval"`
 	DownloadMaxConn int              `yaml:"download_max_conn"`
 	ServeLimit      ServeLimitConfig `yaml:"serve_limit"`
 	Oss             OSSConfig        `yaml:"oss"`
@@ -84,6 +85,7 @@ func readConfig() (config Config) {
 		Port:            4000,
 		ClusterId:       "${CLUSTER_ID}",
 		ClusterSecret:   "${CLUSTER_SECRET}",
+		SyncInterval:    10,
 		DownloadMaxConn: 64,
 		ServeLimit: ServeLimitConfig{
 			Enable:     false,

@@ -67,13 +67,9 @@ func (cr *Cluster) ossSyncFiles(ctx context.Context, files []FileInfo) error {
 	}
 
 	var stats syncStats
-	stats.slots = make(chan []byte, cr.maxConn)
 	stats.fl = fl
 	for _, f := range missing {
 		stats.totalsize += (float64)(f.Size)
-	}
-	for i := cap(stats.slots); i > 0; i-- {
-		stats.slots <- make([]byte, 1024*1024)
 	}
 
 	logInfof("Starting sync files, count: %d, total: %s", fl, bytesToUnit(stats.totalsize))
@@ -90,16 +86,19 @@ func (cr *Cluster) ossSyncFiles(ctx context.Context, files []FileInfo) error {
 		}
 		go func(f *fileInfoWithTargets) {
 			defer func() {
-				done <- struct{}{}
+				select {
+				case done <- struct{}{}:
+				case <-ctx.Done():
+				}
 			}()
 			select {
 			case path := <-pathRes:
 				if path != "" {
 					defer os.Remove(path)
 					// acquire slot here
-					buf := <-stats.slots
-					defer func(){
-						stats.slots <- buf
+					buf := <-cr.bufSlots
+					defer func() {
+						cr.bufSlots <- buf
 					}()
 					var srcFd *os.File
 					if srcFd, err = os.Open(path); err != nil {
@@ -131,7 +130,7 @@ func (cr *Cluster) ossSyncFiles(ctx context.Context, files []FileInfo) error {
 			}
 		}(f)
 	}
-	for i := cap(stats.slots); i > 0; i-- {
+	for i := len(missing); i > 0; i-- {
 		select {
 		case <-done:
 		case <-ctx.Done():
@@ -257,5 +256,43 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 		return false, fmt.Errorf("OSS check request failed %q: expected %d bytes, but got %d bytes", target, targetSize, n)
 	}
 	logInfof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, bytesToUnit((float64)(n)/used.Seconds()), supportRange)
+	return
+}
+
+func (cr *Cluster) DownloadFileOSS(ctx context.Context, dir string, hash string) (err error) {
+	hashMethod, err := getHashMethod(len(hash))
+	if err != nil {
+		return
+	}
+
+	var buf []byte
+	{
+		buf0 := bufPool.Get().(*[]byte)
+		defer bufPool.Put(buf0)
+		buf = *buf0
+	}
+	f := FileInfo{
+		Path: "/openbmclapi/download/" + hash + "?noopen=1",
+		Hash: hash,
+		Size: -1,
+	}
+	target := filepath.Join(dir, hashToFilename(hash))
+	done, ok := cr.lockDownloading(target)
+	if ok {
+		select {
+		case err = <-done:
+		case <-cr.Disabled():
+		}
+		return
+	}
+	defer func() {
+		done <- err
+	}()
+	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf)
+	if err != nil {
+		return
+	}
+	defer os.Remove(path)
+	err = copyFile(path, target, 0644)
 	return
 }

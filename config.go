@@ -68,6 +68,7 @@ type Config struct {
 	ClusterSecret   string           `yaml:"cluster_secret"`
 	SyncInterval    int              `yaml:"sync_interval"`
 	DownloadMaxConn int              `yaml:"download_max_conn"`
+	UseGzip         bool             `yaml:"use_gzip"`
 	ServeLimit      ServeLimitConfig `yaml:"serve_limit"`
 	Oss             OSSConfig        `yaml:"oss"`
 	Hijack          HijackConfig     `yaml:"hijack_port"`

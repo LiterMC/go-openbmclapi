@@ -20,6 +20,8 @@
 package main
 
 import (
+	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"crypto"
 	"encoding/hex"
@@ -28,7 +30,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -66,10 +70,11 @@ type Cluster struct {
 	socket          *Socket
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
-	downloading     map[string]chan struct{}
+	downloading     map[string]chan error
 	waitEnable      []chan struct{}
 
-	client *http.Client
+	client   *http.Client
+	bufSlots chan []byte
 
 	handlerAPIv0 http.Handler
 	handlerAPIv1 http.Handler
@@ -103,13 +108,18 @@ func NewCluster(
 
 		disabled: make(chan struct{}, 0),
 
-		downloading: make(map[string]chan struct{}),
+		downloading: make(map[string]chan error),
 
 		client: &http.Client{
 			Transport: transport,
 		},
 	}
 	close(cr.disabled)
+
+	cr.bufSlots = make(chan []byte, cr.maxConn)
+	for i := 0; i < cr.maxConn; i++ {
+		cr.bufSlots <- make([]byte, 1024*512)
+	}
 
 	// create folder strcture
 	os.RemoveAll(cr.tmpDir)
@@ -329,7 +339,7 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	cancel()
 
 	cr.enabled.Store(false)
-	cr.socket.Close()
+	go cr.socket.Close()
 	cr.socket = nil
 	close(cr.disabled)
 	if err != nil {
@@ -399,40 +409,23 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 	return
 }
 
-func (cr *Cluster) queryFunc(ctx context.Context, method string, url string, call func(*http.Request)) (res *http.Response, err error) {
-	var req *http.Request
-	req, err = http.NewRequestWithContext(ctx, method, cr.prefix+url, nil)
+func (cr *Cluster) makeReq(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
+	var target *url.URL
+	if target, err = url.Parse(cr.prefix); err != nil {
+		return
+	}
+	target.Path = path.Join(target.Path, relpath)
+	if query != nil {
+		target.RawQuery = query.Encode()
+	}
+
+	req, err = http.NewRequestWithContext(ctx, method, target.String(), nil)
 	if err != nil {
 		return
 	}
-
-	query := req.URL.Query()
-	if config.NoOpen {
-		query.Set("noopen", "1")
-	}
-	req.URL.RawQuery = query.Encode()
-
 	req.SetBasicAuth(cr.username, cr.password)
 	req.Header.Set("User-Agent", cr.useragent)
-	if call != nil {
-		call(req)
-	}
-	res, err = cr.client.Do(req)
 	return
-}
-
-func (cr *Cluster) queryURL(ctx context.Context, method string, url string) (res *http.Response, err error) {
-	return cr.queryFunc(ctx, method, url, nil)
-}
-
-func (cr *Cluster) queryURLHeader(ctx context.Context, method string, url string, header map[string]string) (res *http.Response, err error) {
-	return cr.queryFunc(ctx, method, url, func(req *http.Request) {
-		if header != nil {
-			for k, v := range header {
-				req.Header.Set(k, v)
-			}
-		}
-	})
 }
 
 type FileInfo struct {
@@ -456,7 +449,11 @@ var fileListSchema = avro.MustParse(`{
 }`)
 
 func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error) {
-	res, err := cr.queryURL(ctx, "GET", "/openbmclapi/files")
+	req, err := cr.makeReq(ctx, http.MethodGet, "/openbmclapi/files", nil)
+	if err != nil {
+		return
+	}
+	res, err := cr.client.Do(req)
 	if err != nil {
 		return
 	}
@@ -471,7 +468,7 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 	if err != nil {
 		return
 	}
-	defer zr.Close() // TODO: reuse the decoder?
+	defer zr.Close()
 	if err = avro.NewDecoderForSchema(fileListSchema, zr).Decode(&files); err != nil {
 		return
 	}
@@ -481,7 +478,6 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 type syncStats struct {
 	totalsize  float64
 	downloaded float64
-	slots      chan []byte
 	fcount     atomic.Int32
 	fl         int
 }
@@ -518,17 +514,15 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo) error {
 	sort.Slice(missing, func(i, j int) bool { return missing[i].Size > missing[j].Size })
 
 	var stats syncStats
-	stats.slots = make(chan []byte, cr.maxConn)
 	stats.fl = fl
 	for _, f := range missing {
 		stats.totalsize += (float64)(f.Size)
 	}
-	for i := cap(stats.slots); i > 0; i-- {
-		stats.slots <- make([]byte, 1024*1024)
-	}
 
 	logInfof("Starting sync files, count: %d, total: %s", fl, bytesToUnit(stats.totalsize))
 	start := time.Now()
+
+	done := make(chan struct{}, 1)
 
 	for _, f := range missing {
 		pathRes, err := cr.fetchFile(ctx, &stats, f)
@@ -537,10 +531,16 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo) error {
 			return err
 		}
 		go func(f FileInfo) {
+			defer func() {
+				select {
+				case done <- struct{}{}:
+				case <-ctx.Done():
+				}
+			}()
 			select {
 			case path := <-pathRes:
 				if path != "" {
-					if err := cr.putFileToCache(path, f); err != nil {
+					if _, err := cr.putFileToCache(path, f); err != nil {
 						logErrorf("Could not move file %q to cache:\n\t%v", path, err)
 					}
 				}
@@ -549,9 +549,9 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo) error {
 			}
 		}(f)
 	}
-	for i := cap(stats.slots); i > 0; i-- {
+	for i := len(missing); i > 0; i-- {
 		select {
-		case <-stats.slots:
+		case <-done:
 		case <-ctx.Done():
 			logWarn("File sync interrupted")
 			return ctx.Err()
@@ -641,7 +641,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 WAIT_SLOT:
 	for {
 		select {
-		case buf = <-stats.slots:
+		case buf = <-cr.bufSlots:
 			break WAIT_SLOT
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -650,7 +650,7 @@ WAIT_SLOT:
 	pathRes := make(chan string, 1)
 	go func() {
 		defer func() {
-			stats.slots <- buf
+			cr.bufSlots <- buf
 		}()
 		defer close(pathRes)
 
@@ -684,12 +684,26 @@ WAIT_SLOT:
 	return pathRes, nil
 }
 
+var noOpenQuery = url.Values{
+	"noopen": {"1"},
+}
+
 func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod crypto.Hash, buf []byte) (path string, err error) {
 	var (
-		res *http.Response
-		fd  *os.File
+		query url.Values = nil
+		req   *http.Request
+		res   *http.Response
+		fd    *os.File
+		r     io.Reader
 	)
-	if res, err = cr.queryURL(ctx, "GET", f.Path); err != nil {
+	if config.NoOpen {
+		query = noOpenQuery
+	}
+	if req, err = cr.makeReq(ctx, http.MethodGet, f.Path, query); err != nil {
+		return
+	}
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	if res, err = cr.client.Do(req); err != nil {
 		return
 	}
 	defer res.Body.Close()
@@ -699,6 +713,18 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod 
 	if res.StatusCode != http.StatusOK {
 		err = fmt.Errorf("Unexpected status code: %d", res.StatusCode)
 		return
+	}
+	switch strings.ToLower(res.Header.Get("Content-Encoding")) {
+	case "gzip":
+		if r, err = gzip.NewReader(res.Body); err != nil {
+			return
+		}
+	case "deflate":
+		if r, err = zlib.NewReader(res.Body); err != nil {
+			return
+		}
+	default:
+		r = res.Body
 	}
 
 	hw := hashMethod.New()
@@ -713,7 +739,7 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod 
 		}
 	}(path)
 
-	_, err = io.CopyBuffer(io.MultiWriter(hw, fd), res.Body, buf)
+	_, err = io.CopyBuffer(io.MultiWriter(hw, fd), r, buf)
 	stat, err2 := fd.Stat()
 	fd.Close()
 	if err != nil {
@@ -733,14 +759,36 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod 
 	return
 }
 
-func (cr *Cluster) putFileToCache(src string, f FileInfo) (err error) {
+func (cr *Cluster) putFileToCache(src string, f FileInfo) (compressed bool, err error) {
+	defer os.Remove(src)
+
 	targetPath := filepath.Join(cr.cacheDir, hashToFilename(f.Hash))
+	if config.UseGzip && f.Size > 1024*10 {
+		var srcFd, dstFd *os.File
+		if srcFd, err = os.Open(src); err != nil {
+			return
+		}
+		defer srcFd.Close()
+		targetPath += ".gz"
+		if dstFd, err = os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
+			return
+		}
+		defer dstFd.Close()
+		w := gzip.NewWriter(dstFd)
+		defer w.Close()
+		if _, err = io.Copy(w, srcFd); err != nil {
+			return
+		}
+		return true, nil
+	}
+
 	os.Remove(targetPath) // remove the old file if exists
 	if err = os.Rename(src, targetPath); err != nil {
 		return
 	}
 	os.Chmod(targetPath, 0644)
 
+	// TODO: support hijack with compressed file
 	if config.Hijack.Enable {
 		if !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
 			target := filepath.Join(config.Hijack.Path, filepath.FromSlash(f.Path))
@@ -751,21 +799,22 @@ func (cr *Cluster) putFileToCache(src string, f FileInfo) (err error) {
 			}
 		}
 	}
-	return
+	return false, nil
 }
 
-func (cr *Cluster) lockDownloading(target string) (chan struct{}, bool) {
+func (cr *Cluster) lockDownloading(target string) (chan error, bool) {
 	cr.downloadMux.Lock()
 	defer cr.downloadMux.Unlock()
+
 	if ch := cr.downloading[target]; ch != nil {
 		return ch, true
 	}
-	ch := make(chan struct{}, 1)
+	ch := make(chan error, 1)
 	cr.downloading[target] = ch
 	return ch, false
 }
 
-func (cr *Cluster) DownloadFile(ctx context.Context, dir string, hash string) (err error) {
+func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (compressed bool, err error) {
 	hashMethod, err := getHashMethod(len(hash))
 	if err != nil {
 		return
@@ -782,19 +831,23 @@ func (cr *Cluster) DownloadFile(ctx context.Context, dir string, hash string) (e
 		Hash: hash,
 		Size: -1,
 	}
-	target := filepath.Join(dir, hashToFilename(hash))
-	done, ok := cr.lockDownloading(target)
+	done, ok := cr.lockDownloading(hash)
 	if ok {
 		select {
-		case <-done:
+		case err = <-done:
 		case <-cr.Disabled():
 		}
 		return
 	}
-	defer close(done)
+	defer func() {
+		done <- err
+	}()
 	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf)
 	if err != nil {
 		return
 	}
-	return copyFile(path, target, 0644)
+	if compressed, err = cr.putFileToCache(path, f); err != nil {
+		return
+	}
+	return
 }

@@ -24,11 +24,13 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +42,20 @@ func split(str string, b byte) (l, r string) {
 		return str[:i], str[i+1:]
 	}
 	return str, ""
+}
+
+func splitCSV(line string) (values map[string]float32) {
+	list := strings.Split(line, ",")
+	values = make(map[string]float32, len(list))
+	for _, v := range list {
+		name, opt := split(strings.ToLower(strings.TrimSpace(v)), ';')
+		var q float64 = 1
+		if v, ok := strings.CutPrefix(opt, "q="); ok {
+			q, _ = strconv.ParseFloat(v, 32)
+		}
+		values[name] = (float32)(q)
+	}
+	return
 }
 
 func hashToFilename(hash string) string {
@@ -210,3 +226,18 @@ var (
 func (nullReader) Read([]byte) (int, error)          { return 0, io.EOF }
 func (nullReader) ReadAt([]byte, int64) (int, error) { return 0, io.EOF }
 func (nullReader) Seek(int64, int) (int64, error)    { return 0, nil }
+
+var errNotSeeker = errors.New("r is not an io.Seeker")
+
+func getFileSize(r io.Reader) (n int64, err error) {
+	if s, ok := r.(io.Seeker); ok {
+		if n, err = s.Seek(0, io.SeekEnd); err == nil {
+			if _, err = s.Seek(0, io.SeekStart); err != nil {
+				return
+			}
+		}
+	} else {
+		err = errNotSeeker
+	}
+	return
+}

@@ -148,7 +148,7 @@ func parseArgs() {
 			}
 			cacheDir := filepath.Join(baseDir, "cache")
 			fmt.Printf("Cache directory = %q\n", cacheDir)
-			var hashBuf [128]byte
+			var hashBuf [64]byte
 			err := walkCacheDir(cacheDir, func(path string) (_ error) {
 				target, ok := strings.CutSuffix(path, ".gz")
 				if !ok {
@@ -410,8 +410,9 @@ START:
 			}
 			os.Exit(1)
 		}
-		cluster.SyncFiles(ctx, fl)
+		cluster.SyncFiles(ctx, fl, true)
 
+		checkCount := 0
 		createInterval(ctx, func() {
 			logInfof("Fetching file list")
 			fl, err := cluster.GetFileList(ctx)
@@ -419,7 +420,8 @@ START:
 				logError("Cannot query cluster file list:", err)
 				return
 			}
-			cluster.SyncFiles(ctx, fl)
+			checkCount = (checkCount + 1) % 10
+			cluster.SyncFiles(ctx, fl, checkCount == 0)
 		}, (time.Duration)(config.SyncInterval)*time.Minute)
 
 		if err := cluster.Enable(ctx); err != nil {

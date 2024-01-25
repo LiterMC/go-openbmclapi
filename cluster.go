@@ -124,8 +124,10 @@ func NewCluster(
 	// create folder strcture
 	os.RemoveAll(cr.tmpDir)
 	os.MkdirAll(cr.cacheDir, 0755)
+	var b [1]byte
 	for i := 0; i < 0x100; i++ {
-		os.Mkdir(filepath.Join(cr.cacheDir, hex.EncodeToString([]byte{(byte)(i)})), 0755)
+		b[0] = (byte)(i)
+		os.Mkdir(filepath.Join(cr.cacheDir, hex.EncodeToString(b[:])), 0755)
 	}
 	os.MkdirAll(cr.dataDir, 0755)
 	os.MkdirAll(cr.tmpDir, 0700)
@@ -482,7 +484,7 @@ type syncStats struct {
 	fl         int
 }
 
-func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo) {
+func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) {
 	logInfo("Preparing to sync files...")
 	if !cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
@@ -490,9 +492,9 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo) {
 	}
 
 	if cr.usedOSS() {
-		cr.ossSyncFiles(ctx, files)
+		cr.ossSyncFiles(ctx, files, heavyCheck)
 	} else {
-		cr.syncFiles(ctx, files)
+		cr.syncFiles(ctx, files, heavyCheck)
 	}
 
 	cr.issync.Store(false)
@@ -501,8 +503,8 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo) {
 }
 
 // syncFiles download objects to the cache folder
-func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo) error {
-	missing := cr.CheckFiles(cr.cacheDir, files)
+func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
+	missing := cr.CheckFiles(cr.cacheDir, files, heavyCheck)
 
 	fl := len(missing)
 	if fl == 0 {
@@ -563,30 +565,86 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo) error {
 	return nil
 }
 
-func (cr *Cluster) CheckFiles(dir string, files []FileInfo) (missing []FileInfo) {
-	logInfof("Start checking files at %q", dir)
-	usedOSS := cr.usedOSS()
+func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing []FileInfo) {
+	logInfof("Start checking files, heavy = %v", heavy)
+	var hashBuf [64]byte
 	for i, f := range files {
 		p := filepath.Join(dir, hashToFilename(f.Hash))
 		logDebugf("Checking file %s [%.2f%%]", p, (float32)(i+1)/(float32)(len(files))*100)
-		if usedOSS && f.Size == 0 {
-			logDebugf("Skipped empty file %s", p)
-			continue
-		}
 		stat, err := os.Stat(p)
 		if err == nil {
 			if sz := stat.Size(); sz != f.Size {
-				logInfof("Found modified file: size of %q is %s but expect %s",
-					p, bytesToUnit((float64)(sz)), bytesToUnit((float64)(f.Size)))
-				missing = append(missing, f)
+				logInfof("Found modified file: size of %q is %d, expect %d", p, sz, f.Size)
+				goto MISSING
 			}
-		} else {
-			logDebugf("Could not found file %q", p)
-			missing = append(missing, f)
-			if !errors.Is(err, os.ErrNotExist) {
-				os.Remove(p)
+			if heavy {
+				hashMethod, err := getHashMethod(len(f.Hash))
+				if err != nil {
+					logErrorf("Unknown hash method for %q", f.Hash)
+					continue
+				}
+				hw := hashMethod.New()
+
+				fd, err := os.Open(p)
+				if err != nil {
+					logErrorf("Could not open %q: %v", p, err)
+					goto MISSING
+				}
+				defer fd.Close()
+				if _, err = io.Copy(hw, fd); err != nil {
+					logErrorf("Could not calculate hash for %q: %v", p, err)
+					continue
+				}
+				if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
+					logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
+					goto MISSING
+				}
+			}
+			continue
+		}
+		if config.UseGzip {
+			p += ".gz"
+			if _, err := os.Stat(p); err == nil {
+				if heavy {
+					hashMethod, err := getHashMethod(len(f.Hash))
+					if err != nil {
+						logErrorf("Unknown hash method for %q", f.Hash)
+						continue
+					}
+					hw := hashMethod.New()
+
+					fd, err := os.Open(p)
+					if err != nil {
+						logErrorf("Could not open %q: %v", p, err)
+						goto MISSING
+					}
+					defer fd.Close()
+					r, err := gzip.NewReader(fd)
+					if err != nil {
+						logErrorf("Could not decompress %q: %v", p, err)
+						goto MISSING
+					}
+					var sz int64
+					if sz, err = io.Copy(hw, r); err != nil {
+						logErrorf("Could not calculate hash for %q: %v", p, err)
+						goto MISSING
+					}
+					if sz != f.Size {
+						logInfof("Found modified file: size of %q is %d, expect %d", p, sz, f.Size)
+						goto MISSING
+					}
+					if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
+						logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
+						goto MISSING
+					}
+				}
+				continue
 			}
 		}
+		logDebugf("Could not found file %q", p)
+	MISSING:
+		os.Remove(p)
+		missing = append(missing, f)
 	}
 	logInfo("File check finished")
 	return
@@ -750,7 +808,7 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod 
 		return
 	}
 	if t := stat.Size(); f.Size >= 0 && t != f.Size {
-		err = fmt.Errorf("File size wrong, got %s, expect %s", bytesToUnit((float64)(t)), bytesToUnit((float64)(f.Size)))
+		err = fmt.Errorf("File size wrong, got %d, expect %d", t, f.Size)
 		return
 	} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
 		err = fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)

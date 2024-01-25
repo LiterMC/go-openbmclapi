@@ -8,8 +8,9 @@ port: 4000
 cluster_id: ${CLUSTER_ID}
 cluster_secret: ${CLUSTER_SECRET}
 sync_interval: 10
+connect_timeout: 10
 download_max_conn: 64
-connect_timeout: 60
+use_gzip: false
 serve_limit:
     enable: false
     max_conn: 0

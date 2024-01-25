@@ -20,13 +20,17 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -43,23 +47,188 @@ var config Config
 
 const baseDir = "."
 
-func main() {
-	printShortLicense()
+func parseArgs() {
 	if len(os.Args) > 1 {
 		subcmd := strings.ToLower(os.Args[1])
 		switch subcmd {
+		case "main", "serve":
+			break
 		case "license":
 			printLongLicense()
 			os.Exit(0)
+		case "zip-cache":
+			flagVerbose := false
+			flagAll := false
+			flagOverwrite := false
+			flagKeep := false
+			for _, a := range os.Args[2:] {
+				switch strings.ToLower(a) {
+				case "verbose", "v":
+					flagVerbose = true
+				case "all", "a":
+					flagAll = true
+				case "overwrite", "o":
+					flagOverwrite = true
+				case "keep", "k":
+					flagKeep = true
+				}
+			}
+			cacheDir := filepath.Join(baseDir, "cache")
+			fmt.Printf("Cache directory = %q\n", cacheDir)
+			err := walkCacheDir(cacheDir, func(path string) (_ error) {
+				if strings.HasSuffix(path, ".gz") {
+					return
+				}
+				target := path + ".gz"
+				if !flagOverwrite {
+					if _, err := os.Stat(target); err == nil {
+						return
+					}
+				}
+				srcFd, err := os.Open(path)
+				if err != nil {
+					fmt.Printf("Error: could not open file %q: %v\n", path, err)
+					return
+				}
+				defer srcFd.Close()
+				stat, err := srcFd.Stat()
+				if err != nil {
+					fmt.Printf("Error: could not get stat of %q: %v\n", path, err)
+					return
+				}
+				if flagAll || stat.Size() > 1024*10 {
+					if flagVerbose {
+						fmt.Printf("compressing %s\n", path)
+					}
+					tmpPath := target + ".tmp"
+					var dstFd *os.File
+					if dstFd, err = os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
+						fmt.Printf("Error: could not create %q: %v\n", tmpPath, err)
+						return
+					}
+					defer dstFd.Close()
+					w := gzip.NewWriter(dstFd)
+					defer w.Close()
+
+					if _, err = io.Copy(w, srcFd); err != nil {
+						os.Remove(tmpPath)
+						fmt.Printf("Error: could not compress %q: %v\n", path, err)
+						return
+					}
+					os.Remove(target)
+					if err = os.Rename(tmpPath, target); err != nil {
+						os.Remove(tmpPath)
+						fmt.Printf("Error: could not rename %q to %q\n", tmpPath, target)
+						return
+					}
+					if !flagKeep {
+						os.Remove(path)
+					}
+				}
+				return
+			})
+			if err != nil {
+				fmt.Printf("Could not walk cache directory: %v", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		case "unzip-cache":
+			flagVerbose := false
+			flagOverwrite := false
+			flagKeep := false
+			for _, a := range os.Args[2:] {
+				switch strings.ToLower(a) {
+				case "verbose", "v":
+					flagVerbose = true
+				case "overwrite", "o":
+					flagOverwrite = true
+				case "keep", "k":
+					flagKeep = true
+				}
+			}
+			cacheDir := filepath.Join(baseDir, "cache")
+			fmt.Printf("Cache directory = %q\n", cacheDir)
+			var hashBuf [64]byte
+			err := walkCacheDir(cacheDir, func(path string) (_ error) {
+				target, ok := strings.CutSuffix(path, ".gz")
+				if !ok {
+					return
+				}
+
+				hash := filepath.Base(target)
+				hashMethod, err := getHashMethod(len(hash))
+				if err != nil {
+					return
+				}
+				hw := hashMethod.New()
+
+				if !flagOverwrite {
+					if _, err := os.Stat(target); err == nil {
+						return
+					}
+				}
+				srcFd, err := os.Open(path)
+				if err != nil {
+					fmt.Printf("Error: could not open file %q: %v\n", path, err)
+					return
+				}
+				defer srcFd.Close()
+				if flagVerbose {
+					fmt.Printf("decompressing %s\n", path)
+				}
+				tmpPath := target + ".tmp"
+				var dstFd *os.File
+				if dstFd, err = os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
+					fmt.Printf("Error: could not create %q: %v\n", tmpPath, err)
+					return
+				}
+				defer dstFd.Close()
+				r, err := gzip.NewReader(srcFd)
+				if err != nil {
+					fmt.Printf("Error: could not decompress %q: %v\n", path, err)
+					return
+				}
+				if _, err = io.Copy(io.MultiWriter(dstFd, hw), r); err != nil {
+					os.Remove(tmpPath)
+					fmt.Printf("Error: could not decompress %q: %v\n", path, err)
+					return
+				}
+				if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != hash {
+					os.Remove(tmpPath)
+					fmt.Printf("Error: hash (%s) incorrect for %q. Got %s, want %s\n", hashMethod, path, hs, hash)
+					return
+				}
+				os.Remove(target)
+				if err = os.Rename(tmpPath, target); err != nil {
+					os.Remove(tmpPath)
+					fmt.Printf("Error: could not rename %q to %q\n", tmpPath, target)
+					return
+				}
+				if !flagKeep {
+					os.Remove(path)
+				}
+				return
+			})
+			if err != nil {
+				fmt.Printf("Could not walk cache directory: %v", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
 		default:
 			fmt.Println("Unknown sub command:", subcmd)
-			os.Exit(-1)
+			printHelp()
+			os.Exit(0x7f)
 		}
 	}
+}
+
+func main() {
+	printShortLicense()
+	parseArgs()
 
 	defer func() {
 		if err := recover(); err != nil {
-			logError("Panic error:", err)
+			logError("Panic:", err)
 			panic(err)
 		}
 	}()
@@ -241,8 +410,9 @@ START:
 			}
 			os.Exit(1)
 		}
-		cluster.SyncFiles(ctx, fl)
+		cluster.SyncFiles(ctx, fl, true)
 
+		checkCount := 0
 		createInterval(ctx, func() {
 			logInfof("Fetching file list")
 			fl, err := cluster.GetFileList(ctx)
@@ -250,7 +420,8 @@ START:
 				logError("Cannot query cluster file list:", err)
 				return
 			}
-			cluster.SyncFiles(ctx, fl)
+			checkCount = (checkCount + 1) % 10
+			cluster.SyncFiles(ctx, fl, checkCount == 0)
 		}, (time.Duration)(config.SyncInterval)*time.Minute)
 
 		if err := cluster.Enable(ctx); err != nil {

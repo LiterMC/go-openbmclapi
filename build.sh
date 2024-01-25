@@ -12,7 +12,7 @@ outputdir=output
 
 mkdir -p "$outputdir"
 
-[ -n "$TAG" ] || TAG=$(git describe --tags --match v[0-9]* --abbrev=0 2>/dev/null || git log -1 --format="dev-%H")
+[ -n "$TAG" ] || TAG=$(git describe --tags --match v[0-9]* --abbrev=0 --candidates=0 2>/dev/null || git log -1 --format="dev-%H")
 
 echo "Detected tag: $TAG"
 

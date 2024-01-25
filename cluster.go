@@ -224,7 +224,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 	logInfo("Sending enable packet")
-	tctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.ConnectTimeout))
 	data, err := cr.socket.EmitAckContext(tctx, "enable", Map{
 		"host":    cr.host,
 		"port":    cr.publicPort,
@@ -247,6 +247,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	for _, ch := range cr.waitEnable {
 		close(ch)
 	}
+	cr.waitEnable = cr.waitEnable[:0]
 
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
@@ -332,33 +333,37 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	{
 		logInfo("Making keepalive before disable")
 		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
-		cr.KeepAlive(tctx)
+		ok = cr.KeepAlive(tctx)
 		cancel()
+		if ok {
+			tctx, cancel := context.WithTimeout(ctx, time.Second*10)
+			data, err := cr.socket.EmitAckContext(tctx, "disable")
+			cancel()
+			if err != nil {
+				logErrorf("Disable failed: %v", err)
+				ok = false
+			} else {
+				logDebug("disable ack:", data)
+				if ero := data[0]; ero != nil {
+					logErrorf("Disable failed: %v", ero)
+					ok = false
+				} else if !data[1].(bool) {
+					logError("Disable failed: acked non true value")
+					ok = false
+				}
+			}
+		} else {
+			logWarn("Keep alive failed, disable without send packet")
+			ok = true
+		}
 	}
-
-	tctx, cancel := context.WithTimeout(ctx, time.Second*10)
-	data, err := cr.socket.EmitAckContext(tctx, "disable")
-	cancel()
 
 	cr.enabled.Store(false)
 	go cr.socket.Close()
 	cr.socket = nil
 	close(cr.disabled)
-	if err != nil {
-		logErrorf("Disable failed: %v", err)
-		return false
-	}
-	logDebug("disable ack:", data)
-	if ero := data[0]; ero != nil {
-		logErrorf("Disable failed: %v", ero)
-		return false
-	}
-	if !data[1].(bool) {
-		logError("Disable failed: ack non true value")
-		return false
-	}
 	logWarn("Cluster disabled")
-	return true
+	return
 }
 
 func (cr *Cluster) Disabled() <-chan struct{} {

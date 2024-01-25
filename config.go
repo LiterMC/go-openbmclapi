@@ -67,6 +67,7 @@ type Config struct {
 	ClusterId       string           `yaml:"cluster_id"`
 	ClusterSecret   string           `yaml:"cluster_secret"`
 	SyncInterval    int              `yaml:"sync_interval"`
+	ConnectTimeout  int              `yaml:"connect_timeout"`
 	DownloadMaxConn int              `yaml:"download_max_conn"`
 	UseGzip         bool             `yaml:"use_gzip"`
 	ServeLimit      ServeLimitConfig `yaml:"serve_limit"`
@@ -87,6 +88,7 @@ func readConfig() (config Config) {
 		ClusterId:       "${CLUSTER_ID}",
 		ClusterSecret:   "${CLUSTER_SECRET}",
 		SyncInterval:    10,
+		ConnectTimeout:  10,
 		DownloadMaxConn: 64,
 		UseGzip:         false,
 		ServeLimit: ServeLimitConfig{

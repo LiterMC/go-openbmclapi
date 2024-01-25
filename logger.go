@@ -139,5 +139,4 @@ func startFlushLogFile() {
 			}
 		}
 	}()
-	panic("test panic")
 }

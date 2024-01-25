@@ -79,8 +79,9 @@ func (cr *Cluster) CheckFilesOSS(dir string, files []FileInfo, heavy bool, missi
 					logErrorf("Could not open %q: %v", p, err)
 					goto MISSING
 				}
-				defer fd.Close()
-				if _, err = io.Copy(hw, fd); err != nil {
+				_, err = io.Copy(hw, fd)
+				fd.Close()
+				if err != nil {
 					logErrorf("Could not calculate hash for %q: %v", p, err)
 					continue
 				}

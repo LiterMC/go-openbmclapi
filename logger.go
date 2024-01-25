@@ -49,7 +49,7 @@ func logX(x string, args ...any) {
 	buf.WriteString(time.Now().Format(logTimeFormat))
 	buf.WriteString("]: ")
 	buf.WriteString(c)
-	fmt.Fprintln(os.Stderr, buf.String())
+	fmt.Fprintln(os.Stdout, buf.String())
 	if fd := logfile.Load(); fd != nil {
 		fd.Write(buf.Bytes())
 		fd.Write([]byte{'\n'})
@@ -66,7 +66,7 @@ func logXf(x string, format string, args ...any) {
 	buf.WriteString(time.Now().Format(logTimeFormat))
 	buf.WriteString("]: ")
 	buf.WriteString(c)
-	fmt.Fprintln(os.Stderr, buf.String())
+	fmt.Fprintln(os.Stdout, buf.String())
 	if fd := logfile.Load(); fd != nil {
 		fd.Write(buf.Bytes())
 		fd.Write([]byte{'\n'})
@@ -139,4 +139,5 @@ func startFlushLogFile() {
 			}
 		}
 	}()
+	panic("test panic")
 }

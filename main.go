@@ -228,7 +228,7 @@ func main() {
 
 	defer func() {
 		if err := recover(); err != nil {
-			logError("Panic error:", err)
+			logError("Panic:", err)
 			panic(err)
 		}
 	}()

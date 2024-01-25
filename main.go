@@ -410,10 +410,10 @@ START:
 			}
 			os.Exit(1)
 		}
-		heavyCheck := !config.NoHeavyCheck
-		cluster.SyncFiles(ctx, fl, heavyCheck)
+		cluster.SyncFiles(ctx, fl, false)
 
 		checkCount := 0
+		heavyCheck := !config.NoHeavyCheck
 		createInterval(ctx, func() {
 			logInfof("Fetching file list")
 			fl, err := cluster.GetFileList(ctx)

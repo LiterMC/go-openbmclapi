@@ -410,7 +410,8 @@ START:
 			}
 			os.Exit(1)
 		}
-		cluster.SyncFiles(ctx, fl, true)
+		heavyCheck := !config.NoHeavyCheck
+		cluster.SyncFiles(ctx, fl, heavyCheck)
 
 		checkCount := 0
 		createInterval(ctx, func() {
@@ -421,7 +422,7 @@ START:
 				return
 			}
 			checkCount = (checkCount + 1) % 10
-			cluster.SyncFiles(ctx, fl, checkCount == 0)
+			cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
 		}, (time.Duration)(config.SyncInterval)*time.Minute)
 
 		if err := cluster.Enable(ctx); err != nil {

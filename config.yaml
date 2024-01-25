@@ -2,6 +2,7 @@ debug: false
 record_serve_info: false
 nohttps: false
 noopen: false
+no_heavy_check: false
 public_host: example.com
 public_port: 8080
 port: 4000

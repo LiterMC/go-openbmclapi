@@ -61,6 +61,7 @@ type Config struct {
 	RecordServeInfo bool             `yaml:"record_serve_info"`
 	Nohttps         bool             `yaml:"nohttps"`
 	NoOpen          bool             `yaml:"noopen"`
+	NoHeavyCheck    bool             `yaml:"no_heavy_check"`
 	PublicHost      string           `yaml:"public_host"`
 	PublicPort      uint16           `yaml:"public_port"`
 	Port            uint16           `yaml:"port"`
@@ -82,6 +83,8 @@ func readConfig() (config Config) {
 		Debug:           false,
 		RecordServeInfo: false,
 		Nohttps:         false,
+		NoOpen:          false,
+		NoHeavyCheck:    false,
 		PublicHost:      "example.com",
 		PublicPort:      8080,
 		Port:            4000,

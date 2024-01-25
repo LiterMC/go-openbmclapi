@@ -74,6 +74,8 @@ record_serve_info: false
 nohttps: false
 # 是否仅从主服务器下载文件
 noopen: false
+# 跳过文件哈希值校验
+no_heavy_check: false
 # 实际开放的公网主机名, 同 CLUSTER_IP
 public_host: example.com
 # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT

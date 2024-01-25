@@ -572,7 +572,10 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 
 func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing []FileInfo) {
 	logInfof("Start checking files, heavy = %v", heavy)
-	var hashBuf [64]byte
+
+	waiting := 0
+	missingCh := make(chan *FileInfo, 256)
+
 	for i, f := range files {
 		p := filepath.Join(dir, hashToFilename(f.Hash))
 		logDebugf("Checking file %s [%.2f%%]", p, (float32)(i+1)/(float32)(len(files))*100)
@@ -580,30 +583,44 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 		if err == nil {
 			if sz := stat.Size(); sz != f.Size {
 				logInfof("Found modified file: size of %q is %d, expect %d", p, sz, f.Size)
-				goto MISSING
+				os.Remove(p)
+				missing = append(missing, f)
+				continue
 			}
 			if heavy {
-				hashMethod, err := getHashMethod(len(f.Hash))
-				if err != nil {
-					logErrorf("Unknown hash method for %q", f.Hash)
-					continue
-				}
-				hw := hashMethod.New()
+				waiting++
+				go func(f FileInfo) {
+					var missing *FileInfo
+					defer func() {
+						missingCh <- missing
+					}()
 
-				fd, err := os.Open(p)
-				if err != nil {
-					logErrorf("Could not open %q: %v", p, err)
-					goto MISSING
-				}
-				defer fd.Close()
-				if _, err = io.Copy(hw, fd); err != nil {
-					logErrorf("Could not calculate hash for %q: %v", p, err)
-					continue
-				}
-				if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
-					logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
-					goto MISSING
-				}
+					hashMethod, err := getHashMethod(len(f.Hash))
+					if err != nil {
+						logErrorf("Unknown hash method for %q", f.Hash)
+						return
+					}
+					hw := hashMethod.New()
+
+					fd, err := os.Open(p)
+					if err != nil {
+						logErrorf("Could not open %q: %v", p, err)
+					} else {
+						defer fd.Close()
+						if _, err = io.Copy(hw, fd); err != nil {
+							logErrorf("Could not calculate hash for %q: %v", p, err)
+							return
+						}
+						var hashBuf [64]byte
+						if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
+							logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
+						} else {
+							return
+						}
+					}
+					os.Remove(p)
+					missing = &f
+				}(f)
 			}
 			continue
 		}
@@ -611,46 +628,66 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 			p += ".gz"
 			if _, err := os.Stat(p); err == nil {
 				if heavy {
-					hashMethod, err := getHashMethod(len(f.Hash))
-					if err != nil {
-						logErrorf("Unknown hash method for %q", f.Hash)
-						continue
-					}
-					hw := hashMethod.New()
+					waiting++
+					go func(f FileInfo) {
+						var missing *FileInfo
+						defer func() {
+							missingCh <- missing
+						}()
 
-					fd, err := os.Open(p)
-					if err != nil {
-						logErrorf("Could not open %q: %v", p, err)
-						goto MISSING
-					}
-					defer fd.Close()
-					r, err := gzip.NewReader(fd)
-					if err != nil {
-						logErrorf("Could not decompress %q: %v", p, err)
-						goto MISSING
-					}
-					var sz int64
-					if sz, err = io.Copy(hw, r); err != nil {
-						logErrorf("Could not calculate hash for %q: %v", p, err)
-						goto MISSING
-					}
-					if sz != f.Size {
-						logInfof("Found modified file: size of %q is %d, expect %d", p, sz, f.Size)
-						goto MISSING
-					}
-					if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
-						logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
-						goto MISSING
-					}
+						hashMethod, err := getHashMethod(len(f.Hash))
+						if err != nil {
+							logErrorf("Unknown hash method for %q", f.Hash)
+							return
+						}
+						hw := hashMethod.New()
+
+						fd, err := os.Open(p)
+						if err != nil {
+							logErrorf("Could not open %q: %v", p, err)
+						} else {
+							defer fd.Close()
+							var hashBuf [64]byte
+							if r, err := gzip.NewReader(fd); err != nil {
+								logErrorf("Could not decompress %q: %v", p, err)
+							} else if sz, err := io.Copy(hw, r); err != nil {
+								logErrorf("Could not calculate hash for %q: %v", p, err)
+							} else if sz != f.Size {
+								logInfof("Found modified file: size of %q is %d, expect %d", p, sz, f.Size)
+							} else if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
+								logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
+							} else {
+								return
+							}
+						}
+						os.Remove(p)
+						missing = &f
+					}(f)
 				}
 				continue
 			}
 		}
 		logDebugf("Could not found file %q", p)
-	MISSING:
 		os.Remove(p)
 		missing = append(missing, f)
 	}
+
+	if heavy {
+		disabled := cr.Disabled()
+		for waiting > 0 {
+			select {
+			case f := <-missingCh:
+				waiting--
+				if f != nil {
+					missing = append(missing, *f)
+				}
+			case <-disabled:
+				logWarn("File check interrupted")
+				return nil
+			}
+		}
+	}
+
 	logInfo("File check finished")
 	return
 }

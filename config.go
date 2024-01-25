@@ -68,6 +68,7 @@ type Config struct {
 	ClusterSecret   string           `yaml:"cluster_secret"`
 	SyncInterval    int              `yaml:"sync_interval"`
 	DownloadMaxConn int              `yaml:"download_max_conn"`
+	ConnectTimeout  int              `yaml:"connect_timeout"`
 	ServeLimit      ServeLimitConfig `yaml:"serve_limit"`
 	Oss             OSSConfig        `yaml:"oss"`
 	Hijack          HijackConfig     `yaml:"hijack_port"`
@@ -87,6 +88,7 @@ func readConfig() (config Config) {
 		ClusterSecret:   "${CLUSTER_SECRET}",
 		SyncInterval:    10,
 		DownloadMaxConn: 64,
+		ConnectTimeout:  10,
 		ServeLimit: ServeLimitConfig{
 			Enable:     false,
 			MaxConn:    16384,

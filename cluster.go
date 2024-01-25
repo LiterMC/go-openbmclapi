@@ -706,32 +706,26 @@ func (cr *Cluster) gcAt(files []FileInfo, dir string) {
 	logInfo("Starting garbage collector at", dir)
 	fileset := make(map[string]struct{}, 128)
 	for i, _ := range files {
-		fileset[filepath.Join(dir, hashToFilename(files[i].Hash))] = struct{}{}
+		fileset[files[i].Hash] = struct{}{}
 	}
-	stack := make([]string, 0, 256)
-	stack = append(stack, dir)
-	for len(stack) > 0 {
-		p := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		fil, err := os.ReadDir(p)
-		if err != nil {
-			continue
+	err := walkCacheDir(dir, func(path string) (_ error) {
+		if cr.issync.Load() {
+			return context.Canceled
 		}
-		for _, f := range fil {
-			if cr.issync.Load() {
-				logWarn("Garbage collector interrupted at", dir)
-				return
-			}
-			n := filepath.Join(p, f.Name())
-			if stat, err := os.Stat(n); err == nil {
-				if stat.IsDir() {
-					stack = append(stack, n)
-				} else if _, ok := fileset[n]; !ok {
-					logInfo("Found outdated file:", n)
-					os.Remove(n)
-				}
-			}
+		hs := strings.TrimSuffix(filepath.Base(path), ".gz")
+		if _, ok := fileset[hs]; !ok {
+			logInfo("Found outdated file:", path)
+			os.Remove(path)
 		}
+		return
+	})
+	if err != nil {
+		if err == context.Canceled {
+			logWarn("Garbage collector interrupted at", dir)
+		} else {
+			logErrorf("Garbage collector error: %v", err)
+		}
+		return
 	}
 	logInfo("Garbage collect finished for", dir)
 }

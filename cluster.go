@@ -851,3 +851,26 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (compressed bo
 	}
 	return
 }
+
+func walkCacheDir(dir string, walker func(path string) (err error)) (err error) {
+	var b [1]byte
+	for i := 0; i < 0x100; i++ {
+		b[0] = (byte)(i)
+		d := filepath.Join(dir, hex.EncodeToString(b[:]))
+		var files []os.DirEntry
+		if files, err = os.ReadDir(d); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return
+		} else {
+			for _, f := range files {
+				p := filepath.Join(d, f.Name())
+				if err = walker(p); err != nil {
+					return
+				}
+			}
+		}
+	}
+	return nil
+}

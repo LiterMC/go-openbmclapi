@@ -88,6 +88,7 @@ func readConfig() (config Config) {
 		ClusterSecret:   "${CLUSTER_SECRET}",
 		SyncInterval:    10,
 		DownloadMaxConn: 64,
+		UseGzip:         false,
 		ServeLimit: ServeLimitConfig{
 			Enable:     false,
 			MaxConn:    16384,

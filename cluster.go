@@ -247,6 +247,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	for _, ch := range cr.waitEnable {
 		close(ch)
 	}
+	cr.waitEnable = cr.waitEnable[:0]
 
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)

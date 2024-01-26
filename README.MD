@@ -88,8 +88,8 @@ cluster_id: ${CLUSTER_ID}
 cluster_secret: ${CLUSTER_SECRET}
 # 文件同步间隔 (分钟)
 sync_interval: 10
-# 连接超时限制（秒），网不好就调高点
-connect_timeout: 10
+# 发送心跳包的超时限制 (秒), 网不好就调高点
+keepalive_timeout: 10
 # 同步文件时最多打开的连接数量
 download_max_conn: 64
 # 是否启用 gzip 压缩

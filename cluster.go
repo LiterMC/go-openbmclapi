@@ -232,7 +232,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 	logInfo("Sending enable packet")
-	tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.ConnectTimeout))
+	tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
 	data, err := cr.socket.EmitAckContext(tctx, "enable", Map{
 		"host":    cr.host,
 		"port":    cr.publicPort,
@@ -343,11 +343,11 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	logInfo("Disabling cluster")
 	{
 		logInfo("Making keepalive before disable")
-		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
+		tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
 		ok = cr.KeepAlive(tctx)
 		cancel()
 		if ok {
-			tctx, cancel := context.WithTimeout(ctx, time.Second*10)
+			tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
 			data, err := cr.socket.EmitAckContext(tctx, "disable")
 			cancel()
 			if err != nil {
@@ -589,9 +589,25 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 		checkThrCount int
 		checkResCh    chan *FileInfo
 		disabled      = cr.Disabled()
+		pollCheckSlot func()
 	)
 	if heavy {
 		checkResCh = make(chan *FileInfo, 16)
+		pollCheckSlot = func() {
+			if checkThrCount >= checkSlotLimit {
+				select {
+				case f := <-checkResCh:
+					if f != nil {
+						missing = append(missing, *f)
+					}
+				case <-disabled:
+					logWarn("File check interrupted")
+					return nil
+				}
+			} else {
+				checkThrCount++
+			}
+		}
 	}
 
 	for i, f := range files {
@@ -606,19 +622,7 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 				continue
 			}
 			if heavy {
-				if checkThrCount >= checkSlotLimit {
-					select {
-					case f := <-checkResCh:
-						if f != nil {
-							missing = append(missing, *f)
-						}
-					case <-disabled:
-						logWarn("File check interrupted")
-						return nil
-					}
-				} else {
-					checkThrCount++
-				}
+				pollCheckSlot()
 				go func(f FileInfo) {
 					var missing *FileInfo = nil
 					defer func() {
@@ -658,19 +662,7 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 			p += ".gz"
 			if _, err := os.Stat(p); err == nil {
 				if heavy {
-					if checkThrCount >= checkSlotLimit {
-						select {
-						case f := <-checkResCh:
-							if f != nil {
-								missing = append(missing, *f)
-							}
-						case <-disabled:
-							logWarn("File check interrupted")
-							return nil
-						}
-					} else {
-						checkThrCount++
-					}
+					pollCheckSlot()
 					go func(f FileInfo) {
 						var missing *FileInfo = nil
 						defer func() {

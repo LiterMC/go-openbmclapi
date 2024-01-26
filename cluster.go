@@ -67,12 +67,13 @@ type Cluster struct {
 	mux             sync.RWMutex
 	enabled         atomic.Bool
 	disabled        chan struct{}
+	waitEnable      []chan struct{}
 	reconnectOnce   *sync.Once
 	socket          *Socket
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
 	downloading     map[string]chan error
-	waitEnable      []chan struct{}
+	fileset         atomic.Pointer[map[string]int64]
 
 	client   *http.Client
 	bufSlots chan []byte
@@ -383,6 +384,14 @@ func (cr *Cluster) Disabled() <-chan struct{} {
 	return cr.disabled
 }
 
+func (cr *Cluster) FileSet() map[string]int64 {
+	ptr := cr.fileset.Load()
+	if ptr == nil {
+		return nil
+	}
+	return *ptr
+}
+
 type CertKeyPair struct {
 	Cert string `json:"cert"`
 	Key  string `json:"key"`
@@ -513,9 +522,14 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		cr.syncFiles(ctx, files, heavyCheck)
 	}
 
+	fileset := make(map[string]int64, len(files))
+	for _, f := range files {
+		fileset[f.Hash] = f.Size
+	}
+	cr.fileset.Store(&fileset)
 	cr.issync.Store(false)
 
-	go cr.gc(files)
+	go cr.gc()
 }
 
 // syncFiles download objects to the cache folder
@@ -729,22 +743,19 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 	return
 }
 
-func (cr *Cluster) gc(files []FileInfo) {
+func (cr *Cluster) gc() {
 	if cr.ossList == nil {
-		cr.gcAt(files, cr.cacheDir)
+		cr.gcAt(cr.cacheDir)
 	} else {
 		for _, item := range cr.ossList {
-			cr.gcAt(files, filepath.Join(item.FolderPath, "download"))
+			cr.gcAt(filepath.Join(item.FolderPath, "download"))
 		}
 	}
 }
 
-func (cr *Cluster) gcAt(files []FileInfo, dir string) {
+func (cr *Cluster) gcAt(dir string) {
 	logInfo("Starting garbage collector at", dir)
-	fileset := make(map[string]struct{}, 128)
-	for i, _ := range files {
-		fileset[files[i].Hash] = struct{}{}
-	}
+	fileset := cr.FileSet()
 	err := walkCacheDir(dir, func(path string) (_ error) {
 		if cr.issync.Load() {
 			return context.Canceled

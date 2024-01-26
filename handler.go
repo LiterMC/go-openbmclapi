@@ -377,23 +377,28 @@ func (cr *Cluster) handleDownloadOSS(rw http.ResponseWriter, req *http.Request, 
 			return false
 		}
 
-		// check if the file exists
 		downloadDir := filepath.Join(item.FolderPath, "download")
-		path := filepath.Join(downloadDir, hashFilename)
-		var stat os.FileInfo
-		if stat, err = os.Stat(path); err != nil {
-			logDebugf("[handler]: Cannot read file on OSS %d: %v", i, err)
-			if errors.Is(err, os.ErrNotExist) {
-				if e := cr.DownloadFileOSS(req.Context(), downloadDir, hash); e != nil {
-					logDebugf("[handler]: Cound not download the file: %v", e)
+		// check if file was indexed in the fileset
+		size, ok := cr.FileSet()[hash]
+		if !ok {
+			// check if the file exists
+			path := filepath.Join(downloadDir, hashFilename)
+			var stat os.FileInfo
+			if stat, err = os.Stat(path); err != nil {
+				logDebugf("[handler]: Cannot read file on OSS %d: %v", i, err)
+				if errors.Is(err, os.ErrNotExist) {
+					if e := cr.DownloadFileOSS(req.Context(), downloadDir, hash); e != nil {
+						logDebugf("[handler]: Cound not download the file: %v", e)
+						return false
+					}
+					if stat, err = os.Stat(path); err != nil {
+						return false
+					}
+				} else {
 					return false
 				}
-				if stat, err = os.Stat(path); err != nil {
-					return false
-				}
-			} else {
-				return false
 			}
+			size = stat.Size()
 		}
 
 		var target string
@@ -401,7 +406,6 @@ func (cr *Cluster) handleDownloadOSS(rw http.ResponseWriter, req *http.Request, 
 		if err != nil {
 			return false
 		}
-		size := stat.Size()
 		if item.supportRange { // fix the size for Ranged request
 			rg := req.Header.Get("Range")
 			rgs, err := gosrc.ParseRange(rg, size)

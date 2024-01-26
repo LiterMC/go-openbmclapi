@@ -67,6 +67,7 @@ type Cluster struct {
 	mux             sync.RWMutex
 	enabled         atomic.Bool
 	disabled        chan struct{}
+	reconnectOnce   *sync.Once
 	socket          *Socket
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
@@ -162,29 +163,36 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		close(connectCh)
 	})
 
+	reconnectOnce := new(sync.Once)
+	cr.reconnectOnce = reconnectOnce
+
 	cr.socket = NewSocket(NewESocket())
 	cr.socket.ConnectHandle = func(*Socket) {
 		connected()
 	}
 	cr.socket.DisconnectHandle = func(*Socket) {
 		connected()
-		go cr.Disable(ctx)
+		reconnectOnce.Do(func() {
+			go cr.disconnected()
+		})
 	}
 	cr.socket.ErrorHandle = func(*Socket) {
 		connected()
-		go func() {
-			if cr.disconnected() {
-				logWarn("Reconnecting due to SIO error")
-				if !cr.Connect(ctx) {
-					logError("Cannot reconnect to server, exit.")
-					os.Exit(0x08)
+		reconnectOnce.Do(func() {
+			go func() {
+				if cr.disconnected() {
+					logWarn("Reconnecting due to SIO error")
+					if !cr.Connect(ctx) {
+						logError("Cannot reconnect to server, exit.")
+						os.Exit(0x08)
+					}
+					if err := cr.Enable(ctx); err != nil {
+						logError("Cannot enable cluster:", err, "; exit.")
+						os.Exit(0x08)
+					}
 				}
-				if err := cr.Enable(ctx); err != nil {
-					logError("Cannot enable cluster:", err, "; exit.")
-					os.Exit(0x08)
-				}
-			}
-		}()
+			}()
+		})
 	}
 	logInfof("Dialing %s", strings.ReplaceAll(wsurl, cr.password, "<******>"))
 	tctx, cancel := context.WithTimeout(ctx, time.Second*15)
@@ -251,23 +259,26 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
+	reconnectOnce := cr.reconnectOnce
 	createInterval(keepaliveCtx, func() {
 		tctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		ok := cr.KeepAlive(tctx)
 		cancel()
 		if !ok {
 			if keepaliveCtx.Err() == nil {
-				logInfo("Reconnecting due to keepalive failed")
-				cr.Disable(ctx)
-				logInfo("Reconnecting ...")
-				if !cr.Connect(ctx) {
-					logError("Cannot reconnect to server, exit.")
-					os.Exit(1)
-				}
-				if err := cr.Enable(ctx); err != nil {
-					logError("Cannot enable cluster:", err, "; exit.")
-					os.Exit(1)
-				}
+				reconnectOnce.Do(func() {
+					logInfo("Reconnecting due to keepalive failed")
+					cr.Disable(ctx)
+					logInfo("Reconnecting ...")
+					if !cr.Connect(ctx) {
+						logError("Cannot reconnect to server, exit.")
+						os.Exit(1)
+					}
+					if err := cr.Enable(ctx); err != nil {
+						logError("Cannot enable cluster:", err, "; exit.")
+						os.Exit(1)
+					}
+				})
 			}
 		}
 	}, KeepAliveInterval)
@@ -309,7 +320,7 @@ func (cr *Cluster) disconnected() bool {
 		cr.cancelKeepalive()
 		cr.cancelKeepalive = nil
 	}
-	cr.socket.Close()
+	go cr.socket.Close()
 	cr.socket = nil
 	return true
 }

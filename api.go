@@ -43,7 +43,7 @@ func (cr *Cluster) initAPIv0() (mux *http.ServeMux) {
 	mux.HandleFunc("/status", func(rw http.ResponseWriter, req *http.Request) {
 		writeJson(rw, http.StatusOK, Map{
 			"startAt": startTime,
-			"stats":   cr.stats,
+			"stats":   &cr.stats,
 			"enabled": cr.enabled.Load(),
 		})
 	})

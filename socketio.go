@@ -206,11 +206,11 @@ func (p *EPacket) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (p *EPacket) WriteTo(w io.Writer) (n int, err error) {
+func (p *EPacket) EncodeTo(w io.Writer) (n int, err error) {
 	return w.Write(p.Bytes())
 }
 
-func (p *EPacket) ReadFrom(r io.Reader) (n int, err error) {
+func (p *EPacket) DecodeFrom(r io.Reader) (n int, err error) {
 	var t [1]byte
 	n, err = r.Read(t[:])
 	if err != nil || n == 0 {
@@ -250,11 +250,11 @@ func (p *SPacket) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (p *SPacket) WriteTo(w io.Writer) (n int, err error) {
+func (p *SPacket) EncodeTo(w io.Writer) (n int, err error) {
 	return w.Write(p.Bytes())
 }
 
-func (p *SPacket) ReadFrom(r io.Reader) (n int, err error) {
+func (p *SPacket) DecodeFrom(r io.Reader) (n int, err error) {
 	var b []byte
 	b, err = io.ReadAll(r)
 	if err != nil {
@@ -471,7 +471,7 @@ func (s *ESocket) wsCloseHandler(code int, text string) (err error) {
 
 	s.status.Store(ESocketIdle)
 
-	wer := &websocket.CloseError{code, text}
+	wer := &websocket.CloseError{Code: code, Text: text}
 	if code == websocket.CloseNormalClosure {
 		logWarn("Engine.io: Websocket disconnected")
 	} else {
@@ -520,7 +520,7 @@ func (s *ESocket) _reader() {
 			continue
 		}
 		pkt := &EPacket{}
-		_, err = pkt.ReadFrom(r)
+		_, err = pkt.DecodeFrom(r)
 		if err != nil {
 			logError("Engine.io: Error when parsing packet:", err)
 			continue
@@ -581,7 +581,7 @@ func (s *ESocket) Emit(p *EPacket) (err error) {
 	if err != nil {
 		return
 	}
-	_, err = p.WriteTo(w)
+	_, err = p.EncodeTo(w)
 	if err != nil {
 		w.Close()
 		return

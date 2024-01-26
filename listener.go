@@ -21,6 +21,7 @@ package main
 
 import (
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -130,6 +131,8 @@ type LimitedConn struct {
 
 	closed     atomic.Bool
 	writeAfter time.Time
+
+	writeDeadline time.Time
 }
 
 var _ net.Conn = (*LimitedConn)(nil)
@@ -145,7 +148,17 @@ func (c *LimitedConn) Write(buf []byte) (n int, err error) {
 	var n0 int
 	for n < len(buf) {
 		if !c.writeAfter.IsZero() {
-			if dur := c.writeAfter.Sub(time.Now()); dur > 0 {
+			now := time.Now()
+			if dur := c.writeAfter.Sub(now); dur > 0 {
+				if !c.writeDeadline.IsZero() {
+					if deadDur := c.writeDeadline.Sub(now); deadDur < dur {
+						if deadDur > 0 {
+							time.Sleep(deadDur)
+						}
+						err = os.ErrDeadlineExceeded
+						return
+					}
+				}
 				time.Sleep(dur)
 			}
 		}
@@ -171,4 +184,18 @@ func (c *LimitedConn) Close() error {
 		<-c.listener.slots
 	}
 	return c.Conn.Close()
+}
+
+func (c *LimitedConn) SetDeadline(t time.Time) error {
+	err1 := c.SetWriteDeadline(t)
+	err2 := c.SetReadDeadline(t)
+	if err1 != nil {
+		return err1
+	}
+	return err2
+}
+
+func (c *LimitedConn) SetWriteDeadline(t time.Time) error {
+	c.writeDeadline = t
+	return c.Conn.SetWriteDeadline(t)
 }

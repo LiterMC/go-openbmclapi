@@ -35,6 +35,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"runtime/pprof"
 )
 
 var (
@@ -411,10 +413,10 @@ START:
 			}
 			os.Exit(1)
 		}
-		cluster.SyncFiles(ctx, fl, false)
 
-		checkCount := 0
+		checkCount := -1
 		heavyCheck := !config.NoHeavyCheck
+		cluster.SyncFiles(ctx, fl, false)
 		createInterval(ctx, func() {
 			logInfof("Fetching file list")
 			fl, err := cluster.GetFileList(ctx)
@@ -432,8 +434,25 @@ START:
 		}
 	}(ctx)
 
+SELECT_SIGNAL:
 	select {
 	case s := <-signalCh:
+		if s == syscall.SIGQUIT {
+			name := time.Now().Format("dump-20060102-150405.txt")
+			logInfof("Creating goroutine dump file at %s", name)
+			if fd, err := os.Create(name); err != nil {
+				logInfof("Cannot create dump file: %v", err)
+			} else {
+				err := pprof.Lookup("goroutine").WriteTo(fd, 1)
+				fd.Close()
+				if err != nil {
+					logInfof("Cannot write dump file: %v", err)
+				} else {
+					logInfo("Dump file created")
+				}
+			}
+			goto SELECT_SIGNAL
+		}
 		cancel()
 		shutCtx, cancelShut := context.WithTimeout(context.Background(), 20*time.Second)
 		logWarn("Closing server ...")

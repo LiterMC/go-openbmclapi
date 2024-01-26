@@ -820,6 +820,11 @@ WAIT_SLOT:
 				stats.fcount.Load(), stats.fl,
 				stats.downloaded/stats.totalsize*100,
 				err)
+			select {
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				return
+			}
 		}
 		stats.fcount.Add(1)
 	}()

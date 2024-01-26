@@ -75,6 +75,11 @@ func createInterval(ctx context.Context, do func(), delay time.Duration) {
 				return
 			case <-ticker.C:
 				do()
+				// If there is a tick passed during the job, ignore it
+				select {
+				case <-ticker.C:
+				default:
+				}
 			}
 		}
 	}()

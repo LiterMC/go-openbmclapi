@@ -342,31 +342,20 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 		return false
 	}
 	logInfo("Disabling cluster")
-	{
-		logInfo("Making keepalive before disable")
-		tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
-		ok = cr.KeepAlive(tctx)
-		cancel()
-		if ok {
-			tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
-			data, err := cr.socket.EmitAckContext(tctx, "disable")
-			cancel()
-			if err != nil {
-				logErrorf("Disable failed: %v", err)
-				ok = false
-			} else {
-				logDebug("disable ack:", data)
-				if ero := data[0]; ero != nil {
-					logErrorf("Disable failed: %v", ero)
-					ok = false
-				} else if !data[1].(bool) {
-					logError("Disable failed: acked non true value")
-					ok = false
-				}
-			}
-		} else {
-			logWarn("Keep alive failed, disable without send packet")
-			ok = true
+	tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
+	data, err := cr.socket.EmitAckContext(tctx, "disable")
+	cancel()
+	if err != nil {
+		logErrorf("Disable failed: %v", err)
+		ok = false
+	} else {
+		logDebug("disable ack:", data)
+		if ero := data[0]; ero != nil {
+			logErrorf("Disable failed: %v", ero)
+			ok = false
+		} else if !data[1].(bool) {
+			logError("Disable failed: acked non true value")
+			ok = false
 		}
 	}
 

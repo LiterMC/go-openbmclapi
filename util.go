@@ -214,18 +214,20 @@ func copyFile(src, dst string, mode os.FileMode) (err error) {
 	return
 }
 
-type nullReader struct{}
+type devNull struct{}
 
 var (
-	NullReader = nullReader{}
+	DevNull = devNull{}
 
-	_ io.ReaderAt   = NullReader
-	_ io.ReadSeeker = NullReader
+	_ io.ReaderAt   = DevNull
+	_ io.ReadSeeker = DevNull
+	_ io.Writer     = DevNull
 )
 
-func (nullReader) Read([]byte) (int, error)          { return 0, io.EOF }
-func (nullReader) ReadAt([]byte, int64) (int, error) { return 0, io.EOF }
-func (nullReader) Seek(int64, int) (int64, error)    { return 0, nil }
+func (devNull) Read([]byte) (int, error)          { return 0, io.EOF }
+func (devNull) ReadAt([]byte, int64) (int, error) { return 0, io.EOF }
+func (devNull) Seek(int64, int) (int64, error)    { return 0, nil }
+func (devNull) Write(buf []byte) (int, error)     { return len(buf), nil }
 
 var errNotSeeker = errors.New("r is not an io.Seeker")
 

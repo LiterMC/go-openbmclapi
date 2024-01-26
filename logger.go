@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,3 +141,5 @@ func startFlushLogFile() {
 		}
 	}()
 }
+
+var NullLogger = log.New(DevNull, "", log.LstdFlags)

@@ -589,11 +589,11 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 		checkThrCount int
 		checkResCh    chan *FileInfo
 		disabled      = cr.Disabled()
-		pollCheckSlot func()
+		pollCheckSlot func() bool
 	)
 	if heavy {
 		checkResCh = make(chan *FileInfo, 16)
-		pollCheckSlot = func() {
+		pollCheckSlot = func() bool {
 			if checkThrCount >= checkSlotLimit {
 				select {
 				case f := <-checkResCh:
@@ -602,11 +602,12 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 					}
 				case <-disabled:
 					logWarn("File check interrupted")
-					return nil
+					return true
 				}
 			} else {
 				checkThrCount++
 			}
+			return false
 		}
 	}
 
@@ -622,7 +623,9 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 				continue
 			}
 			if heavy {
-				pollCheckSlot()
+				if pollCheckSlot() {
+					return nil
+				}
 				go func(f FileInfo) {
 					var missing *FileInfo = nil
 					defer func() {
@@ -662,7 +665,9 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 			p += ".gz"
 			if _, err := os.Stat(p); err == nil {
 				if heavy {
-					pollCheckSlot()
+					if pollCheckSlot() {
+						return nil
+					}
 					go func(f FileInfo) {
 						var missing *FileInfo = nil
 						defer func() {

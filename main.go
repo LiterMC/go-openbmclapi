@@ -350,6 +350,7 @@ START:
 		ReadTimeout: 10 * time.Second,
 		IdleTimeout: 5 * time.Second,
 		Handler:     cluster.GetHandler(),
+		ErrorLog:    NullLogger, // for ignore TLS handshake error
 	}
 
 	go func(ctx context.Context) {

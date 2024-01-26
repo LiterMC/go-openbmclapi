@@ -410,7 +410,7 @@ func (cr *Cluster) handleDownloadOSS(rw http.ResponseWriter, req *http.Request, 
 			rg := req.Header.Get("Range")
 			rgs, err := gosrc.ParseRange(rg, size)
 			if err == nil && len(rgs) > 0 {
-				newSize := 0
+				var newSize int64 = 0
 				for _, r := range rgs {
 					newSize += r.Length
 				}

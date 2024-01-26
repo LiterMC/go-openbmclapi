@@ -454,16 +454,16 @@ type FileInfo struct {
 
 // from <https://github.com/bangbang93/openbmclapi/blob/master/src/cluster.ts>
 var fileListSchema = avro.MustParse(`{
-  "type": "array",
-  "items": {
-    "type": "record",
-  	"name": "fileinfo",
-    "fields": [
-      {"name": "path", "type": "string"},
-      {"name": "hash", "type": "string"},
-      {"name": "size", "type": "long"}
-    ]
-  }
+	"type": "array",
+	"items": {
+		"type": "record",
+		"name": "fileinfo",
+		"fields": [
+			{"name": "path", "type": "string"},
+			{"name": "hash", "type": "string"},
+			{"name": "size", "type": "long"}
+		]
+	}
 }`)
 
 func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error) {

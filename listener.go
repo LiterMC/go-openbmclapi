@@ -144,16 +144,14 @@ func (c *LimitedConn) Write(buf []byte) (n int, err error) {
 	}
 	var n0 int
 	for n < len(buf) {
-		now := time.Now()
 		if !c.writeAfter.IsZero() {
-			if dur := c.writeAfter.Sub(now); dur > 0 {
+			if dur := c.writeAfter.Sub(time.Now()); dur > 0 {
 				time.Sleep(dur)
-				now = time.Now()
 			}
 		}
 		m, dur := c.listener.preWrite(len(buf) - n)
 		if dur > 0 {
-			c.writeAfter = now.Add(dur)
+			c.writeAfter = time.Now().Add(dur)
 		} else {
 			c.writeAfter = time.Time{}
 		}

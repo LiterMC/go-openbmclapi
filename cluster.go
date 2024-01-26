@@ -584,8 +584,11 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing []FileInfo) {
 	logInfof("Start checking files, heavy = %v", heavy)
 
-	waiting := 0
-	missingCh := make(chan *FileInfo, 256)
+	var fileCheckPool *threadPool[FileInfo, *FileInfo] = nil
+	if heavy {
+		fileCheckPool = newThreadPool[FileInfo, *FileInfo](16)
+		defer fileCheckPool.Release()
+	}
 
 	for i, f := range files {
 		p := filepath.Join(dir, hashToFilename(f.Hash))
@@ -599,17 +602,11 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 				continue
 			}
 			if heavy {
-				waiting++
-				go func(f FileInfo) {
-					var missing *FileInfo
-					defer func() {
-						missingCh <- missing
-					}()
-
+				fileCheckPool.Do(func(f FileInfo) (*FileInfo) {
 					hashMethod, err := getHashMethod(len(f.Hash))
 					if err != nil {
 						logErrorf("Unknown hash method for %q", f.Hash)
-						return
+						return nil
 					}
 					hw := hashMethod.New()
 
@@ -620,18 +617,18 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 						defer fd.Close()
 						if _, err = io.Copy(hw, fd); err != nil {
 							logErrorf("Could not calculate hash for %q: %v", p, err)
-							return
+							return nil
 						}
 						var hashBuf [64]byte
 						if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
 							logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
 						} else {
-							return
+							return nil
 						}
 					}
 					os.Remove(p)
-					missing = &f
-				}(f)
+					return &f
+				}, f)
 			}
 			continue
 		}
@@ -639,17 +636,11 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 			p += ".gz"
 			if _, err := os.Stat(p); err == nil {
 				if heavy {
-					waiting++
-					go func(f FileInfo) {
-						var missing *FileInfo
-						defer func() {
-							missingCh <- missing
-						}()
-
+					fileCheckPool.Do(func(f FileInfo) *FileInfo {
 						hashMethod, err := getHashMethod(len(f.Hash))
 						if err != nil {
 							logErrorf("Unknown hash method for %q", f.Hash)
-							return
+							return nil
 						}
 						hw := hashMethod.New()
 
@@ -668,12 +659,12 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 							} else if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
 								logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
 							} else {
-								return
+								return nil
 							}
 						}
 						os.Remove(p)
-						missing = &f
-					}(f)
+						return &f
+					}, f)
 				}
 				continue
 			}
@@ -685,10 +676,14 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 
 	if heavy {
 		disabled := cr.Disabled()
-		for waiting > 0 {
+		resCh := fileCheckPool.Wait()
+	WAIT_LOOP:
+		for {
 			select {
-			case f := <-missingCh:
-				waiting--
+			case f, ok := <-resCh:
+				if !ok {
+					break WAIT_LOOP
+				}
 				if f != nil {
 					missing = append(missing, *f)
 				}

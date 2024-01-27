@@ -587,7 +587,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing []FileInfo) {
 	logInfof("Start checking files, heavy = %v", heavy)
 
-	const checkSlotLimit = 16
+	const checkSlotLimit = 32
 	var (
 		checkThrCount int
 		checkResCh    chan *FileInfo
@@ -595,7 +595,7 @@ func (cr *Cluster) CheckFiles(dir string, files []FileInfo, heavy bool) (missing
 		pollCheckSlot func() bool
 	)
 	if heavy {
-		checkResCh = make(chan *FileInfo, 16)
+		checkResCh = make(chan *FileInfo, checkSlotLimit)
 		pollCheckSlot = func() bool {
 			if checkThrCount >= checkSlotLimit {
 				select {

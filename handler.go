@@ -154,7 +154,17 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 					totalBytes += rec.bytes
 					uas[rec.ua]++
 				case <-disabled:
-					return
+					total = 0
+					totalUsed = 0
+					totalBytes = 0
+					clear(uas)
+
+					select {
+					case <-cr.WaitForEnable():
+						disabled = cr.Disabled()
+					case <-time.After(time.Minute * 10):
+						return
+					}
 				}
 			}
 		}()
@@ -309,55 +319,62 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		http.ServeContent(rw, req, name, time.Time{}, counter)
 		cr.hits.Add(1)
 		cr.hbts.Add(counter.n)
+		return
+	}
+
+	var r io.Reader
+	if hasGzip && acceptEncoding["gzip"] != 0 {
+		if !isGzip {
+			isGzip = true
+			path += ".gz"
+		}
+		fd, err := os.Open(path)
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer fd.Close()
+		r = fd
+		rw.Header().Set("Content-Encoding", "gzip")
 	} else {
-		var r io.Reader
-		if hasGzip && acceptEncoding["gzip"] != 0 {
-			if !isGzip {
-				path += ".gz"
-			}
-			fd, err := os.Open(path)
-			if err != nil {
+		fd, err := os.Open(path)
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer fd.Close()
+		r = fd
+		if isGzip {
+			if r, err = gzip.NewReader(r); err != nil {
+				logErrorf("Could not decompress %q: %v", path, err)
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			defer fd.Close()
-			r = fd
-			rw.Header().Set("Content-Encoding", "gzip")
-		} else {
-			fd, err := os.Open(path)
-			if err != nil {
-				http.Error(rw, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			defer fd.Close()
-			r = fd
-			if isGzip {
-				if r, err = gzip.NewReader(r); err != nil {
-					logErrorf("Could not decompress %q: %v", path, err)
-					http.Error(rw, err.Error(), http.StatusInternalServerError)
-					return
-				}
-			}
+			isGzip = false
 		}
-		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
-		rw.Header().Set("Content-Type", "application/octet-stream")
-		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
-		rw.Header().Set("X-Bmclapi-Hash", hash)
-		if leng, err := getFileSize(r); err == nil {
-			rw.Header().Set("Content-Length", strconv.FormatInt(leng, 10))
+	}
+	rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
+	rw.Header().Set("Content-Type", "application/octet-stream")
+	rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	rw.Header().Set("X-Bmclapi-Hash", hash)
+	if !isGzip {
+		if size, ok := cr.FileSet()[hash]; ok {
+			rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 		}
-		rw.WriteHeader(http.StatusOK)
-		if req.Method != http.MethodHead {
-			var buf []byte
-			{
-				buf0 := bufPool.Get().(*[]byte)
-				defer bufPool.Put(buf0)
-				buf = *buf0
-			}
-			n, _ := io.CopyBuffer(rw, r, buf)
-			cr.hits.Add(1)
-			cr.hbts.Add(n)
+	}else if size, err := getFileSize(r); err == nil {
+		rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	}
+	rw.WriteHeader(http.StatusOK)
+	if req.Method != http.MethodHead {
+		var buf []byte
+		{
+			buf0 := bufPool.Get().(*[]byte)
+			defer bufPool.Put(buf0)
+			buf = *buf0
 		}
+		n, _ := io.CopyBuffer(rw, r, buf)
+		cr.hits.Add(1)
+		cr.hbts.Add(n)
 	}
 }
 

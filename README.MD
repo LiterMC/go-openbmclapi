@@ -70,8 +70,8 @@ A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 debug: false
 # 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
 record_serve_info: false
-# 是否禁用 https
-nohttps: false
+# 是否禁用 bmclapi 分发的证书, 同 CLUSTER_BYOC
+byoc: false
 # 是否仅从主服务器下载文件
 noopen: false
 # 跳过文件哈希值校验

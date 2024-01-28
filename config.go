@@ -66,7 +66,7 @@ type HijackConfig struct {
 type Config struct {
 	Debug                bool             `yaml:"debug"`
 	RecordServeInfo      bool             `yaml:"record_serve_info"`
-	Nohttps              bool             `yaml:"nohttps"`
+	Byoc                 bool             `yaml:"byoc"`
 	NoOpen               bool             `yaml:"noopen"`
 	NoHeavyCheck         bool             `yaml:"no_heavy_check"`
 	TrustedXForwardedFor bool             `yaml:"trusted-x-forwarded-for"`
@@ -96,7 +96,7 @@ func (cfg *Config) applyWebManifest(manifest map[string]any) {
 var defaultConfig = Config{
 	Debug:                false,
 	RecordServeInfo:      false,
-	Nohttps:              false,
+	Byoc:                 false,
 	NoOpen:               false,
 	NoHeavyCheck:         false,
 	TrustedXForwardedFor: false,
@@ -142,6 +142,16 @@ var defaultConfig = Config{
 	},
 }
 
+func migrateConfig(data []byte, config *Config) {
+	var oldConfig map[string]any
+	if err := json.Unmarshal(data, &oldConfig); err != nil {
+		return
+	}
+	if nohttps, ok := oldConfig["nohttps"].(bool); ok {
+		config.Byoc = nohttps
+	}
+}
+
 func readConfig() (config Config) {
 	const configPath = "config.yaml"
 
@@ -156,9 +166,12 @@ func readConfig() (config Config) {
 		}
 		logError("Config file not exists, create one")
 		notexists = true
-	} else if err = yaml.Unmarshal(data, &config); err != nil {
-		logError("Cannot parse config:", err)
-		os.Exit(1)
+	} else {
+		migrateConfig(data, &config)
+		if err = yaml.Unmarshal(data, &config); err != nil {
+			logError("Cannot parse config:", err)
+			os.Exit(1)
+		}
 	}
 
 	if data, err = yaml.Marshal(config); err != nil {

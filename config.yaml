@@ -17,6 +17,9 @@ serve_limit:
     enable: false
     max_conn: 0
     upload_rate: 0
+dashboard:
+    enable: true
+    pwa-name: GoOpemBmclApi Dashboard
 oss:
     enable: false
     list:

@@ -20,7 +20,9 @@
 package main
 
 import (
+	"bytes"
 	"embed"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"mime"
@@ -45,13 +47,36 @@ var dsbDist = func() fs.FS {
 //go:embed dashboard/dist/index.html
 var dsbIndexHtml string
 
+//go:embed dashboard/dist/manifest.webmanifest
+var _dsbManifest []byte
+var dsbManifest = func() (dsbManifest map[string]any) {
+	err := json.Unmarshal(_dsbManifest, &dsbManifest)
+	if err != nil {
+		panic(err)
+	}
+	return
+}()
+
 func (cr *Cluster) serveDashboard(rw http.ResponseWriter, req *http.Request, pth string) {
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		rw.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
 		http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if pth != "" {
+	switch pth {
+	case "":
+		break
+	case "manifest.webmanifest":
+		buf, err := json.Marshal(dsbManifest)
+		if err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(rw, err.Error())
+			return
+		}
+		rw.Header().Set("Content-Type", "application/manifest+json")
+		http.ServeContent(rw, req, "manifest.webmanifest", startTime, bytes.NewReader(buf))
+		return
+	default:
 		fd, err := dsbDist.Open(pth)
 		if err == nil {
 			defer fd.Close()

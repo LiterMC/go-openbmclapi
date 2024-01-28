@@ -248,6 +248,8 @@ START:
 
 	config = readConfig()
 
+	config.applyWebManifest(dsbManifest)
+
 	httpcli := &http.Client{
 		Timeout: 30 * time.Second,
 	}

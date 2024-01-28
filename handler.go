@@ -274,6 +274,10 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 	case strings.HasPrefix(rawpath, "/dashboard/"):
+		if !config.Dashboard.Enable {
+			http.NotFound(rw, req)
+			return
+		}
 		pth := rawpath[len("/dashboard/"):]
 		cr.serveDashboard(rw, req, pth)
 		return

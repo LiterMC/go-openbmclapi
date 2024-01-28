@@ -43,6 +43,11 @@ type ServeLimitConfig struct {
 	UploadRate int  `yaml:"upload_rate"`
 }
 
+type DashboardConfig struct {
+	Enable  bool   `yaml:"enable"`
+	PwaName string `yaml:"pwa-name"`
+}
+
 type OSSConfig struct {
 	Enable bool       `yaml:"enable"`
 	List   []*OSSItem `yaml:"list"`
@@ -73,8 +78,15 @@ type Config struct {
 	DownloadMaxConn      int              `yaml:"download_max_conn"`
 	UseGzip              bool             `yaml:"use_gzip"`
 	ServeLimit           ServeLimitConfig `yaml:"serve_limit"`
+	Dashboard            DashboardConfig  `yaml:"dashboard"`
 	Oss                  OSSConfig        `yaml:"oss"`
 	Hijack               HijackConfig     `yaml:"hijack_port"`
+}
+
+func (cfg *Config) applyWebManifest(manifest map[string]any) {
+	if cfg.Dashboard.Enable {
+		manifest["name"] = cfg.Dashboard.PwaName
+	}
 }
 
 func readConfig() (config Config) {
@@ -100,6 +112,11 @@ func readConfig() (config Config) {
 			Enable:     false,
 			MaxConn:    16384,
 			UploadRate: 1024 * 12, // 12MB
+		},
+
+		Dashboard: DashboardConfig{
+			Enable:  true,
+			PwaName: "GoOpemBmclApi Dashboard",
 		},
 
 		Oss: OSSConfig{

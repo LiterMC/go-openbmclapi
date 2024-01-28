@@ -105,6 +105,13 @@ serve_limit:
   # 上行速率限制 (KiB/s), 0 表示无限制
   upload_rate: 0
 
+# 内置的仪表板
+dashboard:
+  # 是否启用
+  enable: true
+  # PWA 的名称
+  pwa-name: GoOpemBmclApi Dashboard
+
 ## 特殊要求: 重定向到 OSS
 oss:
     # 是否启用该功能

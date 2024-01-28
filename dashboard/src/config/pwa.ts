@@ -6,7 +6,7 @@ export default VitePWA({
 	includeAssets: ['favicon.ico'],
 	manifest: {
 		name: 'GoOpemBmclApi Dashboard',
-		short_name: 'GoOpemBmclApiDashboard',
+		short_name: 'GOBA Dash',
 		description: 'Go-Openbmclapi Internal Dashboard',
 		theme_color: '#4c89fe',
 		icons: [

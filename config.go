@@ -57,43 +57,45 @@ type HijackConfig struct {
 }
 
 type Config struct {
-	Debug            bool             `yaml:"debug"`
-	RecordServeInfo  bool             `yaml:"record_serve_info"`
-	Nohttps          bool             `yaml:"nohttps"`
-	NoOpen           bool             `yaml:"noopen"`
-	NoHeavyCheck     bool             `yaml:"no_heavy_check"`
-	PublicHost       string           `yaml:"public_host"`
-	PublicPort       uint16           `yaml:"public_port"`
-	Port             uint16           `yaml:"port"`
-	ClusterId        string           `yaml:"cluster_id"`
-	ClusterSecret    string           `yaml:"cluster_secret"`
-	SyncInterval     int              `yaml:"sync_interval"`
-	KeepaliveTimeout int              `yaml:"keepalive_timeout"`
-	DownloadMaxConn  int              `yaml:"download_max_conn"`
-	UseGzip          bool             `yaml:"use_gzip"`
-	ServeLimit       ServeLimitConfig `yaml:"serve_limit"`
-	Oss              OSSConfig        `yaml:"oss"`
-	Hijack           HijackConfig     `yaml:"hijack_port"`
+	Debug                bool             `yaml:"debug"`
+	RecordServeInfo      bool             `yaml:"record_serve_info"`
+	Nohttps              bool             `yaml:"nohttps"`
+	NoOpen               bool             `yaml:"noopen"`
+	NoHeavyCheck         bool             `yaml:"no_heavy_check"`
+	TrustedXForwardedFor bool             `yaml:"trusted-x-forwarded-for"`
+	PublicHost           string           `yaml:"public_host"`
+	PublicPort           uint16           `yaml:"public_port"`
+	Port                 uint16           `yaml:"port"`
+	ClusterId            string           `yaml:"cluster_id"`
+	ClusterSecret        string           `yaml:"cluster_secret"`
+	SyncInterval         int              `yaml:"sync_interval"`
+	KeepaliveTimeout     int              `yaml:"keepalive_timeout"`
+	DownloadMaxConn      int              `yaml:"download_max_conn"`
+	UseGzip              bool             `yaml:"use_gzip"`
+	ServeLimit           ServeLimitConfig `yaml:"serve_limit"`
+	Oss                  OSSConfig        `yaml:"oss"`
+	Hijack               HijackConfig     `yaml:"hijack_port"`
 }
 
 func readConfig() (config Config) {
 	const configPath = "config.yaml"
 
 	config = Config{
-		Debug:            false,
-		RecordServeInfo:  false,
-		Nohttps:          false,
-		NoOpen:           false,
-		NoHeavyCheck:     false,
-		PublicHost:       "example.com",
-		PublicPort:       8080,
-		Port:             4000,
-		ClusterId:        "${CLUSTER_ID}",
-		ClusterSecret:    "${CLUSTER_SECRET}",
-		SyncInterval:     10,
-		KeepaliveTimeout: 10,
-		DownloadMaxConn:  64,
-		UseGzip:          false,
+		Debug:                false,
+		RecordServeInfo:      false,
+		Nohttps:              false,
+		NoOpen:               false,
+		NoHeavyCheck:         false,
+		TrustedXForwardedFor: false,
+		PublicHost:           "example.com",
+		PublicPort:           8080,
+		Port:                 4000,
+		ClusterId:            "${CLUSTER_ID}",
+		ClusterSecret:        "${CLUSTER_SECRET}",
+		SyncInterval:         10,
+		KeepaliveTimeout:     10,
+		DownloadMaxConn:      64,
+		UseGzip:              false,
 		ServeLimit: ServeLimitConfig{
 			Enable:     false,
 			MaxConn:    16384,

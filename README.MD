@@ -76,6 +76,8 @@ nohttps: false
 noopen: false
 # 跳过文件哈希值校验
 no_heavy_check: false
+# 是否信任 X-Forwarded-For 标头 (有反代时启用)
+trusted-x-forwarded-for: false
 # 实际开放的公网主机名, 同 CLUSTER_IP
 public_host: example.com
 # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT

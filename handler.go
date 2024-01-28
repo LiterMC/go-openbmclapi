@@ -90,7 +90,15 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 
 			used := time.Since(start)
 			if config.RecordServeInfo {
-				addr, _, _ := net.SplitHostPort(req.RemoteAddr)
+				var addr string
+				if config.TrustedXForwardedFor {
+					// X-Forwarded-For: <client>, <proxy1>, <proxy2>
+					adr, _ := split(req.Header.Get("X-Forwarded-For"), ',')
+					addr = strings.TrimSpace(adr)
+				}
+				if addr == "" {
+					addr, _, _ = net.SplitHostPort(req.RemoteAddr)
+				}
 				if used > time.Minute {
 					used = used.Truncate(time.Second)
 				} else if used > time.Second {
@@ -361,7 +369,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		if size, ok := cr.FileSet()[hash]; ok {
 			rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 		}
-	}else if size, err := getFileSize(r); err == nil {
+	} else if size, err := getFileSize(r); err == nil {
 		rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	}
 	rw.WriteHeader(http.StatusOK)

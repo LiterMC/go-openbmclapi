@@ -44,8 +44,10 @@ type ServeLimitConfig struct {
 }
 
 type DashboardConfig struct {
-	Enable  bool   `yaml:"enable"`
-	PwaName string `yaml:"pwa-name"`
+	Enable       bool   `yaml:"enable"`
+	PwaName      string `yaml:"pwa-name"`
+	PwaShortName string `yaml:"pwa-short_name"`
+	PwaDesc      string `yaml:"pwa-description"`
 }
 
 type OSSConfig struct {
@@ -86,58 +88,64 @@ type Config struct {
 func (cfg *Config) applyWebManifest(manifest map[string]any) {
 	if cfg.Dashboard.Enable {
 		manifest["name"] = cfg.Dashboard.PwaName
+		manifest["short_name"] = cfg.Dashboard.PwaShortName
+		manifest["description"] = cfg.Dashboard.PwaDesc
 	}
+}
+
+var defaultConfig = Config{
+	Debug:                false,
+	RecordServeInfo:      false,
+	Nohttps:              false,
+	NoOpen:               false,
+	NoHeavyCheck:         false,
+	TrustedXForwardedFor: false,
+	PublicHost:           "example.com",
+	PublicPort:           8080,
+	Port:                 4000,
+	ClusterId:            "${CLUSTER_ID}",
+	ClusterSecret:        "${CLUSTER_SECRET}",
+	SyncInterval:         10,
+	KeepaliveTimeout:     10,
+	DownloadMaxConn:      64,
+	UseGzip:              false,
+	ServeLimit: ServeLimitConfig{
+		Enable:     false,
+		MaxConn:    16384,
+		UploadRate: 1024 * 12, // 12MB
+	},
+
+	Dashboard: DashboardConfig{
+		Enable:       true,
+		PwaName:      "GoOpemBmclApi Dashboard",
+		PwaShortName: "GOBA Dash",
+		PwaDesc:      "Go-Openbmclapi Internal Dashboard",
+	},
+
+	Oss: OSSConfig{
+		Enable: false,
+		List: []*OSSItem{
+			{
+				FolderPath:     "oss_mirror",
+				RedirectBase:   "https://oss.example.com/base/paths",
+				SkipMeasureGen: false,
+			},
+		},
+	},
+
+	Hijack: HijackConfig{
+		Enable:        false,
+		ServerHost:    "",
+		ServerPort:    8090,
+		Path:          "__hijack",
+		AntiHijackDNS: "8.8.8.8:53",
+	},
 }
 
 func readConfig() (config Config) {
 	const configPath = "config.yaml"
 
-	config = Config{
-		Debug:                false,
-		RecordServeInfo:      false,
-		Nohttps:              false,
-		NoOpen:               false,
-		NoHeavyCheck:         false,
-		TrustedXForwardedFor: false,
-		PublicHost:           "example.com",
-		PublicPort:           8080,
-		Port:                 4000,
-		ClusterId:            "${CLUSTER_ID}",
-		ClusterSecret:        "${CLUSTER_SECRET}",
-		SyncInterval:         10,
-		KeepaliveTimeout:     10,
-		DownloadMaxConn:      64,
-		UseGzip:              false,
-		ServeLimit: ServeLimitConfig{
-			Enable:     false,
-			MaxConn:    16384,
-			UploadRate: 1024 * 12, // 12MB
-		},
-
-		Dashboard: DashboardConfig{
-			Enable:  true,
-			PwaName: "GoOpemBmclApi Dashboard",
-		},
-
-		Oss: OSSConfig{
-			Enable: false,
-			List: []*OSSItem{
-				{
-					FolderPath:     "oss_mirror",
-					RedirectBase:   "https://oss.example.com/base/paths",
-					SkipMeasureGen: false,
-				},
-			},
-		},
-
-		Hijack: HijackConfig{
-			Enable:        false,
-			ServerHost:    "",
-			ServerPort:    8090,
-			Path:          "__hijack",
-			AntiHijackDNS: "8.8.8.8:53",
-		},
-	}
+	config = defaultConfig
 
 	data, err := os.ReadFile(configPath)
 	notexists := false

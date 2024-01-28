@@ -342,12 +342,12 @@ START:
 		}
 	}
 
-	logDebugf("Receiving signals")
-	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-
 	if !cluster.Connect(ctx) {
 		os.Exit(1)
 	}
+
+	logDebugf("Receiving signals")
+	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	clusterSvr := &http.Server{
 		Addr:        fmt.Sprintf("%s:%d", "0.0.0.0", config.Port),

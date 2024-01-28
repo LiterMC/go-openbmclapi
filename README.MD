@@ -109,8 +109,12 @@ serve_limit:
 dashboard:
   # 是否启用
   enable: true
-  # PWA 的名称
+  # PWA 的名称, 在桌面设备上显示
   pwa-name: GoOpemBmclApi Dashboard
+  # PWA 短名称, 在移动设备上显示
+  pwa-short_name: GOBA Dash
+  # PWA 描述
+  pwa-description: Go-Openbmclapi Internal Dashboard
 
 ## 特殊要求: 重定向到 OSS
 oss:

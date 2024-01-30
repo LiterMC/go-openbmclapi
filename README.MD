@@ -17,7 +17,7 @@ Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 
 ## FAQ
 
-Q: 支持`.env`文件吗?
+Q: 支持`.env`文件吗?  
 A: 不支持, Go-OpenBmclAPI 使用 yaml 配置文件, 该文件应位于程序的运行目录. 初次运行本程序时会自动创建该配置文件
 
 Q: 没有适合我的平台的程序怎么办?  
@@ -147,4 +147,39 @@ hijack:
     path: __hijack
     # 用于绕过DNS劫持的DNS服务器 (从bmclapi同步时使用)
     anti_hijack_dns: 8.8.8.8:53
+```
+
+## 子命令
+
+Go-OpenBmclAPI 提供了一组子命令:
+```
+Sub commands:
+  help
+        显示帮助消息
+
+  main | serve | <empty>
+        执行主程序
+
+  license
+        打印完整许可证
+
+  version
+        打印程序版本
+
+  zip-cache [options ...]
+        使用 gzip 压缩 cache 文件夹内的文件 (迁移用)
+
+    Options:
+      verbose | v : 显示正在压缩的文件
+      all | a : 压缩所有文件 (默认不会压缩10KB以下的文件)
+      overwrite | o : 覆盖存在的已压缩的目标文件
+      keep | k : 不删除压缩过的文件
+
+  unzip-cache
+         解压缩 cache 文件夹内的文件 (迁移用)
+
+    Options:
+      verbose | v : 显示正在解压缩的文件
+      overwrite | o : 覆盖存在的未压缩的目标文件
+      keep | k : 不删除解压缩过的文件
 ```

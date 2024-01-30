@@ -1,5 +1,6 @@
 debug: false
 record_serve_info: false
+log-slots: 7
 nohttps: false
 noopen: false
 no_heavy_check: false

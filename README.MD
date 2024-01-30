@@ -17,6 +17,9 @@ Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 
 ## FAQ
 
+Q: 支持`.env`文件吗?
+A: 不支持, Go-OpenBmclAPI 使用 yaml 配置文件, 该文件应位于程序的运行目录. 初次运行本程序时会自动创建该配置文件
+
 Q: 没有适合我的平台的程序怎么办?  
 A: 检查 [Go Platform Values](https://gist.github.com/asukakenji/f15ba7e588ac42795f421b48b8aede63#platform-values), 如果您的系统/架构存在, 那么可以发个 issue
 
@@ -70,6 +73,8 @@ A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 debug: false
 # 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
 record_serve_info: false
+# 日志最长保存时间 (天). 设置为 0 禁用清理过期日志
+log-slots: 7
 # 是否禁用 bmclapi 分发的证书, 同 CLUSTER_BYOC
 byoc: false
 # 是否仅从主服务器下载文件
@@ -129,7 +134,7 @@ oss:
           skip_measure_gen: false
 
 ## 特殊要求: 劫持 bmclapi 以加速同一局域网请求
-hijack_port:
+hijack:
     # 是否启用该功能
     enable: false
     # 劫持代理监听的主机名

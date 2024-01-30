@@ -127,6 +127,19 @@ func flushLogfile() {
 	}
 }
 
+func removeExpiredLogFiles(before string) {
+	if files, err := os.ReadDir(logdir); err == nil {
+		for _, f := range files {
+			n := f.Name()
+			if strings.HasSuffix(n, ".log") && n < before {
+				p := filepath.Join(logdir, n)
+				logDebugf("Remove expired log %q", p)
+				os.Remove(p)
+			}
+		}
+	}
+}
+
 func startFlushLogFile() {
 	flushLogfile()
 	logfile.Load().Write(([]byte)("================================================================\n"))
@@ -137,6 +150,10 @@ func startFlushLogFile() {
 			case <-time.After(time.Duration(tma-time.Now().Unix()) * time.Second):
 				tma = (time.Now().Unix()/(60*60) + 1) * (60 * 60)
 				flushLogfile()
+				if config.LogSlots > 0 {
+					dur := -time.Hour * 24 * (time.Duration)(config.LogSlots)
+					removeExpiredLogFiles(time.Now().Add(dur).Format("20060102"))
+				}
 			}
 		}
 	}()

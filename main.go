@@ -45,7 +45,7 @@ var (
 
 var startTime = time.Now()
 
-var config Config
+var config Config = defaultConfig
 
 const baseDir = "."
 

@@ -396,6 +396,8 @@ func (cr *Cluster) handleDownloadOSS(rw http.ResponseWriter, req *http.Request, 
 	hashFilename := hashToFilename(hash)
 
 	var err error
+	// check if file was indexed in the fileset
+	size, sizeCached := cr.FileSet()[hash]
 	forEachSliceFromRandomIndex(len(cr.ossList), func(i int) bool {
 		item := cr.ossList[i]
 		logDebugf("[handler]: Checking file on OSS %d at %q ...", i, item.FolderPath)
@@ -407,19 +409,19 @@ func (cr *Cluster) handleDownloadOSS(rw http.ResponseWriter, req *http.Request, 
 		}
 
 		downloadDir := filepath.Join(item.FolderPath, "download")
-		// check if file was indexed in the fileset
-		size, ok := cr.FileSet()[hash]
-		if !ok {
+		if !sizeCached {
 			// check if the file exists
 			path := filepath.Join(downloadDir, hashFilename)
 			var stat os.FileInfo
 			if stat, err = os.Stat(path); err != nil {
 				logDebugf("[handler]: Cannot read file on OSS %d: %v", i, err)
 				if errors.Is(err, os.ErrNotExist) {
+					logInfof("[handler]: Downloading %s", hash)
 					if e := cr.DownloadFileOSS(req.Context(), downloadDir, hash); e != nil {
-						logDebugf("[handler]: Cound not download the file: %v", e)
+						logInfof("[handler]: Could not downloaded %s\n\t%v", hash, e)
 						return false
 					}
+					logInfof("[handler]: Downloaded %s", hash)
 					if stat, err = os.Stat(path); err != nil {
 						return false
 					}

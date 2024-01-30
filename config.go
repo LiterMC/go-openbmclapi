@@ -82,7 +82,7 @@ type Config struct {
 	ServeLimit           ServeLimitConfig `yaml:"serve_limit"`
 	Dashboard            DashboardConfig  `yaml:"dashboard"`
 	Oss                  OSSConfig        `yaml:"oss"`
-	Hijack               HijackConfig     `yaml:"hijack_port"`
+	Hijack               HijackConfig     `yaml:"hijack"`
 }
 
 func (cfg *Config) applyWebManifest(manifest map[string]any) {

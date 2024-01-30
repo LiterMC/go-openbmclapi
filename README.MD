@@ -175,7 +175,7 @@ Sub commands:
       overwrite | o : 覆盖存在的已压缩的目标文件
       keep | k : 不删除压缩过的文件
 
-  unzip-cache
+  unzip-cache [options ...]
          解压缩 cache 文件夹内的文件 (迁移用)
 
     Options:

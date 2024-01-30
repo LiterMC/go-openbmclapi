@@ -58,7 +58,7 @@ func parseArgs() {
 		case "license":
 			printLongLicense()
 			os.Exit(0)
-		case "version":
+		case "version", "--version":
 			fmt.Printf("Go-OpenBmclApi v%s (%s)\n", ClusterVersion, BuildVersion)
 			os.Exit(0)
 		case "zip-cache":
@@ -67,7 +67,28 @@ func parseArgs() {
 			flagOverwrite := false
 			flagKeep := false
 			for _, a := range os.Args[2:] {
-				switch strings.ToLower(a) {
+				a = strings.ToLower(a)
+				if len(a) > 0 && a[0] == '-' {
+					a = a[1:]
+					if len(a) > 0 && a[0] == '-' {
+						a = a[1:]
+					} else {
+						for _, aa := range a {
+							switch aa {
+							case 'v':
+								flagVerbose = true
+							case 'a':
+								flagAll = true
+							case 'o':
+								flagOverwrite = true
+							case 'k':
+								flagKeep = true
+							}
+						}
+						continue
+					}
+				}
+				switch a {
 				case "verbose", "v":
 					flagVerbose = true
 				case "all", "a":
@@ -142,7 +163,26 @@ func parseArgs() {
 			flagOverwrite := false
 			flagKeep := false
 			for _, a := range os.Args[2:] {
-				switch strings.ToLower(a) {
+				a = strings.ToLower(a)
+				if len(a) > 0 && a[0] == '-' {
+					a = a[1:]
+					if len(a) > 0 && a[0] == '-' {
+						a = a[1:]
+					} else {
+						for _, aa := range a {
+							switch aa {
+							case 'v':
+								flagVerbose = true
+							case 'o':
+								flagOverwrite = true
+							case 'k':
+								flagKeep = true
+							}
+						}
+						continue
+					}
+				}
+				switch a {
 				case "verbose", "v":
 					flagVerbose = true
 				case "overwrite", "o":

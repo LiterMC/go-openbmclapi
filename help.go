@@ -48,7 +48,7 @@ func printHelp() {
 	fmt.Println("      " + "overwrite | o : Overwrite compressed file even if it exists")
 	fmt.Println("      " + "keep | k : Keep uncompressed file")
 	fmt.Println()
-	fmt.Println("  unzip-cache")
+	fmt.Println("  unzip-cache [options ...]")
 	fmt.Println("  \t" + "Decompress the cache directory")
 	fmt.Println()
 	fmt.Println("    Options:")

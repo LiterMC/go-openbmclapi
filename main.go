@@ -58,6 +58,9 @@ func parseArgs() {
 		case "license":
 			printLongLicense()
 			os.Exit(0)
+		case "version":
+			fmt.Printf("Go-OpenBmclApi v%s (%s)\n", ClusterVersion, BuildVersion)
+			os.Exit(0)
 		case "zip-cache":
 			flagVerbose := false
 			flagAll := false

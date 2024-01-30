@@ -61,6 +61,9 @@ func parseArgs() {
 		case "version", "--version":
 			fmt.Printf("Go-OpenBmclApi v%s (%s)\n", ClusterVersion, BuildVersion)
 			os.Exit(0)
+		case "help", "--help":
+			printHelp()
+			os.Exit(0)
 		case "zip-cache":
 			flagVerbose := false
 			flagAll := false
@@ -83,6 +86,9 @@ func parseArgs() {
 								flagOverwrite = true
 							case 'k':
 								flagKeep = true
+							default:
+								fmt.Printf("Unknown option %q\n", aa)
+								os.Exit(2)
 							}
 						}
 						continue
@@ -97,6 +103,9 @@ func parseArgs() {
 					flagOverwrite = true
 				case "keep", "k":
 					flagKeep = true
+				default:
+					fmt.Printf("Unknown option %q\n", a)
+					os.Exit(2)
 				}
 			}
 			cacheDir := filepath.Join(baseDir, "cache")
@@ -177,6 +186,9 @@ func parseArgs() {
 								flagOverwrite = true
 							case 'k':
 								flagKeep = true
+							default:
+								fmt.Printf("Unknown option %q\n", aa)
+								os.Exit(2)
 							}
 						}
 						continue
@@ -189,6 +201,9 @@ func parseArgs() {
 					flagOverwrite = true
 				case "keep", "k":
 					flagKeep = true
+				default:
+					fmt.Printf("Unknown option %q\n", a)
+					os.Exit(2)
 				}
 			}
 			cacheDir := filepath.Join(baseDir, "cache")

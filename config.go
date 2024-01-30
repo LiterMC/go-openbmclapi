@@ -144,7 +144,7 @@ var defaultConfig = Config{
 
 func migrateConfig(data []byte, config *Config) {
 	var oldConfig map[string]any
-	if err := json.Unmarshal(data, &oldConfig); err != nil {
+	if err := yaml.Unmarshal(data, &oldConfig); err != nil {
 		return
 	}
 	if nohttps, ok := oldConfig["nohttps"].(bool); ok {
@@ -214,7 +214,7 @@ func readConfig() (config Config) {
 		config.ClusterSecret = v
 	}
 	if byoc := os.Getenv("CLUSTER_BYOC"); byoc != "" {
-		config.Nohttps = byoc == "true"
+		config.Byoc = byoc == "true"
 	}
 	switch noopen := os.Getenv("FORCE_NOOPEN"); noopen {
 	case "true":

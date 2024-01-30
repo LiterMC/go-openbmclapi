@@ -285,7 +285,7 @@ START:
 	cluster, err := NewCluster(ctx, baseDir,
 		config.PublicHost, config.PublicPort,
 		config.ClusterId, config.ClusterSecret,
-		config.Nohttps, dialer,
+		config.Byoc, dialer,
 		ossList,
 	)
 	if err != nil {
@@ -370,7 +370,7 @@ START:
 			listener = limited
 		}
 
-		if !config.Nohttps {
+		if !config.Byoc {
 			tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
 			pair, err := cluster.RequestCert(tctx)
 			cancel()

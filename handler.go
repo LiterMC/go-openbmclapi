@@ -211,6 +211,12 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		query := req.URL.Query()
+		if !checkQuerySign(hash, cr.password, query) {
+			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
+			return
+		}
+
 		if _, ok := emptyHashes[hash]; ok {
 			name := req.URL.Query().Get("name")
 			rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days

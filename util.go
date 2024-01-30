@@ -23,11 +23,13 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"math/rand"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -247,4 +249,28 @@ func getFileSize(r io.Reader) (n int64, err error) {
 		err = errNotSeeker
 	}
 	return
+}
+
+func checkQuerySign(hash string, secret string, query url.Values) bool {
+	sign, e := query.Get("s"), query.Get("e")
+	if len(sign) == 0 || len(e) == 0 {
+		return false
+	}
+	before, err := strconv.ParseInt(e, 36, 64)
+	if err != nil {
+		return false
+	}
+	hs := crypto.SHA1.New()
+	io.WriteString(hs, secret)
+	io.WriteString(hs, hash)
+	io.WriteString(hs, e)
+	var (
+		buf  [20]byte
+		sbuf [27]byte
+	)
+	base64.RawURLEncoding.Encode(sbuf[:], hs.Sum(buf[:0]))
+	if (string)(sbuf[:]) != sign {
+		return false
+	}
+	return time.Now().UnixMilli() < before
 }

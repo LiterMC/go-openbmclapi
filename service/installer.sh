@@ -4,7 +4,9 @@ REPO='LiterMC/go-openbmclapi'
 RAW_PREFIX='https://raw.githubusercontent.com'
 RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
+LATEST_TAG=$1
 
+dlPrefix=https://cdn.crashmc.com/
 
 if [ $(id -u) -ne 0 ]; then
 	read -p 'ERROR: You are not root user, are you sure to continue?(y/N) ' Y
@@ -18,7 +20,7 @@ if ! systemd --version; then
 fi
 
 if [ ! -d /usr/lib/systemd/system/ ]; then
-	echo 'ERROR: /usr/lib/systemd/system/ are not exist'
+	echo 'ERROR: /usr/lib/systemd/system/ is not exist'
 	exit 1
 fi
 
@@ -52,8 +54,6 @@ if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
 	systemctl disable go-openbmclapi.service
 fi
 
-LATEST_TAG=$1
-
 if [ ! -n "$LATEST_TAG" ]; then
 	echo "==> Fetching latest tag for https://github.com/$REPO"
 	fetchGithubLatestTag
@@ -75,10 +75,10 @@ latest_src="https://github.com/$REPO/releases/download/$LATEST_TAG"
 arch=$(uname -m)
 [ "$arch" = 'x86_64' ] && arch=amd64
 
-source="$latest_src/go-opembmclapi-linux-$arch"
+source="$dlPrefix$latest_src/go-opembmclapi-linux-$arch"
 echo "==> Downloading $source"
 if ! curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"; then
-	source="$latest_src/go-opembmclapi-linux-amd64"
+	source="$dlPrefix$latest_src/go-opembmclapi-linux-amd64"
 	echo "==> Downloading fallback binary $source"
 	curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || exit $?
 fi

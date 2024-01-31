@@ -132,7 +132,7 @@ func NewCluster(
 		os.Mkdir(filepath.Join(cr.cacheDir, hex.EncodeToString(b[:])), 0755)
 	}
 	os.MkdirAll(cr.dataDir, 0755)
-	os.MkdirAll(cr.tmpDir, 0700)
+	os.MkdirAll(cr.tmpDir, 0755)
 
 	// read old stats
 	if err = cr.stats.Load(cr.dataDir); err != nil {

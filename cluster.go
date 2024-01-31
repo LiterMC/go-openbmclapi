@@ -233,7 +233,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 	logInfo("Sending enable packet")
-	tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
+	tctx, cancel := context.WithTimeout(ctx, time.Minute*6)
 	data, err := cr.socket.EmitAckContext(tctx, "enable", Map{
 		"host":    cr.host,
 		"port":    cr.publicPort,

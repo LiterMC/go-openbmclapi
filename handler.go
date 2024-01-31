@@ -82,6 +82,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 
 		next := handler
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+			rw.Header().Set("X-Powered-By", "go-openbmclapi; url=https://github.com/LiterMC/go-openbmclapi")
 			ua := req.Header.Get("User-Agent")
 			srw := &statusResponseWriter{ResponseWriter: rw}
 			start := time.Now()

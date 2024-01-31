@@ -1,12 +1,12 @@
 #!/bin/bash
 
+dlPrefix=https://cdn.crashmc.com
+
 REPO='LiterMC/go-openbmclapi'
-RAW_PREFIX='https://raw.githubusercontent.com'
+RAW_PREFIX="$dlPrefix/https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
 LATEST_TAG=$1
-
-dlPrefix=https://cdn.crashmc.com/
 
 if [ $(id -u) -ne 0 ]; then
 	read -p 'ERROR: You are not root user, are you sure to continue?(y/N) ' Y
@@ -48,6 +48,8 @@ function fetchBlob(){
 	fi
 }
 
+echo
+
 if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
 	echo 'WARN: go-openbmclapi.service is already installed, stopping'
 	systemctl stop go-openbmclapi.service
@@ -75,10 +77,10 @@ latest_src="https://github.com/$REPO/releases/download/$LATEST_TAG"
 arch=$(uname -m)
 [ "$arch" = 'x86_64' ] && arch=amd64
 
-source="$dlPrefix$latest_src/go-opembmclapi-linux-$arch"
+source="$dlPrefix/$latest_src/go-opembmclapi-linux-$arch"
 echo "==> Downloading $source"
 if ! curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"; then
-	source="$dlPrefix$latest_src/go-opembmclapi-linux-amd64"
+	source="$dlPrefix/$latest_src/go-opembmclapi-linux-amd64"
 	echo "==> Downloading fallback binary $source"
 	curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || exit $?
 fi

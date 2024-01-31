@@ -36,7 +36,7 @@ A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 
 ### 从docker运行
 
-- 可直接运行仓库目录下的`docker-run.sh`文件, 运行之前请确保存在`craftmine/go-openbmclapi:latest`镜像, 或网络连通
+- 可直接运行仓库目录下的 [`docker-run.sh`](./docker-run.sh) 文件, 运行之前请确保存在`craftmine/go-openbmclapi:latest`镜像, 或网络连通
 - 也可使用`docker build -t craftmine/go-openbmclapi:latest .`手动编译镜像
 
 ### 从`systemd`运行 _(仅Linux)_

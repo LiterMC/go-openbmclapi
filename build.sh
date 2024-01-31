@@ -21,7 +21,7 @@ export CGO_ENABLED=0
 for p in "${available_platforms[@]}"; do
 	os=${p%/*}
 	arch=${p#*/}
-	target="${outputdir}/go-opembmclapi-${os}-${arch}"
+	target="${outputdir}/go-openbmclapi-${os}-${arch}"
 	if [[ "$os" == "windows" ]]; then
 		target="${target}.exe"
 	fi

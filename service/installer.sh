@@ -77,10 +77,10 @@ latest_src="https://github.com/$REPO/releases/download/$LATEST_TAG"
 arch=$(uname -m)
 [ "$arch" = 'x86_64' ] && arch=amd64
 
-source="$dlPrefix/$latest_src/go-opembmclapi-linux-$arch"
+source="$dlPrefix/$latest_src/go-openbmclapi-linux-$arch"
 echo "==> Downloading $source"
 if ! curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"; then
-	source="$dlPrefix/$latest_src/go-opembmclapi-linux-amd64"
+	source="$dlPrefix/$latest_src/go-openbmclapi-linux-amd64"
 	echo "==> Downloading fallback binary $source"
 	curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || exit $?
 fi

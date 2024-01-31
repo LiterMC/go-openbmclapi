@@ -5,7 +5,7 @@ export default VitePWA({
 	injectRegister: 'inline',
 	includeAssets: ['favicon.ico'],
 	manifest: {
-		name: 'GoOpemBmclApi Dashboard',
+		name: 'GoOpenBmclApi Dashboard',
 		short_name: 'GOBA Dash',
 		description: 'Go-Openbmclapi Internal Dashboard',
 		theme_color: '#4c89fe',

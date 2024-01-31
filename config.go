@@ -119,7 +119,7 @@ var defaultConfig = Config{
 
 	Dashboard: DashboardConfig{
 		Enable:       true,
-		PwaName:      "GoOpemBmclApi Dashboard",
+		PwaName:      "GoOpenBmclApi Dashboard",
 		PwaShortName: "GOBA Dash",
 		PwaDesc:      "Go-Openbmclapi Internal Dashboard",
 	},

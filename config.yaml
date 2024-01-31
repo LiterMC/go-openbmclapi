@@ -20,7 +20,7 @@ serve_limit:
     upload_rate: 0
 dashboard:
     enable: true
-    pwa-name: GoOpemBmclApi Dashboard
+    pwa-name: GoOpenBmclApi Dashboard
     pwa-short_name: GOBA Dash
     pwa-description: Go-Openbmclapi Internal Dashboard
 oss:

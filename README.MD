@@ -115,7 +115,7 @@ dashboard:
   # 是否启用
   enable: true
   # PWA 的名称, 在桌面设备上显示
-  pwa-name: GoOpemBmclApi Dashboard
+  pwa-name: GoOpenBmclApi Dashboard
   # PWA 短名称, 在移动设备上显示
   pwa-short_name: GOBA Dash
   # PWA 描述

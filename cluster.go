@@ -135,8 +135,8 @@ func NewCluster(
 	os.MkdirAll(cr.tmpDir, 0755)
 
 	// read old stats
-	if err = cr.stats.Load(cr.dataDir); err != nil {
-		return
+	if err := cr.stats.Load(cr.dataDir); err != nil {
+		logErrorf("Could not load stats: %v", err)
 	}
 	return
 }

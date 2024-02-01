@@ -259,12 +259,12 @@ func (s *Stats) AddHits(hits int32, bytes int64) {
 	})
 }
 
-func parseFileOrOld(path string, parser func(buf []byte) error) (err error) {
+func parseFileOrOld(path string, parser func(buf []byte) error) error {
 	oldpath := path + ".old"
 	buf, err := os.ReadFile(path)
 	if err == nil {
 		if err = parser(buf); err == nil {
-			return
+			return err
 		}
 	}
 	buf, er := os.ReadFile(oldpath)
@@ -279,22 +279,22 @@ func parseFileOrOld(path string, parser func(buf []byte) error) (err error) {
 		}
 		err = er
 	}
-	return
+	return err
 }
 
-func writeFileWithOld(path string, buf []byte, mode os.FileMode) (err error) {
+func writeFileWithOld(path string, buf []byte, mode os.FileMode) error {
 	oldpath := path + ".old"
-	if err = os.Remove(oldpath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return
+	if err := os.Remove(oldpath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	if err = os.Rename(path, oldpath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return
+	if err := os.Rename(path, oldpath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	if err = os.WriteFile(path, buf, mode); err != nil {
-		return
+	if err := os.WriteFile(path, buf, mode); err != nil {
+		return err
 	}
-	if err = os.WriteFile(oldpath, buf, mode); err != nil {
-		return
+	if err := os.WriteFile(oldpath, buf, mode); err != nil {
+		return err
 	}
-	return
+	return nil
 }

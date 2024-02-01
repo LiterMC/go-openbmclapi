@@ -270,7 +270,7 @@ func parseFileOrOld(path string, parser func(buf []byte) error) (err error) {
 	buf, er := os.ReadFile(oldpath)
 	if er == nil {
 		if er = parser(buf); er == nil {
-			return
+			return nil
 		}
 	}
 	if errors.Is(err, os.ErrNotExist) {

@@ -268,6 +268,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	if !data[1].(bool) {
 		return errors.New("Enable ack non true value")
 	}
+	logInfo("Cluster enabled")
 	cr.disabled = make(chan struct{}, 0)
 	cr.enabled.Store(true)
 	for _, ch := range cr.waitEnable {

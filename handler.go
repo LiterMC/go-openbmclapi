@@ -38,8 +38,6 @@ import (
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 )
 
-var zeroBuffer [1024 * 1024]byte
-
 type countReader struct {
 	io.ReadSeeker
 	n int64
@@ -273,11 +271,11 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Redirect(rw, req, target, http.StatusFound)
 			return
 		}
-		rw.Header().Set("Content-Length", strconv.Itoa(n*len(zeroBuffer)))
+		rw.Header().Set("Content-Length", strconv.Itoa(n*glbChunkSize))
 		rw.WriteHeader(http.StatusOK)
 		if method == http.MethodGet {
 			for i := 0; i < n; i++ {
-				rw.Write(zeroBuffer[:])
+				rw.Write(glbChunk[:])
 			}
 		}
 		return

@@ -29,9 +29,9 @@ import (
 )
 
 type OSSItem struct {
-	FolderPath     string `yaml:"folder_path"`
-	RedirectBase   string `yaml:"redirect_base"`
-	SkipMeasureGen bool   `yaml:"skip_measure_gen"`
+	FolderPath        string `yaml:"folder_path"`
+	RedirectBase      string `yaml:"redirect_base"`
+	PreCreateMeasures bool   `yaml:"pre-create-measures"`
 
 	supportRange bool
 	working      atomic.Bool
@@ -130,9 +130,9 @@ var defaultConfig = Config{
 		Enable: false,
 		List: []*OSSItem{
 			{
-				FolderPath:     "oss_mirror",
-				RedirectBase:   "https://oss.example.com/base/paths",
-				SkipMeasureGen: false,
+				FolderPath:        "oss_mirror",
+				RedirectBase:      "https://oss.example.com/base/paths",
+				PreCreateMeasures: false,
 			},
 		},
 	},

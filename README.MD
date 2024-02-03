@@ -73,6 +73,8 @@ A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 debug: false
 # 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
 record_serve_info: false
+# 跳过第一次同步, 直接启动节点 (debug用)
+skip-first-sync: false
 # 日志最长保存时间 (天). 设置为 0 禁用清理过期日志
 log-slots: 7
 # 是否禁用 bmclapi 分发的证书, 同 CLUSTER_BYOC
@@ -130,8 +132,8 @@ oss:
         - folder_path: oss_mirror
           # 镜像网络路径
           redirect_base: https://oss.example.com/base/paths
-          # 跳过生成measure文件夹
-          skip_measure_gen: false
+          # 启动之前生成 measure 文件夹 (默认为动态生成)
+          pre-create-measures: false
 
 ## 特殊要求: 劫持 bmclapi 以加速同一局域网请求
 hijack:

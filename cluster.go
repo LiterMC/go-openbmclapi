@@ -135,7 +135,7 @@ func NewCluster(
 		if err = initCache(cr.cacheDir); err != nil {
 			return
 		}
-	}else{
+	} else {
 		for _, item := range ossList {
 			if err = initCache(filepath.Join(item.FolderPath, "download")); err != nil {
 				return

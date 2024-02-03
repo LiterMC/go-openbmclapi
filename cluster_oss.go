@@ -197,6 +197,10 @@ func (cr *Cluster) ossSyncFiles(ctx context.Context, files []FileInfo, heavyChec
 	return nil
 }
 
+const glbChunkSize = 1024 * 1024
+
+var glbChunk [glbChunkSize]byte
+
 func createOssMirrorDir(item *OSSItem) {
 	logInfof("Creating OSS folder %s", item.FolderPath)
 	if err := os.MkdirAll(item.FolderPath, 0755); err != nil && !errors.Is(err, os.ErrExist) {
@@ -204,44 +208,48 @@ func createOssMirrorDir(item *OSSItem) {
 		os.Exit(2)
 	}
 
-	if !item.SkipMeasureGen {
+	if item.PreCreateMeasures {
 		logDebug("Creating measure files")
 		measureDir := filepath.Join(item.FolderPath, "measure")
 		if err := os.Mkdir(measureDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 			logErrorf("Cannot create OSS mirror folder %q: %v", measureDir, err)
 			os.Exit(2)
 		}
-		const chunkSize = 1024 * 1024
-		var chunk [chunkSize]byte
 		for i := 1; i <= 200; i++ {
-			size := i * chunkSize
-			t := filepath.Join(measureDir, strconv.Itoa(i))
-			if stat, err := os.Stat(t); err == nil {
-				x := stat.Size()
-				if x == (int64)(size) {
-					logDebug("Skipping", t)
-					continue
-				}
-				logDebugf("File [%d] size %d does not match %d", i, x, size)
-			} else {
-				logDebugf("Cannot get stat of %s: %v", t, err)
-			}
-			logDebug("Writing", t)
-			fd, err := os.Create(t)
-			if err != nil {
-				logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
+			if err := createMeasureFile(measureDir, i); err != nil {
 				os.Exit(2)
 			}
-			for j := 0; j < i; j++ {
-				if _, err = fd.Write(chunk[:]); err != nil {
-					logErrorf("Cannot write OSS mirror measure file %q: %v", t, err)
-					os.Exit(2)
-				}
-			}
-			fd.Close()
 		}
 		logDebug("Measure files created")
 	}
+}
+
+func createMeasureFile(baseDir string, n int) (err error) {
+	t := filepath.Join(baseDir, strconv.Itoa(n))
+	if stat, err := os.Stat(t); err == nil {
+		size := (int64)(n) * glbChunkSize
+		x := stat.Size()
+		if x == size {
+			return nil
+		}
+		logDebugf("File [%d] size %d does not match %d", n, x, size)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		logDebugf("Cannot get stat of %s: %v", t, err)
+	}
+	logDebug("Writing measure file", t)
+	fd, err := os.Create(t)
+	if err != nil {
+		logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
+		return
+	}
+	defer fd.Close()
+	for j := 0; j < n; j++ {
+		if _, err = fd.Write(glbChunk[:]); err != nil {
+			logErrorf("Cannot write OSS mirror measure file %q: %v", t, err)
+			return
+		}
+	}
+	return nil
 }
 
 func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int) (supportRange bool, err error) {

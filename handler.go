@@ -234,7 +234,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		// if use OSS redirect
-		if cr.ossList != nil {
+		if cr.usedOSS() {
 			cr.handleDownloadOSS(rw, req, hash)
 			return
 		}
@@ -250,19 +250,27 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if cr.ossList != nil {
+		size := rawpath[len("/measure/"):]
+		n, e := strconv.Atoi(size)
+		if e != nil {
+			http.Error(rw, e.Error(), http.StatusBadRequest)
+			return
+		} else if n < 0 || n > 200 {
+			http.Error(rw, fmt.Sprintf("measure size %d out of range (0, 200]", n), http.StatusBadRequest)
+			return
+		}
+		if cr.usedOSS() {
 			item := cr.ossList[0]
+			if err := createMeasureFile(filepath.Join(item.FolderPath, "measure"), n); err != nil {
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
+			}
 			target, err := url.JoinPath(item.RedirectBase, rawpath)
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			http.Redirect(rw, req, target, http.StatusFound)
-			return
-		}
-		n, e := strconv.Atoi(rawpath[len("/measure/"):])
-		if e != nil || n < 0 || n > 200 {
-			http.Error(rw, e.Error(), http.StatusBadRequest)
 			return
 		}
 		rw.Header().Set("Content-Length", strconv.Itoa(n*len(zeroBuffer)))

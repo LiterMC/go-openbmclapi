@@ -1,5 +1,6 @@
 debug: false
 record_serve_info: false
+skip-first-sync: false
 log-slots: 7
 byoc: false
 noopen: false
@@ -28,7 +29,7 @@ oss:
     list:
         - folder_path: oss_mirror
           redirect_base: https://oss.example.com/base/paths
-          skip_measure_gen: false
+          pre-create-measures: false
 hijack:
     enable: false
     server_host: ""

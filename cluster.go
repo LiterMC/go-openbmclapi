@@ -184,8 +184,11 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		go cr.disconnected()
 		logErrorf("Disconnected: %v", err)
 	})
-	engio.OnMessage(func(_ *engine.Socket, data []byte) {
+	engio.OnRecv(func(_ *engine.Socket, data []byte) {
 		logDebugf("Engine.IO recv: %q", (string)(data))
+	})
+	engio.OnSend(func(_ *engine.Socket, data []byte) {
+		logDebugf("Engine.IO sending: %q", (string)(data))
 	})
 
 	cr.socket = socket.NewSocket(engio)

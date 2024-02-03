@@ -24,6 +24,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -279,4 +280,18 @@ func checkQuerySign(hash string, secret string, query url.Values) bool {
 		return false
 	}
 	return time.Now().UnixMilli() < before
+}
+
+func initCache(base string) (err error) {
+	if err = os.MkdirAll(base, 0755); !errors.Is(err, os.ErrExist) {
+		return
+	}
+	var b [1]byte
+	for i := 0; i < 0x100; i++ {
+		b[0] = (byte)(i)
+		if err = os.Mkdir(filepath.Join(base, hex.EncodeToString(b[:])), 0755); !errors.Is(err, os.ErrExist) {
+			return
+		}
+	}
+	return nil
 }

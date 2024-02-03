@@ -129,14 +129,19 @@ func NewCluster(
 
 	// create folder strcture
 	os.RemoveAll(cr.tmpDir)
-	os.MkdirAll(cr.cacheDir, 0755)
-	var b [1]byte
-	for i := 0; i < 0x100; i++ {
-		b[0] = (byte)(i)
-		os.Mkdir(filepath.Join(cr.cacheDir, hex.EncodeToString(b[:])), 0755)
-	}
 	os.MkdirAll(cr.dataDir, 0755)
 	os.MkdirAll(cr.tmpDir, 0755)
+	if !cr.usedOSS() {
+		if err = initCache(cr.cacheDir); err != nil {
+			return
+		}
+	}else{
+		for _, item := range ossList {
+			if err = initCache(filepath.Join(item.FolderPath, "download")); err != nil {
+				return
+			}
+		}
+	}
 
 	// read old stats
 	if err := cr.stats.Load(cr.dataDir); err != nil {

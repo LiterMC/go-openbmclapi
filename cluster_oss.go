@@ -204,24 +204,6 @@ func createOssMirrorDir(item *OSSItem) {
 		os.Exit(2)
 	}
 
-	// cacheDir := filepath.Join(baseDir, "cache")
-	// downloadDir := filepath.Join(item.FolderPath, "download")
-	// os.RemoveAll(downloadDir)
-	// if err := os.Mkdir(downloadDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
-	// 	logErrorf("Cannot create OSS mirror folder %q: %v", downloadDir, err)
-	// 	os.Exit(2)
-	// }
-	// for i := 0; i < 0x100; i++ {
-	// 	d := hex.EncodeToString([]byte{(byte)(i)})
-	// 	o := filepath.Join(cacheDir, d)
-	// 	t := filepath.Join(downloadDir, d)
-	// 	os.Mkdir(o, 0755)
-	// 	if err := os.Symlink(filepath.Join("..", "..", o), t); err != nil {
-	// 		logErrorf("Cannot create OSS mirror cache symlink %q: %v", t, err)
-	// 		os.Exit(2)
-	// 	}
-	// }
-
 	if !item.SkipMeasureGen {
 		logDebug("Creating measure files")
 		measureDir := filepath.Join(item.FolderPath, "measure")

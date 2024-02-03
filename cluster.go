@@ -179,7 +179,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		go cr.disconnected()
 		logErrorf("Disconnected: %v", err)
 	})
-	engio.OnMessage(func(_ *engine.Socket, data []byte){
+	engio.OnMessage(func(_ *engine.Socket, data []byte) {
 		logDebugf("Engine.IO recv: %q", (string)(data))
 	})
 
@@ -195,7 +195,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket.OnDisconnect(func(*socket.Socket, string) {
 		go cr.disconnected()
 	})
-	cr.socket.OnError(func(_ *socket.Socket, err error){
+	cr.socket.OnError(func(_ *socket.Socket, err error) {
 		logErrorf("Socket.IO error: %v", err)
 	})
 	logInfof("Dialing %s", strings.ReplaceAll(engio.URL().String(), cr.password, "<******>"))
@@ -214,13 +214,13 @@ func (cr *Cluster) WaitForEnable() <-chan struct{} {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
-	ch := make(chan struct{}, 0)
 	if cr.enabled.Load() {
-		close(ch)
+		return closedCh
 	} else {
+		ch := make(chan struct{}, 0)
 		cr.waitEnable = append(cr.waitEnable, ch)
+		return ch
 	}
-	return ch
 }
 
 func (cr *Cluster) Enable(ctx context.Context) (err error) {
@@ -235,7 +235,6 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	cr.shouldEnable = true
 
 	logInfo("Sending enable packet")
-	tctx, cancel := context.WithTimeout(ctx, time.Minute*6)
 	resCh, err := cr.socket.EmitWithAck("enable", Map{
 		"host":    cr.host,
 		"port":    cr.publicPort,
@@ -246,8 +245,10 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 	var data []any
+	tctx, cancel := context.WithTimeout(ctx, time.Minute*6)
 	select {
 	case <-tctx.Done():
+		cancel()
 		return tctx.Err()
 	case data = <-resCh:
 		cancel()
@@ -355,25 +356,24 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 		return false
 	}
 	logInfo("Disabling cluster")
-	tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
 	if resCh, err := cr.socket.EmitWithAck("disable"); err == nil {
+		tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
 		select {
 		case <-tctx.Done():
-			ok = false
+			cancel()
 		case data := <-resCh:
 			cancel()
 			logDebug("disable ack:", data)
 			if ero := data[0]; ero != nil {
 				logErrorf("Disable failed: %v", ero)
-				ok = false
 			} else if !data[1].(bool) {
 				logError("Disable failed: acked non true value")
-				ok = false
+			} else {
+				ok = true
 			}
 		}
 	} else {
 		logErrorf("Disable failed: %v", err)
-		ok = false
 	}
 
 	cr.enabled.Store(false)

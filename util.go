@@ -38,6 +38,12 @@ import (
 	"time"
 )
 
+var closedCh = func() <-chan struct{} {
+	ch := make(chan struct{}, 0)
+	close(ch)
+	return ch
+}()
+
 func split(str string, b byte) (l, r string) {
 	i := strings.IndexByte(str, b)
 	if i >= 0 {

@@ -62,9 +62,9 @@ func (t statTime) IsLastDay() bool {
 }
 
 type (
-	statDataHours  [24]statInstData
-	statDataDays   [31]statInstData
-	statDataMonths [12]statInstData
+	statDataHours  = [24]statInstData
+	statDataDays   = [31]statInstData
+	statDataMonths = [12]statInstData
 )
 
 type statHistoryData struct {
@@ -270,6 +270,7 @@ func parseFileOrOld(path string, parser func(buf []byte) error) error {
 	buf, er := os.ReadFile(oldpath)
 	if er == nil {
 		if er = parser(buf); er == nil {
+			os.WriteFile(path, buf, 0644)
 			return nil
 		}
 	}

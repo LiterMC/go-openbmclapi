@@ -1,7 +1,7 @@
 debug: false
 record_serve_info: false
 log-slots: 7
-nohttps: false
+byoc: false
 noopen: false
 no_heavy_check: false
 trusted-x-forwarded-for: false
@@ -29,7 +29,7 @@ oss:
         - folder_path: oss_mirror
           redirect_base: https://oss.example.com/base/paths
           skip_measure_gen: false
-hijack_port:
+hijack:
     enable: false
     server_host: ""
     server_port: 8090

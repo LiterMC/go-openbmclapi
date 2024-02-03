@@ -340,7 +340,9 @@ START:
 	}
 
 	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
-	cluster, err := NewCluster(ctx, baseDir,
+	cluster, err := NewCluster(ctx,
+		"https://openbmclapi.bangbang93.com",
+		baseDir,
 		config.PublicHost, config.PublicPort,
 		config.ClusterId, config.ClusterSecret,
 		config.Byoc, dialer,
@@ -473,10 +475,18 @@ START:
 			}
 			os.Exit(1)
 		}
-
 		checkCount := -1
 		heavyCheck := !config.NoHeavyCheck
-		cluster.SyncFiles(ctx, fl, false)
+
+		if !config.SkipFirstSync {
+			cluster.SyncFiles(ctx, fl, false)
+		} else {
+			fileset := make(map[string]int64, len(fl))
+			for _, f := range fl {
+				fileset[f.Hash] = f.Size
+			}
+			cluster.fileset.Store(&fileset)
+		}
 		createInterval(ctx, func() {
 			logInfof("Fetching file list")
 			fl, err := cluster.GetFileList(ctx)

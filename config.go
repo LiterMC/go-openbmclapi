@@ -66,6 +66,7 @@ type HijackConfig struct {
 type Config struct {
 	Debug                bool             `yaml:"debug"`
 	RecordServeInfo      bool             `yaml:"record_serve_info"`
+	SkipFirstSync        bool             `yaml:"skip-first-sync"`
 	LogSlots             int              `yaml:"log-slots"`
 	Byoc                 bool             `yaml:"byoc"`
 	NoOpen               bool             `yaml:"noopen"`
@@ -97,6 +98,7 @@ func (cfg *Config) applyWebManifest(manifest map[string]any) {
 var defaultConfig = Config{
 	Debug:                false,
 	RecordServeInfo:      false,
+	SkipFirstSync:        false,
 	LogSlots:             7,
 	Byoc:                 false,
 	NoOpen:               false,

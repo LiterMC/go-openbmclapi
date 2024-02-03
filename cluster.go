@@ -40,6 +40,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/LiterMC/socket.io"
+	"github.com/LiterMC/socket.io/engine.io"
 	"github.com/hamba/avro/v2"
 	"github.com/klauspost/compress/zstd"
 )
@@ -68,8 +70,8 @@ type Cluster struct {
 	enabled         atomic.Bool
 	disabled        chan struct{}
 	waitEnable      []chan struct{}
-	reconnectOnce   *sync.Once
-	socket          *Socket
+	shouldEnable    bool
+	socket          *socket.Socket
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
 	downloading     map[string]chan error
@@ -83,7 +85,9 @@ type Cluster struct {
 }
 
 func NewCluster(
-	ctx context.Context, baseDir string,
+	ctx context.Context,
+	prefix string,
+	baseDir string,
 	host string, publicPort uint16,
 	username string, password string,
 	byoc bool, dialer *net.Dialer,
@@ -99,7 +103,7 @@ func NewCluster(
 		username:   username,
 		password:   password,
 		useragent:  "openbmclapi-cluster/" + ClusterVersion,
-		prefix:     "https://openbmclapi.bangbang93.com",
+		prefix:     prefix,
 		byoc:       byoc,
 
 		cacheDir: filepath.Join(baseDir, "cache"),
@@ -153,60 +157,55 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		logDebug("Extra connect")
 		return true
 	}
-	wsurl := httpToWs(cr.prefix) +
-		fmt.Sprintf("/socket.io/?clusterId=%s&clusterSecret=%s&EIO=4&transport=websocket", cr.username, cr.password)
-	header := http.Header{}
-	header.Set("Origin", cr.prefix)
-	header.Set("User-Agent", cr.useragent)
 
-	connectCh := make(chan struct{}, 0)
-	connected := sync.OnceFunc(func() {
-		close(connectCh)
+	engio, err := engine.NewSocket(engine.Options{
+		Host: cr.prefix,
+		Path: "/socket.io/",
+		ExtraQuery: url.Values{
+			"clusterId":     {cr.username},
+			"clusterSecret": {cr.password},
+		},
+		ExtraHeaders: http.Header{
+			"Origin":     {cr.prefix},
+			"User-Agent": {cr.useragent},
+		},
+		DialTimeout: time.Minute * 6,
+	})
+	if err != nil {
+		logErrorf("Could not parse Engine.IO options: %v; exit.", err)
+		os.Exit(1)
+	}
+	engio.OnDisconnect(func(_ *engine.Socket, err error) {
+		go cr.disconnected()
+		logErrorf("Disconnected: %v", err)
+	})
+	engio.OnMessage(func(_ *engine.Socket, data []byte){
+		logDebugf("Engine.IO recv: %q", (string)(data))
 	})
 
-	reconnectOnce := new(sync.Once)
-	cr.reconnectOnce = reconnectOnce
-
-	cr.socket = NewSocket(NewESocket())
-	cr.socket.ConnectHandle = func(*Socket) {
-		connected()
-	}
-	cr.socket.DisconnectHandle = func(*Socket) {
-		connected()
-		reconnectOnce.Do(func() {
-			go cr.disconnected()
-		})
-	}
-	cr.socket.ErrorHandle = func(*Socket) {
-		connected()
-		reconnectOnce.Do(func() {
-			go func() {
-				if cr.disconnected() {
-					logWarn("Reconnecting due to SIO error")
-					if !cr.Connect(ctx) {
-						logError("Cannot reconnect to server, exit.")
-						os.Exit(0x08)
-					}
-					if err := cr.Enable(ctx); err != nil {
-						logError("Cannot enable cluster:", err, "; exit.")
-						os.Exit(0x08)
-					}
-				}
-			}()
-		})
-	}
-	logInfof("Dialing %s", strings.ReplaceAll(wsurl, cr.password, "<******>"))
-	tctx, cancel := context.WithTimeout(ctx, time.Second*15)
-	err := cr.socket.IO().DialContext(tctx, wsurl, WithHeader(header))
-	cancel()
-	if err != nil {
-		logError("Websocket connect error:", err)
+	cr.socket = socket.NewSocket(engio)
+	cr.socket.OnConnect(func(*socket.Socket, string) {
+		if cr.shouldEnable {
+			if err := cr.Enable(ctx); err != nil {
+				logErrorf("Cannot enable cluster: %v; exit.", err)
+				os.Exit(0x08)
+			}
+		}
+	})
+	cr.socket.OnDisconnect(func(*socket.Socket, string) {
+		go cr.disconnected()
+	})
+	cr.socket.OnError(func(_ *socket.Socket, err error){
+		logErrorf("Socket.IO error: %v", err)
+	})
+	logInfof("Dialing %s", strings.ReplaceAll(engio.URL().String(), cr.password, "<******>"))
+	if err := engio.Dial(ctx); err != nil {
+		logErrorf("Dial error: %v", err)
 		return false
 	}
-	select {
-	case <-ctx.Done():
+	if err := cr.socket.Connect(""); err != nil {
+		logErrorf("Open namespace error: %v", err)
 		return false
-	case <-connectCh:
 	}
 	return true
 }
@@ -232,19 +231,28 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		logDebug("Extra enable")
 		return
 	}
+
+	cr.shouldEnable = true
+
 	logInfo("Sending enable packet")
 	tctx, cancel := context.WithTimeout(ctx, time.Minute*6)
-	data, err := cr.socket.EmitAckContext(tctx, "enable", Map{
+	resCh, err := cr.socket.EmitWithAck("enable", Map{
 		"host":    cr.host,
 		"port":    cr.publicPort,
 		"version": ClusterVersion,
 		"byoc":    cr.byoc,
 	})
-	cancel()
 	if err != nil {
 		return
 	}
-	logInfo("get enable ack:", data)
+	var data []any
+	select {
+	case <-tctx.Done():
+		return tctx.Err()
+	case data = <-resCh:
+		cancel()
+	}
+	logDebug("got enable ack:", data)
 	if ero := data[0]; ero != nil {
 		return fmt.Errorf("Enable failed: %v", ero)
 	}
@@ -260,26 +268,23 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
-	reconnectOnce := cr.reconnectOnce
 	createInterval(keepaliveCtx, func() {
 		tctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		ok := cr.KeepAlive(tctx)
 		cancel()
 		if !ok {
 			if keepaliveCtx.Err() == nil {
-				reconnectOnce.Do(func() {
-					logInfo("Reconnecting due to keepalive failed")
-					cr.Disable(ctx)
-					logInfo("Reconnecting ...")
-					if !cr.Connect(ctx) {
-						logError("Cannot reconnect to server, exit.")
-						os.Exit(1)
-					}
-					if err := cr.Enable(ctx); err != nil {
-						logError("Cannot enable cluster:", err, "; exit.")
-						os.Exit(1)
-					}
-				})
+				logInfo("Reconnecting due to keepalive failed")
+				cr.Disable(ctx)
+				logInfo("Reconnecting ...")
+				if !cr.Connect(ctx) {
+					logError("Cannot reconnect to server, exit.")
+					os.Exit(1)
+				}
+				if err := cr.Enable(ctx); err != nil {
+					logError("Cannot enable cluster:", err, "; exit.")
+					os.Exit(1)
+				}
 			}
 		}
 	}, KeepAliveInterval)
@@ -290,7 +295,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 	hits, hbts := cr.hits.Swap(0), cr.hbts.Swap(0)
 	cr.stats.AddHits(hits, hbts)
-	data, err := cr.socket.EmitAckContext(ctx, "keep-alive", Map{
+	resCh, err := cr.socket.EmitWithAck("keep-alive", Map{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits":  hits,
 		"bytes": hbts,
@@ -301,6 +306,12 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 	if err != nil {
 		logError("Error when keep-alive:", err)
 		return false
+	}
+	var data []any
+	select {
+	case <-ctx.Done():
+		return false
+	case data = <-resCh:
 	}
 	if ero := data[0]; len(data) <= 1 || ero != nil {
 		logError("Keep-alive failed:", ero)
@@ -330,6 +341,8 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
+	cr.shouldEnable = false
+
 	if !cr.enabled.Load() {
 		logDebug("Extra disable")
 		return false
@@ -343,20 +356,24 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	}
 	logInfo("Disabling cluster")
 	tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
-	data, err := cr.socket.EmitAckContext(tctx, "disable")
-	cancel()
-	if err != nil {
+	if resCh, err := cr.socket.EmitWithAck("disable"); err == nil {
+		select {
+		case <-tctx.Done():
+			ok = false
+		case data := <-resCh:
+			cancel()
+			logDebug("disable ack:", data)
+			if ero := data[0]; ero != nil {
+				logErrorf("Disable failed: %v", ero)
+				ok = false
+			} else if !data[1].(bool) {
+				logError("Disable failed: acked non true value")
+				ok = false
+			}
+		}
+	} else {
 		logErrorf("Disable failed: %v", err)
 		ok = false
-	} else {
-		logDebug("disable ack:", data)
-		if ero := data[0]; ero != nil {
-			logErrorf("Disable failed: %v", ero)
-			ok = false
-		} else if !data[1].(bool) {
-			logError("Disable failed: acked non true value")
-			ok = false
-		}
 	}
 
 	cr.enabled.Store(false)
@@ -408,9 +425,15 @@ func (pair *CertKeyPair) SaveAsFile() (cert, key string, err error) {
 
 func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
 	logInfo("Requesting certificates, please wait ...")
-	data, err := cr.socket.EmitAckContext(ctx, "request-cert")
+	resCh, err := cr.socket.EmitWithAck("request-cert")
 	if err != nil {
 		return
+	}
+	var data []any
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case data = <-resCh:
 	}
 	if ero := data[0]; ero != nil {
 		err = fmt.Errorf("socket.io remote error: %v", ero)

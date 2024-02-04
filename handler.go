@@ -446,7 +446,7 @@ func (cr *Cluster) handleDownloadOSS(rw http.ResponseWriter, req *http.Request, 
 		}
 
 		var target string
-		target, err = url.JoinPath(item.RedirectBase, "download", hashFilename)
+		target, err = url.JoinPath(item.RedirectBase, "download", filepath.ToSlash(hashFilename))
 		if err != nil {
 			return false
 		}

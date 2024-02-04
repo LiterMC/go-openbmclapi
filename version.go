@@ -19,6 +19,6 @@
 
 package main
 
-const ClusterVersion = "1.7.1"
+const ClusterVersion = "1.7.3"
 
 var BuildVersion string = "dev"

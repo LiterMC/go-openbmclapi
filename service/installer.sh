@@ -96,7 +96,7 @@ case "`uname -m`" in
         exit 1
 esac
 
-source="${MIRROR_PREFIX}$latest_src/go-openbmclapi-linux-$arch"
+source="${MIRROR_PREFIX}$latest_src/go-openbmclapi-linux-$GOARCH"
 echo -e "\e[34m==> Downloading $source\e[0m"
 curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"
 

@@ -1,26 +1,31 @@
 #!/bin/bash
 
-dlPrefix=https://cdn.crashmc.com
+THRESHOLD=0.5
+MIRROR_PREFIX=
+GITHUB_TIME=$(curl -w "%{time_total}" -s -o /dev/null https://github.com)
+if [ $(echo "$GITHUB_TIME > $THRESHOLD" | bc) -eq 1 ]; then
+  echo "==> GitHub is too slow, switching to another mirror"
+  MIRROR_PREFIX=https://mirror.ghproxy.com/
+fi
 
 REPO='LiterMC/go-openbmclapi'
-RAW_PREFIX="$dlPrefix/https://raw.githubusercontent.com"
+RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
 LATEST_TAG=$1
 
 if [ $(id -u) -ne 0 ]; then
-	read -p 'ERROR: You are not root user, are you sure to continue?(y/N) ' Y
-	echo
-	[ "$Y" = "Y" ] || [ "$Y" = "y" ] || exit 1
+	echo -e "\e[31mERROR: Not root user\e[0m"
+	exit 1
 fi
 
 if ! systemd --version; then
-	echo "ERROR: Failed to test systemd"
+	echo -e "\e[31mERROR: Failed to test systemd\e[0m"
 	exit 1
 fi
 
 if [ ! -d /usr/lib/systemd/system/ ]; then
-	echo 'ERROR: /usr/lib/systemd/system/ is not exist'
+	echo -e "\e[31mERROR: /usr/lib/systemd/system/ is not exist\e[0m"
 	exit 1
 fi
 
@@ -37,12 +42,12 @@ function fetchBlob(){
 	filemod=$3
 
 	source="$RAW_REPO/$LATEST_TAG/$file"
-	echo "==> Downloading $source"
+	echo -e "\e[34m==> Downloading $source\e[0m"
 	tmpf=$(mktemp -t go-openbmclapi.XXXXXXXXXXXX.downloading)
 	curl -fsSL -o "$tmpf" "$source" || { rm "$tmpf"; return 1; }
-	echo "==> Downloaded $source"
+	echo -e "\e[34m==> Downloaded $source\e[0m"
 	mv "$tmpf" "$target" || return $?
-	echo "==> Installed to $target"
+	echo -e "\e[34m==> Installed to $target\e[0m"
 	if [ -n "$filemod" ]; then
 		chmod "$filemod" "$target" || return $?
 	fi
@@ -51,16 +56,16 @@ function fetchBlob(){
 echo
 
 if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
-	echo 'WARN: go-openbmclapi.service is already installed, stopping'
+	echo -e "\e[33m==>WARN: go-openbmclapi.service is already installed, stopping\e[0m"
 	systemctl stop go-openbmclapi.service
 	systemctl disable go-openbmclapi.service
 fi
 
 if [ ! -n "$LATEST_TAG" ]; then
-	echo "==> Fetching latest tag for https://github.com/$REPO"
+	echo -e "\e[34m==> Fetching latest tag for https://github.com/$REPO\e[0m"
 	fetchGithubLatestTag
 	echo
-	echo "*** go-openbmclapi LATEST TAG: $LATEST_TAG ***"
+	echo -e "\e[32m*** go-openbmclapi LATEST TAG: $LATEST_TAG ***\e[0m"
 	echo
 fi
 
@@ -74,23 +79,39 @@ fetchBlob service/go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.
 
 latest_src="https://github.com/$REPO/releases/download/$LATEST_TAG"
 
-arch=$(uname -m)
-[ "$arch" = 'x86_64' ] && arch=amd64
+case "`uname -m`" in
+    x86_64)
+        GOARCH="amd64"
+    ;;
+    i386|i686)
+        GOARCH="386"
+    ;;
+    aarch64|armv8)
+        GOARCH="arm64"
+    ;;
+    armv7l|armv6|armv7)
+        GOARCH="arm"
+    ;;
+    *)
+        echo -e "\e[31mUnknown CPU architecture: `uname -m`\e[0m"
+        exit 1
 
-source="$dlPrefix/$latest_src/go-openbmclapi-linux-$arch"
-echo "==> Downloading $source"
-if ! curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"; then
-	source="$dlPrefix/$latest_src/go-openbmclapi-linux-amd64"
-	echo "==> Downloading fallback binary $source"
-	curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || exit $?
-fi
+source="${MIRROR_PREFIX}$latest_src/go-openbmclapi-linux-$arch"
+echo -e "\e[34m==> Downloading $source\e[0m"
+curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"
+
+echo -e "\e[34m==> Add user openbmclapi and setting privilege\e[0m"
+useradd openbmclapi
+mkdir $BASE_PATH/cache $BASE_PATH/data
+curl -fL -o "$BASE_PATH/config.yaml" "${RAW_REPO}/HEAD/config.yaml"
+chown -R openbmclapi:openbmclapi $BASE_PATH
 chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
 
 
-echo "==> Enable go-openbmclapi.service"
+echo -e "\e[34m==> Enable go-openbmclapi.service\e[0m"
 systemctl enable go-openbmclapi.service || exit $?
 
-echo "
+echo -e "
 ================================ Install successed ================================
 
   Use 'systemctl start go-openbmclapi.service' to start openbmclapi server

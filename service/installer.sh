@@ -5,7 +5,7 @@ if [ $(id -u) -ne 0 ]; then
 	exit 1
 fi
 
-THRESHOLD=0.5
+THRESHOLD=1.2
 MIRROR_PREFIX=
 GITHUB_TIME=$(curl -w "%{time_total}" -s -o /dev/null https://github.com)
 if [ $(echo "$GITHUB_TIME > $THRESHOLD" | bc) -eq 1 ]; then

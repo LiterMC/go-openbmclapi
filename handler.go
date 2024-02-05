@@ -117,6 +117,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			var rec record
 			rec.used = used.Seconds()
 			rec.bytes = (float64)(srw.wrote)
+			ua, _ = split(ua, ' ')
 			rec.ua, _ = split(ua, '/')
 			select {
 			case recordCh <- rec:

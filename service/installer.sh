@@ -57,8 +57,7 @@ echo
 
 if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
 	echo -e "\e[33m==>WARN: go-openbmclapi.service is already installed, stopping\e[0m"
-	systemctl stop go-openbmclapi.service
-	systemctl disable go-openbmclapi.service
+	systemctl disable --now go-openbmclapi.service
 fi
 
 if [ ! -n "$LATEST_TAG" ]; then
@@ -103,13 +102,9 @@ curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"
 echo -e "\e[34m==> Add user openbmclapi and setting privilege\e[0m"
 useradd openbmclapi
 mkdir $BASE_PATH/cache $BASE_PATH/data
-curl -fL -o "$BASE_PATH/config.yaml" "${RAW_REPO}/HEAD/config.yaml"
+fetchBlob config.yaml $BASE_PATH/config.yaml 0644 || exit $?
 chown -R openbmclapi:openbmclapi $BASE_PATH
 chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
-
-
-echo -e "\e[34m==> Enable go-openbmclapi.service\e[0m"
-systemctl enable go-openbmclapi.service || exit $?
 
 echo -e "
 ================================ Install successed ================================

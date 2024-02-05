@@ -1,8 +1,8 @@
 
 ## AUTHOR
 
-[zyxkad](https://github.com/zyxkad)
+<a href="https://github.com/zyxkad"><img src="https://github.com/zyxkad.png" width="60" height="60"/></a>
 
 ## CONTRIBUTORS
 
-[IAFEnvoy](https://github.com/IAFEnvoy)
+<a href="https://github.com/IAFEnvoy"><img src="https://github.com/IAFEnvoy.png" width="60" height="60"/></a>

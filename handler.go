@@ -411,7 +411,7 @@ func (cr *Cluster) handleDownloadOSS(rw http.ResponseWriter, req *http.Request, 
 	var err error
 	// check if file was indexed in the fileset
 	size, sizeCached := cr.FileSet()[hash]
-	forEachSliceFromRandomIndex(len(cr.ossList), func(i int) bool {
+	forEachFromRandomIndexWithPossibility(cr.ossPossibilities, cr.ossTotalPoss, func(i int) bool {
 		item := cr.ossList[i]
 		logDebugf("[handler]: Checking file on OSS %d at %q ...", i, item.FolderPath)
 

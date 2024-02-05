@@ -196,11 +196,41 @@ func randIntn(n int) int {
 	return rn % n
 }
 
-func forEachSliceFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {
+func forEachFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {
 	if leng <= 0 {
 		return false
 	}
 	start := randIntn(leng)
+	for i := start; i < leng; i++ {
+		if cb(i) {
+			return true
+		}
+	}
+	for i := 0; i < start; i++ {
+		if cb(i) {
+			return true
+		}
+	}
+	return false
+}
+
+func forEachFromRandomIndexWithPossibility(poss []uint, total uint, cb func(i int) (done bool)) (done bool) {
+	leng := len(poss)
+	if leng == 0 {
+		return false
+	}
+	if total == 0 {
+		return forEachFromRandomIndex(leng, cb)
+	}
+	n := (uint)(randIntn((int)(total)))
+	start := 0
+	for i, p := range poss {
+		if n < p {
+			start = i
+			break
+		}
+		n -= p
+	}
 	for i := start; i < leng; i++ {
 		if cb(i) {
 			return true

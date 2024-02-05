@@ -134,6 +134,8 @@ oss:
           redirect_base: https://oss.example.com/base/paths
           # 启动之前生成 measure 文件夹 (默认为动态生成)
           pre-create-measures: false
+          # 使用该子节点的概率 (非负整数)
+          possibility: 0
 
 ## 特殊要求: 劫持 bmclapi 以加速同一局域网请求
 hijack:

@@ -55,11 +55,13 @@ type Cluster struct {
 	prefix     string
 	byoc       bool
 
-	cacheDir string
-	tmpDir   string
-	dataDir  string
-	maxConn  int
-	ossList  []*OSSItem
+	cacheDir         string
+	tmpDir           string
+	dataDir          string
+	maxConn          int
+	ossList          []*OSSItem
+	ossPossibilities []uint
+	ossTotalPoss     uint
 
 	stats  Stats
 	hits   atomic.Int32
@@ -125,6 +127,19 @@ func NewCluster(
 	cr.bufSlots = make(chan []byte, cr.maxConn)
 	for i := 0; i < cr.maxConn; i++ {
 		cr.bufSlots <- make([]byte, 1024*512)
+	}
+
+	if ossList != nil {
+		var (
+			n    uint = 0
+			poss      = make([]uint, len(ossList))
+		)
+		for i, item := range ossList {
+			poss[i] = item.Possibility
+			n += item.Possibility
+		}
+		cr.ossPossibilities = poss
+		cr.ossTotalPoss = n
 	}
 
 	// create folder strcture

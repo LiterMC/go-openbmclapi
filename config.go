@@ -32,6 +32,7 @@ type OSSItem struct {
 	FolderPath        string `yaml:"folder_path"`
 	RedirectBase      string `yaml:"redirect_base"`
 	PreCreateMeasures bool   `yaml:"pre-create-measures"`
+	Possibility       uint   `yaml:"possibility"`
 
 	supportRange bool
 	working      atomic.Bool
@@ -133,6 +134,7 @@ var defaultConfig = Config{
 				FolderPath:        "oss_mirror",
 				RedirectBase:      "https://oss.example.com/base/paths",
 				PreCreateMeasures: false,
+				Possibility:       0,
 			},
 		},
 	},

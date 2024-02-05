@@ -30,6 +30,7 @@ oss:
         - folder_path: oss_mirror
           redirect_base: https://oss.example.com/base/paths
           pre-create-measures: false
+          possibility: 0
 hijack:
     enable: false
     server_host: ""

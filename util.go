@@ -283,13 +283,13 @@ func checkQuerySign(hash string, secret string, query url.Values) bool {
 }
 
 func initCache(base string) (err error) {
-	if err = os.MkdirAll(base, 0755); !errors.Is(err, os.ErrExist) {
+	if err = os.MkdirAll(base, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 		return
 	}
 	var b [1]byte
 	for i := 0; i < 0x100; i++ {
 		b[0] = (byte)(i)
-		if err = os.Mkdir(filepath.Join(base, hex.EncodeToString(b[:])), 0755); !errors.Is(err, os.ErrExist) {
+		if err = os.Mkdir(filepath.Join(base, hex.EncodeToString(b[:])), 0755); err != nil && !errors.Is(err, os.ErrExist) {
 			return
 		}
 	}

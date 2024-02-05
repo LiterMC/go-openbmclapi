@@ -224,15 +224,15 @@ func createOssMirrorDir(item *OSSItem) {
 	}
 }
 
-func createMeasureFile(baseDir string, n int) (err error) {
-	t := filepath.Join(baseDir, strconv.Itoa(n))
+func createMeasureFile(baseDir string, size int) (err error) {
+	t := filepath.Join(baseDir, strconv.Itoa(size))
 	if stat, err := os.Stat(t); err == nil {
-		size := (int64)(n) * glbChunkSize
+		size := (int64)(size) * glbChunkSize
 		x := stat.Size()
 		if x == size {
 			return nil
 		}
-		logDebugf("File [%d] size %d does not match %d", n, x, size)
+		logDebugf("File [%d] size %d does not match %d", size, x, size)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		logDebugf("Cannot get stat of %s: %v", t, err)
 	}
@@ -243,7 +243,7 @@ func createMeasureFile(baseDir string, n int) (err error) {
 		return
 	}
 	defer fd.Close()
-	for j := 0; j < n; j++ {
+	for j := 0; j < size; j++ {
 		if _, err = fd.Write(glbChunk[:]); err != nil {
 			logErrorf("Cannot write OSS mirror measure file %q: %v", t, err)
 			return
@@ -255,6 +255,10 @@ func createMeasureFile(baseDir string, n int) (err error) {
 func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int) (supportRange bool, err error) {
 	targetSize := (int64)(size) * 1024 * 1024
 	logInfof("Checking %s for %d bytes ...", item.RedirectBase, targetSize)
+
+	if err = createMeasureFile(filepath.Join(item.RedirectBase, "measure"), size); err != nil {
+		return
+	}
 
 	target, err := url.JoinPath(item.RedirectBase, "measure", strconv.Itoa(size))
 	if err != nil {

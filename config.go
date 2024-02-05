@@ -68,6 +68,7 @@ type Config struct {
 	Debug                bool             `yaml:"debug"`
 	RecordServeInfo      bool             `yaml:"record_serve_info"`
 	SkipFirstSync        bool             `yaml:"skip-first-sync"`
+	ExitWhenDisconnected bool             `yaml:"exit-when-disconnected"`
 	LogSlots             int              `yaml:"log-slots"`
 	Byoc                 bool             `yaml:"byoc"`
 	NoOpen               bool             `yaml:"noopen"`
@@ -100,6 +101,7 @@ var defaultConfig = Config{
 	Debug:                false,
 	RecordServeInfo:      false,
 	SkipFirstSync:        false,
+	ExitWhenDisconnected: false,
 	LogSlots:             7,
 	Byoc:                 false,
 	NoOpen:               false,

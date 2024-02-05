@@ -75,6 +75,8 @@ debug: false
 record_serve_info: false
 # 跳过第一次同步, 直接启动节点 (debug用)
 skip-first-sync: false
+# 是否在连接断开后直接退出
+exit-when-disconnected: false
 # 日志最长保存时间 (天). 设置为 0 禁用清理过期日志
 log-slots: 7
 # 是否禁用 bmclapi 分发的证书, 同 CLUSTER_BYOC

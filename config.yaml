@@ -1,6 +1,7 @@
 debug: false
 record_serve_info: false
 skip-first-sync: false
+exit-when-disconnected: false
 log-slots: 7
 byoc: false
 noopen: false

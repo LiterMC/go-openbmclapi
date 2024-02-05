@@ -196,8 +196,11 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		os.Exit(1)
 	}
 	engio.OnDisconnect(func(_ *engine.Socket, err error) {
+		if config.ExitWhenDisconnected {
+			logErrorf("Cluster disconnected from remote; exit.")
+			os.Exit(0x08)
+		}
 		go cr.disconnected()
-		logErrorf("Disconnected: %v", err)
 	})
 	engio.OnRecv(func(_ *engine.Socket, data []byte) {
 		logDebugf("Engine.IO recv: %q", (string)(data))

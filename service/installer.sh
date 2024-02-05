@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ $(id -u) -ne 0 ]; then
+	echo -e "\e[31mERROR: Not root user\e[0m"
+	exit 1
+fi
+
 THRESHOLD=0.5
 MIRROR_PREFIX=
 GITHUB_TIME=$(curl -w "%{time_total}" -s -o /dev/null https://github.com)
@@ -13,11 +18,6 @@ RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
 LATEST_TAG=$1
-
-if [ $(id -u) -ne 0 ]; then
-	echo -e "\e[31mERROR: Not root user\e[0m"
-	exit 1
-fi
 
 if ! systemd --version; then
 	echo -e "\e[31mERROR: Failed to test systemd\e[0m"

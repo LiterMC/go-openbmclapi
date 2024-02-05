@@ -94,6 +94,7 @@ case "`uname -m`" in
     *)
         echo -e "\e[31mUnknown CPU architecture: `uname -m`\e[0m"
         exit 1
+esac
 
 source="${MIRROR_PREFIX}$latest_src/go-openbmclapi-linux-$arch"
 echo -e "\e[34m==> Downloading $source\e[0m"

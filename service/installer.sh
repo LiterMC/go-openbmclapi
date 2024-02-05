@@ -98,7 +98,7 @@ esac
 
 source="${MIRROR_PREFIX}$latest_src/go-openbmclapi-linux-$GOARCH"
 echo -e "\e[34m==> Downloading $source\e[0m"
-curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"
+curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || echo -e "\e[31mERROR: Failed to download $source/e[0m" && exit 1
 
 echo -e "\e[34m==> Add user openbmclapi and setting privilege\e[0m"
 useradd openbmclapi

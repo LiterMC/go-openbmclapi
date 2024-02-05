@@ -463,7 +463,7 @@ START:
 					os.Exit(1)
 				}
 			}()
-			logInfof("Server public at http://%s:%d (%s)", config.PublicHost, config.PublicPort, clusterSvr.Addr)
+			logInfof("Server public at https://%s:%d (%s)", config.PublicHost, config.PublicPort, clusterSvr.Addr)
 		}
 
 		logInfof("Fetching file list")

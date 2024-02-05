@@ -19,7 +19,7 @@ RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
 LATEST_TAG=$1
 
-if ! systemd --version; then
+if ! systemd --version > /dev/null ; then
 	echo -e "\e[31mERROR: Failed to test systemd\e[0m"
 	exit 1
 fi

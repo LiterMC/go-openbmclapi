@@ -18,6 +18,7 @@ RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
 LATEST_TAG=$1
+USERNAME=openbmclapi
 
 if ! systemd --version > /dev/null ; then
 	echo -e "\e[31mERROR: Failed to test systemd\e[0m"
@@ -98,13 +99,14 @@ esac
 
 source="${MIRROR_PREFIX}$latest_src/go-openbmclapi-linux-$GOARCH"
 echo -e "\e[34m==> Downloading $source\e[0m"
-curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" || echo -e "\e[31mERROR: Failed to download $source/e[0m" && exit 1
-
+curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"
 echo -e "\e[34m==> Add user openbmclapi and setting privilege\e[0m"
-useradd openbmclapi
-mkdir $BASE_PATH/cache $BASE_PATH/data
+if ! id $USERNAME; then
+    useradd openbmclapi
+fi
+[ -d "$BASE_PATH"/cache ] || { mkdir -p $BASE_PATH/cache $BASE_PATH/data; } || exit $?
 fetchBlob config.yaml $BASE_PATH/config.yaml 0644 || exit $?
-chown -R openbmclapi:openbmclapi $BASE_PATH
+chown -R $USERNAME:$USERNAME $BASE_PATH
 chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
 
 echo -e "

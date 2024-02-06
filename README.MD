@@ -66,6 +66,16 @@ A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 4. 配置配置文件或环境变量
 5. 使用`go run .`运行本程序
 
+### 第三方自更新+无依赖直接运行脚本
+
+源代码位于 <https://github.com/8Mi-Tech/Shell/blob/main/go-openbmclapi-in-tmux.sh>
+
+```
+cd /opt/openbmclapi
+wget -O start.sh https://raw.githubusercontent.com/8Mi-Tech/Shell/main/go-openbmclapi-in-tmux.sh
+bash ./start.sh
+```
+
 ## 配置
 
 ### 使用配置文件
@@ -195,3 +205,7 @@ Sub commands:
       overwrite | o : 覆盖存在的未压缩的目标文件
       keep | k : 不删除解压缩过的文件
 ```
+
+## 致谢
+
+[OpenBMCLAPI-TypeScript](https://github.com/bangbang93/openbmclapi)（[@bangbang93](https://github.com/bangbang93)）

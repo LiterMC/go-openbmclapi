@@ -17,8 +17,8 @@ keepalive-timeout: 10
 download-max-conn: 64
 serve-limit:
     enable: false
-    max-conn: 123
-    upload-rate: 12345
+    max-conn: 16384
+    upload-rate: 10240
 dashboard:
     enable: true
     pwa-name: GoOpenBmclApi Dashboard
@@ -30,10 +30,3 @@ storages:
       data:
         cache-path: cache
         compressor: ""
-    - type: mount
-      weight: 0
-      data:
-        path: oss_mirror
-        redirect-base: https://oss.example.com/base/paths
-        pre-gen-measures: false
-

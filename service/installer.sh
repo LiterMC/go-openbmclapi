@@ -108,6 +108,9 @@ if ! id $USERNAME >/dev/null 2>&1; then
 	chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
 fi
 
+echo -e "\e[34m==> Enabling go-openbmclapi.service\e[0m"
+systemctl enable go-openbmclapi.service || exit $?
+
 echo -e "
 ================================ Install successed ================================
 

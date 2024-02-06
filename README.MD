@@ -66,13 +66,14 @@ A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 4. 配置配置文件或环境变量
 5. 使用`go run .`运行本程序
 
-### 无依赖直接运行（第二种）
+### 第三方自更新+无依赖直接运行脚本
+
+源代码位于 <https://github.com/8Mi-Tech/Shell/blob/main/go-openbmclapi-in-tmux.sh>
 
 ```
-cd <openbmclapi-go>
+cd /opt/openbmclapi
 wget -O start.sh https://raw.githubusercontent.com/8Mi-Tech/Shell/main/go-openbmclapi-in-tmux.sh
-chmod +x start.sh
-./start.sh
+bash ./start.sh
 ```
 
 ## 配置

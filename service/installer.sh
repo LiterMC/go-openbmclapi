@@ -17,7 +17,6 @@ REPO='LiterMC/go-openbmclapi'
 RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
-LATEST_TAG=$1
 USERNAME=openbmclapi
 
 if ! systemd --version > /dev/null ; then

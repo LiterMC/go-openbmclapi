@@ -104,7 +104,7 @@ echo -e "\e[34m==> Add user openbmclapi and setting privilege\e[0m"
 if ! id $USERNAME; then
     useradd openbmclapi
 	[ -d $BASE_PATH/cache ] || { mkdir -p $BASE_PATH/cache $BASE_PATH/data; } || exit $?
-	[ -d $BASE_PATH/config.yaml ] || { fetchBlob config.yaml $BASE_PATH/config.yaml 0644 } || exit $?
+	[ -d $BASE_PATH/config.yaml ] || fetchBlob config.yaml $BASE_PATH/config.yaml 0600 || exit $?
 	chown -R $USERNAME:$USERNAME $BASE_PATH
 	chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
 fi

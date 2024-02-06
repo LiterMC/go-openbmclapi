@@ -256,7 +256,7 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 	targetSize := (int64)(size) * 1024 * 1024
 	logInfof("Checking %s for %d bytes ...", item.RedirectBase, targetSize)
 
-	if err = createMeasureFile(filepath.Join(item.RedirectBase, "measure"), size); err != nil {
+	if err = createMeasureFile(filepath.Join(item.FolderPath, "measure"), size); err != nil {
 		return
 	}
 

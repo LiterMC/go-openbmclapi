@@ -102,15 +102,7 @@ var defaultConfig = Config{
 		PwaDesc:      "Go-Openbmclapi Internal Dashboard",
 	},
 
-	Storages: []StorageOption{
-		{
-			Type:   StorageLocal,
-			Weight: 100,
-			Data: LocalStorageOption{
-				CachePath: "cache",
-			},
-		},
-	},
+	Storages: nil,
 }
 
 func migrateConfig(data []byte, config *Config) {
@@ -123,8 +115,9 @@ func migrateConfig(data []byte, config *Config) {
 	}
 	if config.Storages == nil {
 		if oss, ok := oldConfig["oss"].(map[string]any); ok {
-			var list []StorageOption
+			var storages []StorageOption
 			if oss["enable"] == true {
+				logInfo("Migrate old oss config to latest format")
 				if list, ok := oss["list"].([]any); ok {
 					for _, v := range list {
 						if item, ok := v.(map[string]any); ok {
@@ -143,24 +136,32 @@ func migrateConfig(data []byte, config *Config) {
 								continue
 							}
 							mountOpt.RedirectBase = redirectBase
-							possibility, ok := item["possibility"].(int)
-							if !ok {
-								possibility = 100
+							preGenMeasures, ok := item["pre-create-measures"].(bool)
+							if ok {
+								mountOpt.PreGenMeasures = preGenMeasures
 							}
-							stItem.Weight = (uint)(possibility)
+							weight, ok := item["possibility"].(int)
+							if !ok {
+								weight = 100
+							}
+							stItem.Weight = (uint)(weight)
 							stItem.Data = mountOpt
-							list = append(list, item)
+							storages = append(storages, stItem)
 						}
 					}
 				}
 			} else {
-				list = []StorageOption{
+				storages = []StorageOption{
 					{
-						Type: StorageLocal,
+						Type:   StorageLocal,
+						Weight: 100,
+						Data: LocalStorageOption{
+							CachePath: "cache",
+						},
 					},
 				}
 			}
-			config.Storages = list
+			config.Storages = storages
 		}
 	}
 }

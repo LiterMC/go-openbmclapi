@@ -320,7 +320,7 @@ START:
 		config.Byoc, dialer,
 		config.Storages,
 	)
-	if err := cluster.Init(); err != nil {
+	if err := cluster.Init(ctx); err != nil {
 		logError("Cannot init cluster:", err)
 		os.Exit(1)
 	}

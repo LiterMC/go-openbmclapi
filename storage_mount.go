@@ -51,8 +51,8 @@ func (opt *MountStorageOption) CachePath() string {
 type MountStorage struct {
 	opt MountStorageOption
 
-	supportRange bool
-	working      atomic.Bool
+	supportRange atomic.Bool
+	working      atomic.Int32
 	lastCheck    time.Time
 }
 
@@ -60,7 +60,7 @@ var _ Storage = (*MountStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageMount, StorageFactory{
-		New:       func() any { return new(MountStorage) },
+		New:       func() Storage { return new(MountStorage) },
 		NewConfig: func() any { return new(MountStorageOption) },
 	})
 }
@@ -106,7 +106,12 @@ func (s *MountStorage) Init(ctx context.Context) (err error) {
 		logInfo("Measure files created")
 	}
 
-	s.checkAlive(ctx, 10)
+	supportRange, err := s.checkAlive(ctx, 10)
+	if err != nil {
+		return
+	}
+	s.supportRange.Store(supportRange)
+	s.working.Store(1)
 	return
 }
 
@@ -139,15 +144,28 @@ func (s *MountStorage) WalkDir(walker func(hash string) error) error {
 }
 
 func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
-	if !s.working.Load() {
-		return 0, errNotWorking
+	now := time.Now()
+	if s.working.Load() != 1 {
+		if now.Sub(s.lastCheck) > time.Minute && s.working.CompareAndSwap(0, 2) {
+			tctx, cancel := context.WithTimeout(req.Context(), time.Second*5)
+			if supportRange, err := s.checkAlive(tctx, 0); err == nil {
+				s.supportRange.Store(supportRange)
+				s.working.Store(1)
+			} else {
+				s.working.Store(0)
+			}
+			cancel()
+		}
+		if s.working.Load() != 1 {
+			return 0, errNotWorking
+		}
 	}
 
 	target, err := url.JoinPath(s.opt.RedirectBase, "download", hash[:2], hash)
 	if err != nil {
 		return 0, err
 	}
-	if s.supportRange { // fix the size for Ranged request
+	if s.supportRange.Load() { // fix the size for Ranged request
 		rg := req.Header.Get("Range")
 		rgs, err := gosrc.ParseRange(rg, size)
 		if err == nil && len(rgs) > 0 {
@@ -179,9 +197,12 @@ func (s *MountStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 func (s *MountStorage) createMeasureFile(size int) (err error) {
 	t := filepath.Join(s.opt.Path, "measure", strconv.Itoa(size))
 	if stat, err := os.Stat(t); err == nil {
-		size := (int64)(size) * mbChunkSize
+		tsz := (int64)(size) * mbChunkSize
+		if size == 0 {
+			tsz = 2
+		}
 		x := stat.Size()
-		if x == size {
+		if x == tsz {
 			return nil
 		}
 		logDebugf("File [%d] size %d does not match %d", size, x, size)
@@ -191,21 +212,33 @@ func (s *MountStorage) createMeasureFile(size int) (err error) {
 	logInfof("Creating measure file at %q", t)
 	fd, err := os.Create(t)
 	if err != nil {
-		logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
+		logErrorf("Cannot create mirror measure file %q: %v", t, err)
 		return
 	}
 	defer fd.Close()
-	for j := 0; j < size; j++ {
-		if _, err = fd.Write(mbChunk[:]); err != nil {
-			logErrorf("Cannot write OSS mirror measure file %q: %v", t, err)
+	if size == 0 {
+		if _, err = fd.Write(mbChunk[:2]); err != nil {
+			logErrorf("Cannot write mirror measure file %q: %v", t, err)
 			return
+		}
+	} else {
+		for j := 0; j < size; j++ {
+			if _, err = fd.Write(mbChunk[:]); err != nil {
+				logErrorf("Cannot write mirror measure file %q: %v", t, err)
+				return
+			}
 		}
 	}
 	return nil
 }
 
 func (s *MountStorage) checkAlive(ctx context.Context, size int) (supportRange bool, err error) {
-	targetSize := (int64)(size) * 1024 * 1024
+	var targetSize int64
+	if size == 0 {
+		targetSize = 2
+	} else {
+		targetSize = (int64)(size) * 1024 * 1024
+	}
 	logInfof("Checking %s for %d bytes ...", s.opt.RedirectBase, targetSize)
 
 	if err = s.createMeasureFile(size); err != nil {

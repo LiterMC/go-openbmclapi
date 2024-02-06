@@ -58,7 +58,7 @@ const (
 )
 
 type StorageFactory struct {
-	New       func() any
+	New       func() Storage
 	NewConfig func() any
 }
 
@@ -72,6 +72,12 @@ func RegisterStorageFactory(typ string, inst StorageFactory) {
 		panic(fmt.Errorf("Storage %q is already exists", typ))
 	}
 	storageFactories[typ] = inst
+}
+
+func NewStorage(opt StorageOption) Storage {
+	s := storageFactories[opt.Type].New()
+	s.SetOptions(opt.Data)
+	return s
 }
 
 type UnexpectedStorageTypeError struct {

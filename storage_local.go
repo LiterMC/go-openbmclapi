@@ -50,7 +50,7 @@ var _ Storage = (*LocalStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageLocal, StorageFactory{
-		New:       func() any { return new(LocalStorage) },
+		New:       func() Storage { return new(LocalStorage) },
 		NewConfig: func() any { return new(LocalStorageOption) },
 	})
 }

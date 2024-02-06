@@ -131,18 +131,25 @@ func NewCluster(
 		var (
 			n   uint = 0
 			wgs      = make([]uint, len(storageOpts))
+			sts      = make([]Storage, len(storageOpts))
 		)
 		for i, s := range storageOpts {
+			sts[i] = NewStorage(s)
 			wgs[i] = s.Weight
 			n += s.Weight
 		}
+		cr.storages = sts
 		cr.storageWeights = wgs
 		cr.storageTotalWeight = n
 	}
 	return
 }
 
-func (cr *Cluster) Init() error {
+func (cr *Cluster) Init(ctx context.Context) error {
+	// Init storaged
+	for _, s := range cr.storages {
+		s.Init(ctx)
+	}
 	// read old stats
 	if err := cr.stats.Load(cr.dataDir); err != nil {
 		logErrorf("Could not load stats: %v", err)

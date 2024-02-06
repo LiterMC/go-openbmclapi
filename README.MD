@@ -107,31 +107,31 @@ no_heavy_check: false
 # 是否信任 X-Forwarded-For 标头 (有反代时启用)
 trusted-x-forwarded-for: false
 # 实际开放的公网主机名, 同 CLUSTER_IP
-public_host: example.com
+public-host: example.com
 # 实际开放的公网端口, 同 CLUSTER_PUBLIC_PORT
-public_port: 8080
+public-port: 8080
 # 要监听的本地端口, 同 CLUSTER_PORT
 port: 4000
 # CLUSTER_ID
-cluster_id: ${CLUSTER_ID}
+cluster-id: ${CLUSTER_ID}
 # CLUSTER_SECRET
-cluster_secret: ${CLUSTER_SECRET}
+cluster-secret: ${CLUSTER_SECRET}
 # 文件同步间隔 (分钟)
-sync_interval: 10
+sync-interval: 10
 # 发送心跳包的超时限制 (秒), 网不好就调高点
-keepalive_timeout: 10
+keepalive-timeout: 10
 # 同步文件时最多打开的连接数量
-download_max_conn: 64
+download-max-conn: 64
 # 是否启用 gzip 压缩
 use_gzip: false
 # 服务器上行限制
-serve_limit:
+serve-limit:
   # 是否启用上行限制
   enable: false
   # 最大连接数量
-  max_conn: 16384
+  max-conn: 16384
   # 上行速率限制 (KiB/s), 0 表示无限制
-  upload_rate: 0
+  upload-rate: 0
 
 # 内置的仪表板
 dashboard:
@@ -144,34 +144,32 @@ dashboard:
   # PWA 描述
   pwa-description: Go-Openbmclapi Internal Dashboard
 
-## 特殊要求: 重定向到 OSS
-oss:
-    # 是否启用该功能
-    enable: false
-    list:
-          # 镜像文件夹路径
-        - folder_path: oss_mirror
-          # 镜像网络路径
-          redirect_base: https://oss.example.com/base/paths
-          # 启动之前生成 measure 文件夹 (默认为动态生成)
-          pre-create-measures: false
-          # 使用该子节点的概率 (非负整数)
-          possibility: 0
+# 子存储节点列表
+storages:
+    # local 为本地存储
+    - type: local
+      # 使用该子节点的概率 (非负整数)
+      weight: 100
+      # 节点附加数据
+      data:
+        # cache 文件夹到路径
+        cache-path: cache
+        # 压缩方式 (目前未使用)
+        compressor: ""
+    # mount 为网络存储 (与旧版 oss 选项含义大致相同)
+    - type: mount
+      # 使用该子节点的概率 (非负整数)
+      # 设为 0 将使该子节点成为备选节点 (若该节点前一个节点失效才会使用该节点), 如果所有子节点均为 0 则平均分配
+      weight: 0
+      # 节点附加数据
+      data:
+        # 文件夹路径
+        path: oss_mirror
+        # 对应的网络URL路径
+        redirect-base: https://oss.example.com/base/paths
+        # 启动之前在 measure 子文件夹内生成 1-200MB 的测速文件 (默认为动态生成)
+        pre-gen-measures: false
 
-## 特殊要求: 劫持 bmclapi 以加速同一局域网请求
-hijack:
-    # 是否启用该功能
-    enable: false
-    # 劫持代理监听的主机名
-    server_host: ""
-    # 劫持代理监听的端口
-    server_port: 8090
-    # 在该路径下生成伪bmclapi路径结构
-    # 注: 该路径下为指向cache文件夹的软连接, 不会占用大量磁盘空间
-    # **不建议手动修改该路径内的内容**
-    path: __hijack
-    # 用于绕过DNS劫持的DNS服务器 (从bmclapi同步时使用)
-    anti_hijack_dns: 8.8.8.8:53
 ```
 
 ## 子命令

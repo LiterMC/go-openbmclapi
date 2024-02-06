@@ -1,24 +1,24 @@
 debug: false
-record_serve_info: false
+record-serve-info: false
 skip-first-sync: false
 exit-when-disconnected: false
 log-slots: 7
 byoc: false
 noopen: false
-no_heavy_check: false
+no-heavy-check: false
 trusted-x-forwarded-for: false
-public_host: example.com
-public_port: 8080
+public-host: example.com
+public-port: 8080
 port: 4000
-cluster_id: ${CLUSTER_ID}
-cluster_secret: ${CLUSTER_SECRET}
-sync_interval: 10
-keepalive_timeout: 10
-download_max_conn: 64
-serve_limit:
+cluster-id: ${CLUSTER_ID}
+cluster-secret: ${CLUSTER_SECRET}
+sync-interval: 10
+keepalive-timeout: 10
+download-max-conn: 64
+serve-limit:
     enable: false
-    max_conn: 0
-    upload_rate: 0
+    max-conn: 123
+    upload-rate: 12345
 dashboard:
     enable: true
     pwa-name: GoOpenBmclApi Dashboard
@@ -28,5 +28,12 @@ storages:
     - type: local
       weight: 100
       data:
-        cache-path: ""
+        cache-path: cache
         compressor: ""
+    - type: mount
+      weight: 0
+      data:
+        path: oss_mirror
+        redirect-base: https://oss.example.com/base/paths
+        pre-gen-measures: false
+

@@ -86,7 +86,7 @@ case "`uname -m`" in
     i386|i686)
         GOARCH="386"
     ;;
-    aarch64|armv8)
+    aarch64|armv8|arm64)
         GOARCH="arm64"
     ;;
     armv7l|armv6|armv7)

@@ -108,7 +108,7 @@ curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" && \
  chown $USERNAME "$BASE_PATH/service-linux-go-openbmclapi" || \
   exit 1
 
-[ -d $BASE_PATH/config.yaml ] || fetchBlob config.yaml $BASE_PATH/config.yaml 0600 || exit $?
+[ -f $BASE_PATH/config.yaml ] || fetchBlob config.yaml $BASE_PATH/config.yaml 0600 || exit $?
 
 echo -e "\e[34m==> Enabling go-openbmclapi.service\e[0m"
 systemctl enable go-openbmclapi.service || exit $?

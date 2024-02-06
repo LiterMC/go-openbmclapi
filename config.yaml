@@ -15,7 +15,6 @@ cluster_secret: ${CLUSTER_SECRET}
 sync_interval: 10
 keepalive_timeout: 10
 download_max_conn: 64
-use_gzip: false
 serve_limit:
     enable: false
     max_conn: 0
@@ -25,16 +24,9 @@ dashboard:
     pwa-name: GoOpenBmclApi Dashboard
     pwa-short_name: GOBA Dash
     pwa-description: Go-Openbmclapi Internal Dashboard
-oss:
-    enable: false
-    list:
-        - folder_path: oss_mirror
-          redirect_base: https://oss.example.com/base/paths
-          pre-create-measures: false
-          possibility: 0
-hijack:
-    enable: false
-    server_host: ""
-    server_port: 8090
-    path: __hijack
-    anti_hijack_dns: 8.8.8.8:53
+storages:
+    - type: local
+      weight: 100
+      data:
+        cache-path: ""
+        compressor: ""

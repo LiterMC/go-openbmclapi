@@ -29,8 +29,8 @@ import (
 
 type ServeLimitConfig struct {
 	Enable     bool `yaml:"enable"`
-	MaxConn    int  `yaml:"max_conn"`
-	UploadRate int  `yaml:"upload_rate"`
+	MaxConn    int  `yaml:"max-conn"`
+	UploadRate int  `yaml:"upload-rate"`
 }
 
 type DashboardConfig struct {
@@ -42,23 +42,23 @@ type DashboardConfig struct {
 
 type Config struct {
 	Debug                bool             `yaml:"debug"`
-	RecordServeInfo      bool             `yaml:"record_serve_info"`
+	RecordServeInfo      bool             `yaml:"record-serve-info"`
 	SkipFirstSync        bool             `yaml:"skip-first-sync"`
 	ExitWhenDisconnected bool             `yaml:"exit-when-disconnected"`
 	LogSlots             int              `yaml:"log-slots"`
 	Byoc                 bool             `yaml:"byoc"`
 	NoOpen               bool             `yaml:"noopen"`
-	NoHeavyCheck         bool             `yaml:"no_heavy_check"`
+	NoHeavyCheck         bool             `yaml:"no-heavy-check"`
 	TrustedXForwardedFor bool             `yaml:"trusted-x-forwarded-for"`
-	PublicHost           string           `yaml:"public_host"`
-	PublicPort           uint16           `yaml:"public_port"`
+	PublicHost           string           `yaml:"public-host"`
+	PublicPort           uint16           `yaml:"public-port"`
 	Port                 uint16           `yaml:"port"`
-	ClusterId            string           `yaml:"cluster_id"`
-	ClusterSecret        string           `yaml:"cluster_secret"`
-	SyncInterval         int              `yaml:"sync_interval"`
-	KeepaliveTimeout     int              `yaml:"keepalive_timeout"`
-	DownloadMaxConn      int              `yaml:"download_max_conn"`
-	ServeLimit           ServeLimitConfig `yaml:"serve_limit"`
+	ClusterId            string           `yaml:"cluster-id"`
+	ClusterSecret        string           `yaml:"cluster-secret"`
+	SyncInterval         int              `yaml:"sync-interval"`
+	KeepaliveTimeout     int              `yaml:"keepalive-timeout"`
+	DownloadMaxConn      int              `yaml:"download-max-conn"`
+	ServeLimit           ServeLimitConfig `yaml:"serve-limit"`
 	Dashboard            DashboardConfig  `yaml:"dashboard"`
 	Storages             []StorageOption  `yaml:"storages"`
 }
@@ -113,56 +113,84 @@ func migrateConfig(data []byte, config *Config) {
 	if nohttps, ok := oldConfig["nohttps"].(bool); ok {
 		config.Byoc = nohttps
 	}
-	if config.Storages == nil {
-		if oss, ok := oldConfig["oss"].(map[string]any); ok {
-			var storages []StorageOption
-			if oss["enable"] == true {
-				logInfo("Migrate old oss config to latest format")
-				if list, ok := oss["list"].([]any); ok {
-					for _, v := range list {
-						if item, ok := v.(map[string]any); ok {
-							var (
-								stItem   StorageOption
-								mountOpt = new(MountStorageOption)
-							)
-							stItem.Type = StorageMount
-							folderPath, ok := item["folder_path"].(string)
-							if !ok {
-								continue
-							}
-							mountOpt.Path = folderPath
-							redirectBase, ok := item["redirect_base"].(string)
-							if !ok {
-								continue
-							}
-							mountOpt.RedirectBase = redirectBase
-							preGenMeasures, ok := item["pre-create-measures"].(bool)
-							if ok {
-								mountOpt.PreGenMeasures = preGenMeasures
-							}
-							weight, ok := item["possibility"].(int)
-							if !ok {
-								weight = 100
-							}
-							stItem.Weight = (uint)(weight)
-							stItem.Data = mountOpt
-							storages = append(storages, stItem)
-						}
+	if v, ok := oldConfig["record_serve_info"].(bool); ok {
+		config.RecordServeInfo = v
+	}
+	if v, ok := oldConfig["no_heavy_check"].(bool); ok {
+		config.NoHeavyCheck = v
+	}
+	if v, ok := oldConfig["public_host"].(string); ok {
+		config.PublicHost = v
+	}
+	if v, ok := oldConfig["public_port"].(int); ok {
+		config.PublicPort = (uint16)(v)
+	}
+	if v, ok := oldConfig["cluster_id"].(string); ok {
+		config.ClusterId = v
+	}
+	if v, ok := oldConfig["cluster_secret"].(string); ok {
+		config.ClusterSecret = v
+	}
+	if v, ok := oldConfig["sync_interval"].(int); ok {
+		config.SyncInterval = v
+	}
+	if v, ok := oldConfig["keepalive_timeout"].(int); ok {
+		config.KeepaliveTimeout = v
+	}
+	if v, ok := oldConfig["download_max_conn"].(int); ok {
+		config.DownloadMaxConn = v
+	}
+	if limit, ok := oldConfig["serve_limit"].(map[string]any); ok {
+		var sl ServeLimitConfig
+		if sl.Enable, ok = limit["enable"].(bool); !ok {
+			goto SKIP_SERVE_LIMIT
+		}
+		if sl.MaxConn, ok = limit["max_conn"].(int); !ok {
+			goto SKIP_SERVE_LIMIT
+		}
+		if sl.UploadRate, ok = limit["upload_rate"].(int); !ok {
+			goto SKIP_SERVE_LIMIT
+		}
+		config.ServeLimit = sl
+	SKIP_SERVE_LIMIT:
+	}
+
+	if oss, ok := oldConfig["oss"].(map[string]any); ok && oss["enable"] == true {
+		var storages []StorageOption
+		logInfo("Migrate old oss config to latest format")
+		if list, ok := oss["list"].([]any); ok {
+			for _, v := range list {
+				if item, ok := v.(map[string]any); ok {
+					var (
+						stItem   StorageOption
+						mountOpt = new(MountStorageOption)
+					)
+					stItem.Type = StorageMount
+					folderPath, ok := item["folder_path"].(string)
+					if !ok {
+						continue
 					}
-				}
-			} else {
-				storages = []StorageOption{
-					{
-						Type:   StorageLocal,
-						Weight: 100,
-						Data: LocalStorageOption{
-							CachePath: "cache",
-						},
-					},
+					mountOpt.Path = folderPath
+					redirectBase, ok := item["redirect_base"].(string)
+					if !ok {
+						continue
+					}
+					mountOpt.RedirectBase = redirectBase
+					preGenMeasures, ok := item["pre-create-measures"].(bool)
+					if ok {
+						mountOpt.PreGenMeasures = preGenMeasures
+					}
+					weight, ok := item["possibility"].(int)
+					if !ok {
+						weight = 100
+					}
+					stItem.Weight = (uint)(weight)
+					stItem.Data = mountOpt
+					storages = append(storages, stItem)
 				}
 			}
-			config.Storages = storages
 		}
+		config.Storages = storages
 	}
 }
 
@@ -185,6 +213,17 @@ func readConfig() (config Config) {
 		if err = yaml.Unmarshal(data, &config); err != nil {
 			logError("Cannot parse config:", err)
 			os.Exit(1)
+		}
+		if len(config.Storages) == 0 {
+			config.Storages = []StorageOption{
+				{
+					Type:   StorageLocal,
+					Weight: 100,
+					Data: &LocalStorageOption{
+						CachePath: "cache",
+					},
+				},
+			}
 		}
 	}
 

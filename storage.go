@@ -93,26 +93,45 @@ func (e *UnexpectedStorageTypeError) Error() string {
 	return fmt.Sprintf("Unexpected storage type %q, must be one of %s", e.Type, strings.Join(types, ","))
 }
 
+type RawYAML struct {
+	*yaml.Node
+}
+
+var (
+	_ yaml.Marshaler   = RawYAML{}
+	_ yaml.Unmarshaler = (*RawYAML)(nil)
+)
+
+func (r RawYAML) MarshalYAML() (interface{}, error) {
+	return r.Node, nil
+}
+
+func (r *RawYAML) UnmarshalYAML(n *yaml.Node) (err error) {
+	r.Node = n
+	return nil
+}
+
 type StorageOption struct {
-	Type   string
-	Weight uint
-	Data   any
+	Type   string `yaml:"type"`
+	Weight uint   `yaml:"weight"`
+	Data   any    `yaml:"data"`
 }
 
 func (o *StorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
-	var basicOpts struct {
-		Type   string `yaml:"type"`
-		Weight uint   `yaml:"weight"`
+	var opts struct {
+		Type   string  `yaml:"type"`
+		Weight uint    `yaml:"weight"`
+		Data   RawYAML `yaml:"data"`
 	}
-	if err = n.Decode(&basicOpts); err != nil {
+	if err = n.Decode(&opts); err != nil {
 		return
 	}
-	o.Type = basicOpts.Type
-	o.Weight = basicOpts.Weight
-	f, ok := storageFactories[o.Type]
+	f, ok := storageFactories[opts.Type]
 	if !ok {
-		return &UnexpectedStorageTypeError{o.Type}
+		return &UnexpectedStorageTypeError{opts.Type}
 	}
+	o.Type = opts.Type
+	o.Weight = opts.Weight
 	o.Data = f.NewConfig()
-	return n.Decode(o.Data)
+	return opts.Data.Decode(o.Data)
 }

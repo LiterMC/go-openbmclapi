@@ -11,7 +11,7 @@ RAW_REPO="$RAW_PREFIX/$REPO"
 BASE_PATH=/opt/openbmclapi
 USERNAME=openbmclapi
 
-if ! systemd --version > /dev/null ; then
+if ! systemd --version >/dev/null 2>&1 ; then
 	echo -e "\e[31mERROR: Failed to test systemd\e[0m"
 	exit 1
 fi
@@ -20,6 +20,15 @@ if [ ! -d /usr/lib/systemd/system/ ]; then
 	echo -e "\e[31mERROR: /usr/lib/systemd/system/ is not exist\e[0m"
 	exit 1
 fi
+
+if ! id $USERNAME >/dev/null 2>&1; then
+	echo -e "\e[34m==> Creating user $USERNAME\e[0m"
+	useradd $USERNAME || {
+		echo -e "\e[31mERROR: Could not create user $USERNAME\e[0m"
+		exit 1
+  	}
+fi
+
 
 function fetchGithubLatestTag(){
 	prefix="location: https://github.com/$REPO/releases/tag/"
@@ -33,7 +42,7 @@ function fetchBlob(){
 	target=$2
 	filemod=$3
 
-	source="$RAW_REPO/$LATEST_TAG/$file"
+	source="$RAW_REPO/$TARGET_TAG/$file"
 	echo -e "\e[34m==> Downloading $source\e[0m"
 	tmpf=$(mktemp -t go-openbmclapi.XXXXXXXXXXXX.downloading)
 	curl -fsSL -o "$tmpf" "$source" || { rm "$tmpf"; return 1; }
@@ -49,58 +58,57 @@ function fetchBlob(){
 echo
 
 if [ -f /usr/lib/systemd/system/go-openbmclapi.service ]; then
-	echo -e "\e[33m==>WARN: go-openbmclapi.service is already installed, stopping\e[0m"
+	echo -e "\e[33m==> WARN: go-openbmclapi.service is already installed, stopping\e[0m"
 	systemctl disable --now go-openbmclapi.service
 fi
 
-if [ ! -n "$LATEST_TAG" ]; then
+if [ ! -n "$TARGET_TAG" ]; then
 	echo -e "\e[34m==> Fetching latest tag for https://github.com/$REPO\e[0m"
 	fetchGithubLatestTag
+	TARGET_TAG=$LATEST_TAG
 	echo
-	echo -e "\e[32m*** go-openbmclapi LATEST TAG: $LATEST_TAG ***\e[0m"
+	echo -e "\e[32m*** go-openbmclapi LATEST TAG: $TARGET_TAG ***\e[0m"
 	echo
 fi
 
 fetchBlob service/go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.service 0644 || exit $?
 
-[ -d "$BASE_PATH" ] || { mkdir -p "$BASE_PATH" && chmod 0755 "$BASE_PATH"; } || exit $?
+[ -d "$BASE_PATH" ] || { mkdir -p "$BASE_PATH" && chmod 0755 "$BASE_PATH" && chown $USERNAME "$BASE_PATH"; } || exit $?
 
 # fetchBlob service/start-server.sh "$BASE_PATH/start-server.sh" 0755 || exit $?
 # fetchBlob service/stop-server.sh "$BASE_PATH/stop-server.sh" 0755 || exit $?
 # fetchBlob service/reload-server.sh "$BASE_PATH/reload-server.sh" 0755 || exit $?
 
-latest_src="https://github.com/$REPO/releases/download/$LATEST_TAG"
-
-case "`uname -m`" in
-    x86_64)
-        GOARCH="amd64"
+ARCH=$(uname -m)
+case "$ARCH" in
+    amd64|x86_64)
+        ARCH="amd64"
     ;;
     i386|i686)
-        GOARCH="386"
+        ARCH="386"
     ;;
     aarch64|armv8|arm64)
-        GOARCH="arm64"
+        ARCH="arm64"
     ;;
     armv7l|armv6|armv7)
-        GOARCH="arm"
+        ARCH="arm"
     ;;
     *)
         echo -e "\e[31m
-Unknown CPU architecture: `uname -m`
+Unknown CPU architecture: $ARCH
 Please report to https://github.com/LiterMC/go-openbmclapi/issues/new\e[0m"
         exit 1
 esac
 
-source="${MIRROR_PREFIX}$latest_src/go-openbmclapi-linux-$GOARCH"
+source="${MIRROR_PREFIX}https://github.com/$REPO/releases/download/$TARGET_TAG/go-openbmclapi-linux-$ARCH"
 echo -e "\e[34m==> Downloading $source\e[0m"
-curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"
-echo -e "\e[34m==> Add user openbmclapi and setting privilege\e[0m"
-if ! id $USERNAME >/dev/null 2>&1; then
-	useradd $USERNAME
-	[ -d $BASE_PATH/config.yaml ] || fetchBlob config.yaml $BASE_PATH/config.yaml 0600 || exit $?
-	chown -R $USERNAME:$USERNAME $BASE_PATH
-	chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?
-fi
+
+curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source" && \
+ chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" && \
+ chown $USERNAME "$BASE_PATH/service-linux-go-openbmclapi" || \
+  exit 1
+
+[ -d $BASE_PATH/config.yaml ] || fetchBlob config.yaml $BASE_PATH/config.yaml 0600 || exit $?
 
 echo -e "\e[34m==> Enabling go-openbmclapi.service\e[0m"
 systemctl enable go-openbmclapi.service || exit $?

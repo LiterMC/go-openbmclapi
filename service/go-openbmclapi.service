@@ -6,6 +6,7 @@ After=network.target
 
 [Service]
 Type=simple
+User=openbmclapi
 WorkingDirectory=/opt/openbmclapi
 ExecStart=/opt/openbmclapi/service-linux-go-openbmclapi
 ExecReload=kill -s HUP $MAINPID

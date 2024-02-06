@@ -52,10 +52,13 @@ A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
    ```sh
    sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh)"
    ```
-3. 配置`/opt/openbmclapi/config.json`配置文件
+   > 注意, 新版新增使用 `openbmclapi` 用户执行程序, 可能需要执行 `sudo chown -R openbmclapi /opt/openbmclapi` 指令修复权限
+3. 配置`/opt/openbmclapi/config.yaml`配置文件
 4. 使用`systemctl start go-openbmclapi.service`启动服务
    - 使用`systemctl reload go-openbmclapi.service`可重新加载配置文件
    - 使用`systemctl stop go-openbmclapi.service`停止服务
+   - 使用`systemctl enable go-openbmclapi.service`让服务自启动
+   - 使用`systemctl disable go-openbmclapi.service`禁止服务自启动
    - 使用`journalctl -f --output cat -u go-openbmclapi.service`实时监听日志
 
 ### 从源代码运行

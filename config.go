@@ -23,7 +23,6 @@ import (
 	"errors"
 	"os"
 	"strconv"
-	"sync/atomic"
 
 	"gopkg.in/yaml.v3"
 )
@@ -59,7 +58,6 @@ type Config struct {
 	SyncInterval         int              `yaml:"sync_interval"`
 	KeepaliveTimeout     int              `yaml:"keepalive_timeout"`
 	DownloadMaxConn      int              `yaml:"download_max_conn"`
-	UseGzip              bool             `yaml:"use_gzip"`
 	ServeLimit           ServeLimitConfig `yaml:"serve_limit"`
 	Dashboard            DashboardConfig  `yaml:"dashboard"`
 	Storages             []StorageOption  `yaml:"storages"`
@@ -91,7 +89,6 @@ var defaultConfig = Config{
 	SyncInterval:         10,
 	KeepaliveTimeout:     10,
 	DownloadMaxConn:      64,
-	UseGzip:              false,
 	ServeLimit: ServeLimitConfig{
 		Enable:     false,
 		MaxConn:    16384,
@@ -132,7 +129,7 @@ func migrateConfig(data []byte, config *Config) {
 					for _, v := range list {
 						if item, ok := v.(map[string]any); ok {
 							var (
-								stItem StorageOption
+								stItem   StorageOption
 								mountOpt = new(MountStorageOption)
 							)
 							stItem.Type = StorageMount
@@ -140,7 +137,7 @@ func migrateConfig(data []byte, config *Config) {
 							if !ok {
 								continue
 							}
-							mountOpt.FolderPath = folderPath
+							mountOpt.Path = folderPath
 							redirectBase, ok := item["redirect_base"].(string)
 							if !ok {
 								continue

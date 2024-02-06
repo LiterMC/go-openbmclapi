@@ -32,7 +32,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -308,31 +307,9 @@ START:
 
 	config.applyWebManifest(dsbManifest)
 
-	httpcli := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
 	var (
-		dialer   *net.Dialer
-		hjproxy  *HjProxy
-		hjServer *http.Server
+		dialer *net.Dialer
 	)
-	if config.Hijack.Enable {
-		dialer = getDialerWithDNS(config.Hijack.AntiHijackDNS)
-		hjproxy = NewHjProxy(dialer, config.Hijack.Path)
-		hjServer = &http.Server{
-			Addr:    fmt.Sprintf("%s:%d", config.Hijack.ServerHost, config.Hijack.ServerPort),
-			Handler: hjproxy,
-		}
-		go func() {
-			logInfof("Hijack server start at %q", hjServer.Addr)
-			err := hjServer.ListenAndServe()
-			if err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logError("Error on server:", err)
-				os.Exit(1)
-			}
-		}()
-	}
 
 	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
 	cluster := NewCluster(ctx,
@@ -346,55 +323,6 @@ START:
 	if err := cluster.Init(); err != nil {
 		logError("Cannot init cluster:", err)
 		os.Exit(1)
-	}
-
-	if config.Oss.Enable {
-		var aliveCount atomic.Int32
-		for _, item := range config.Oss.List {
-			createOssMirrorDir(item)
-			supportRange, err := checkOSS(ctx, httpcli, item, 10)
-			if err != nil {
-				logError(err)
-				continue
-			}
-			aliveCount.Add(1)
-			item.supportRange = supportRange
-			item.working.Store(true)
-			go func(ctx context.Context, item *OSSItem) {
-				ticker := time.NewTicker(time.Minute * 5)
-				defer ticker.Stop()
-
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-ticker.C:
-						supportRange, err := checkOSS(ctx, httpcli, item, 1)
-						if err != nil {
-							if errors.Is(err, context.Canceled) {
-								return
-							}
-							logError(err)
-							if item.working.CompareAndSwap(true, false) {
-								if aliveCount.Add(-1) == 0 {
-									logError("All oss mirror failed, exit.")
-									os.Exit(2)
-								}
-							}
-							continue
-						}
-						if item.working.CompareAndSwap(false, true) {
-							aliveCount.Add(1)
-						}
-						_ = supportRange
-					}
-				}
-			}(ctx, item)
-		}
-		if aliveCount.Load() == 0 {
-			logError("All oss mirror failed, exit.")
-			os.Exit(2)
-		}
 	}
 
 	if !cluster.Connect(ctx) {
@@ -522,9 +450,6 @@ SELECT_SIGNAL:
 		shutCtx, cancelShut := context.WithTimeout(context.Background(), 20*time.Second)
 		logWarn("Closing server ...")
 		shutExit := make(chan struct{}, 0)
-		if hjServer != nil {
-			go hjServer.Shutdown(shutCtx)
-		}
 		go func() {
 			defer close(shutExit)
 			defer cancelShut()

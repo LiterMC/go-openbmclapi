@@ -20,7 +20,6 @@
 package main
 
 import (
-	"compress/gzip"
 	"crypto"
 	"encoding/hex"
 	"errors"
@@ -28,14 +27,10 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 )
 
 type countReader struct {
@@ -217,26 +212,6 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		if _, ok := emptyHashes[hash]; ok {
-			name := req.URL.Query().Get("name")
-			rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
-			rw.Header().Set("Content-Type", "application/octet-stream")
-			rw.Header().Set("Content-Length", "0")
-			if name != "" {
-				rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
-			}
-			rw.Header().Set("X-Bmclapi-Hash", hash)
-			rw.WriteHeader(http.StatusOK)
-			cr.hits.Add(1)
-			// cr.hbts.Add(0) // no need to add zero
-			return
-		}
-
-		// if use OSS redirect
-		if cr.usedOSS() {
-			cr.handleDownloadOSS(rw, req, hash)
-			return
-		}
 		cr.handleDownload(rw, req, hash)
 		return
 	case strings.HasPrefix(rawpath, "/measure/"):
@@ -258,27 +233,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, fmt.Sprintf("measure size %d out of range (0, 200]", n), http.StatusBadRequest)
 			return
 		}
-		if cr.usedOSS() {
-			item := cr.ossList[0]
-			if err := createMeasureFile(filepath.Join(item.FolderPath, "measure"), n); err != nil {
-				http.Error(rw, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			target, err := url.JoinPath(item.RedirectBase, rawpath)
-			if err != nil {
-				http.Error(rw, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			http.Redirect(rw, req, target, http.StatusFound)
-			return
-		}
-		rw.Header().Set("Content-Length", strconv.Itoa(n*glbChunkSize))
-		rw.WriteHeader(http.StatusOK)
-		if method == http.MethodGet {
-			for i := 0; i < n; i++ {
-				rw.Write(glbChunk[:])
-			}
-		}
+		cr.storages[0].ServeMeasure(rw, req, n)
 		return
 	case strings.HasPrefix(rawpath, "/api/"):
 		version, _ := split(rawpath[len("/api/"):], '/')
@@ -303,170 +258,42 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, hash string) {
-	acceptEncoding := splitCSV(req.Header.Get("Accept-Encoding"))
-	name := req.URL.Query().Get("name")
-	hashFilename := hashToFilename(hash)
-
-	hasGzip := false
-	isGzip := false
-	path := filepath.Join(cr.cacheDir, hashFilename)
-	if config.UseGzip {
-		if _, err := os.Stat(path + ".gz"); err == nil {
-			hasGzip = true
-		}
-	}
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		if !hasGzip {
-			if hasGzip, err = cr.DownloadFile(req.Context(), hash); err != nil {
-				http.Error(rw, "404 Status Not Found", http.StatusNotFound)
-				return
-			}
-		}
-		if hasGzip {
-			isGzip = true
-			path += ".gz"
-		}
-	}
-
-	if !isGzip && rw.Header().Get("Range") != "" {
-		fd, err := os.Open(path)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer fd.Close()
-		counter := new(countReader)
-		counter.ReadSeeker = fd
-
+	if _, ok := emptyHashes[hash]; ok {
+		name := req.URL.Query().Get("name")
 		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
 		rw.Header().Set("Content-Type", "application/octet-stream")
-		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		rw.Header().Set("Content-Length", "0")
+		if name != "" {
+			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		}
 		rw.Header().Set("X-Bmclapi-Hash", hash)
-		http.ServeContent(rw, req, name, time.Time{}, counter)
+		rw.WriteHeader(http.StatusOK)
 		cr.hits.Add(1)
-		cr.hbts.Add(counter.n)
+		// cr.hbts.Add(0) // no need to add zero
 		return
 	}
 
-	var r io.Reader
-	if hasGzip && acceptEncoding["gzip"] != 0 {
-		if !isGzip {
-			isGzip = true
-			path += ".gz"
-		}
-		fd, err := os.Open(path)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer fd.Close()
-		r = fd
-		rw.Header().Set("Content-Encoding", "gzip")
-	} else {
-		fd, err := os.Open(path)
-		if err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer fd.Close()
-		r = fd
-		if isGzip {
-			if r, err = gzip.NewReader(r); err != nil {
-				logErrorf("Could not decompress %q: %v", path, err)
-				http.Error(rw, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			isGzip = false
-		}
-	}
-	rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
-	rw.Header().Set("Content-Type", "application/octet-stream")
-	rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
-	rw.Header().Set("X-Bmclapi-Hash", hash)
-	if !isGzip {
-		if size, ok := cr.FileSet()[hash]; ok {
-			rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-		}
-	} else if size, err := getFileSize(r); err == nil {
-		rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	}
-	rw.WriteHeader(http.StatusOK)
-	if req.Method != http.MethodHead {
-		var buf []byte
-		{
-			buf0 := bufPool.Get().(*[]byte)
-			defer bufPool.Put(buf0)
-			buf = *buf0
-		}
-		n, _ := io.CopyBuffer(rw, r, buf)
-		cr.hits.Add(1)
-		cr.hbts.Add(n)
-	}
-}
-
-func (cr *Cluster) handleDownloadOSS(rw http.ResponseWriter, req *http.Request, hash string) {
-	logDebug("[handler]: Preparing OSS redirect response")
-
-	hashFilename := hashToFilename(hash)
-
 	var err error
 	// check if file was indexed in the fileset
-	size, sizeCached := cr.FileSet()[hash]
-	forEachFromRandomIndexWithPossibility(cr.ossPossibilities, cr.ossTotalPoss, func(i int) bool {
-		item := cr.ossList[i]
-		logDebugf("[handler]: Checking file on OSS %d at %q ...", i, item.FolderPath)
+	size, ok := cr.FileSet()[hash]
+	if !ok {
+		// TODO: download file and update fileset
+		rw.WriteHeader(http.StatusNotFound)
+		return
+	}
+	forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
+		storage := cr.storages[i]
+		logDebugf("[handler]: Checking file on Storage [%d] %s ...", i, storage.String())
 
-		if !item.working.Load() {
-			logDebugf("[handler]: OSS %d is not working", i)
-			err = errors.New("All OSS server is down")
+		sz, er := storage.ServeDownload(rw, req, hash, size)
+		if er != nil {
+			err = er
 			return false
 		}
-
-		downloadDir := filepath.Join(item.FolderPath, "download")
-		if !sizeCached {
-			// check if the file exists
-			path := filepath.Join(downloadDir, hashFilename)
-			var stat os.FileInfo
-			if stat, err = os.Stat(path); err != nil {
-				logDebugf("[handler]: Cannot read file on OSS %d: %v", i, err)
-				if errors.Is(err, os.ErrNotExist) {
-					logInfof("[handler]: Downloading %s", hash)
-					if e := cr.DownloadFileOSS(req.Context(), downloadDir, hash); e != nil {
-						logInfof("[handler]: Could not downloaded %s\n\t%v", hash, e)
-						return false
-					}
-					logInfof("[handler]: Downloaded %s", hash)
-					if stat, err = os.Stat(path); err != nil {
-						return false
-					}
-				} else {
-					return false
-				}
-			}
-			size = stat.Size()
+		if sz >= 0 {
+			cr.hits.Add(1)
+			cr.hbts.Add(sz)
 		}
-
-		var target string
-		target, err = url.JoinPath(item.RedirectBase, "download", filepath.ToSlash(hashFilename))
-		if err != nil {
-			return false
-		}
-		if item.supportRange { // fix the size for Ranged request
-			rg := req.Header.Get("Range")
-			rgs, err := gosrc.ParseRange(rg, size)
-			if err == nil && len(rgs) > 0 {
-				var newSize int64 = 0
-				for _, r := range rgs {
-					newSize += r.Length
-				}
-				if newSize < size {
-					size = newSize
-				}
-			}
-		}
-		http.Redirect(rw, req, target, http.StatusFound)
-		cr.hits.Add(1)
-		cr.hbts.Add(size)
 		return true
 	})
 	if err != nil {

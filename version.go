@@ -19,6 +19,13 @@
 
 package main
 
+import (
+	"fmt"
+)
+
 const ClusterVersion = "1.7.3"
 
 var BuildVersion string = "dev"
+
+var ClusterUserAgent string = fmt.Sprintf("openbmclapi-cluster/%s", ClusterVersion)
+var ClusterUserAgentFull string = fmt.Sprintf("%s go-openbmclapi-cluster/%s", ClusterUserAgent, BuildVersion)

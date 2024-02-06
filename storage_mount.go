@@ -20,30 +20,53 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 )
 
+var errNotWorking = errors.New("storage is down")
+
 type MountStorageOption struct {
-	Path  string     `yaml:"path"`
-	RedirectURL  string     `yaml:"redirect-url"`
-	Path  bool     `yaml:"path"`
+	Path           string `yaml:"path"`
+	RedirectBase   string `yaml:"redirect-base"`
+	PreGenMeasures bool   `yaml:"pre-gen-measures"`
 }
 
-func (opt *MountStorageOption) TmpPath() string {
-	return filepath.Join(opt.FolderPath, ".tmp")
+func (opt *MountStorageOption) CachePath() string {
+	return filepath.Join(opt.Path, "download")
 }
 
 type MountStorage struct {
 	opt MountStorageOption
+
+	supportRange bool
+	working      atomic.Bool
+	lastCheck    time.Time
 }
 
 var _ Storage = (*MountStorage)(nil)
 
+func init() {
+	RegisterStorageFactory(StorageMount, StorageFactory{
+		New:       func() any { return new(MountStorage) },
+		NewConfig: func() any { return new(MountStorageOption) },
+	})
+}
+
 func (s *MountStorage) String() string {
-	return fmt.Sprintf("<MountStorage path=%q>", s.FolderPath)
+	return fmt.Sprintf("<MountStorage path=%q redirect=%q>", s.opt.Path, s.opt.RedirectBase)
 }
 
 func (s *MountStorage) Options() any {
@@ -54,24 +77,45 @@ func (s *MountStorage) SetOptions(newOpts any) {
 	s.opt = *(newOpts.(*MountStorageOption))
 }
 
-func (s *MountStorage) Init() (err error) {
-	tmpDir := s.opt.TmpPath()
-	os.RemoveAll(tmpDir)
-	// should be 0755 here because Windows permission issue
-	if err = os.MkdirAll(tmpDir, 0755); err != nil {
+var checkerClient = &http.Client{
+	Timeout: time.Minute,
+}
+
+func (s *MountStorage) Init(ctx context.Context) (err error) {
+	logInfof("Initalizing mounted folder %s", s.opt.Path)
+	if err = initCache(s.opt.CachePath()); err != nil {
 		return
 	}
-	if err = initCache(s.opt.CachePath); err != nil {
-		return
+	if err := os.MkdirAll(s.opt.Path, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		logErrorf("Cannot create mirror folder %q: %v", s.opt.Path, err)
+		os.Exit(2)
 	}
+
+	measureDir := filepath.Join(s.opt.Path, "measure")
+	if err := os.Mkdir(measureDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		logErrorf("Cannot create mirror folder %q: %v", measureDir, err)
+		os.Exit(2)
+	}
+	if s.opt.PreGenMeasures {
+		logInfo("Creating measure files")
+		for i := 1; i <= 200; i++ {
+			if err := s.createMeasureFile(i); err != nil {
+				os.Exit(2)
+			}
+		}
+		logInfo("Measure files created")
+	}
+
+	s.checkAlive(ctx, 10)
+	return
 }
 
 func (s *MountStorage) hashToPath(hash string) string {
-	return filepath.Join(s.opt.CachePath, hash[0:2], hash)
+	return filepath.Join(s.opt.CachePath(), hash[0:2], hash)
 }
 
 func (s *MountStorage) Size(hash string) (int64, error) {
-	stat, err := os.Open(s.hashToPath(hash))
+	stat, err := os.Stat(s.hashToPath(hash))
 	if err != nil {
 		return 0, err
 	}
@@ -91,121 +135,127 @@ func (s *MountStorage) Remove(hash string) error {
 }
 
 func (s *MountStorage) WalkDir(walker func(hash string) error) error {
-	var b [1]byte
-	for i := 0; i < 0x100; i++ {
-		b[0] = (byte)(i)
-		dir := hex.EncodeToString(b[:])
-		files, err := os.ReadDir(filepath.Join(s.opt.CachePath, dir))
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return
-		}
-		for _, f := range files {
-			if !f.IsDir() {
-				if name := f.Name(); len(name) >= 2 && name[:2] == dir {
-					if err = walker(f.Name()); err != nil {
-						return
-					}
-				}
-			}
-		}
-	}
-	return nil
+	return walkCacheDir(s.opt.CachePath(), walker)
 }
 
-func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string) error {
-	acceptEncoding := splitCSV(req.Header.Get("Accept-Encoding"))
-	name := req.URL.Query().Get("name")
-
-	hasGzip := false
-	isGzip := false
-	path := s.hashToPath(hash)
-	if config.UseGzip {
-		if _, err := os.Stat(path + ".gz"); err == nil {
-			hasGzip = true
-		}
+func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
+	if !s.working.Load() {
+		return 0, errNotWorking
 	}
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		if !hasGzip {
-			if hasGzip, err = cr.DownloadFile(req.Context(), hash); err != nil {
-				return err
+
+	target, err := url.JoinPath(s.opt.RedirectBase, "download", hash[:2], hash)
+	if err != nil {
+		return 0, err
+	}
+	if s.supportRange { // fix the size for Ranged request
+		rg := req.Header.Get("Range")
+		rgs, err := gosrc.ParseRange(rg, size)
+		if err == nil && len(rgs) > 0 {
+			var newSize int64 = 0
+			for _, r := range rgs {
+				newSize += r.Length
+			}
+			if newSize < size {
+				size = newSize
 			}
 		}
-		if hasGzip {
-			isGzip = true
-			path += ".gz"
-		}
 	}
-
-	if !isGzip && rw.Header().Get("Range") != "" {
-		fd, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer fd.Close()
-
-		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
-		rw.Header().Set("Content-Type", "application/octet-stream")
-		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
-		rw.Header().Set("X-Bmclapi-Hash", hash)
-		http.ServeContent(rw, req, name, time.Time{}, fd)
-		return nil
-	}
-
-	var r io.Reader
-	if hasGzip && acceptEncoding["gzip"] != 0 {
-		if !isGzip {
-			isGzip = true
-			path += ".gz"
-		}
-		fd, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer fd.Close()
-		r = fd
-		rw.Header().Set("Content-Encoding", "gzip")
-	} else {
-		fd, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer fd.Close()
-		r = fd
-		if isGzip {
-			if r, err = gzip.NewReader(r); err != nil {
-				logErrorf("Could not decompress %q: %v", path, err)
-				return err
-			}
-			isGzip = false
-		}
-	}
-	rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
-	rw.Header().Set("Content-Type", "application/octet-stream")
-	rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
-	rw.Header().Set("X-Bmclapi-Hash", hash)
-	if !isGzip {
-		if size, ok := cr.FileSet()[hash]; ok {
-			rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-		}
-	} else if size, err := getFileSize(r); err == nil {
-		rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	}
-	rw.WriteHeader(http.StatusOK)
-	if req.Method != http.MethodHead {
-		var buf []byte
-		{
-			buf0 := bufPool.Get().(*[]byte)
-			defer bufPool.Put(buf0)
-			buf = *buf0
-		}
-		io.CopyBuffer(rw, r, buf)
-	}
-	return nil
+	http.Redirect(rw, req, target, http.StatusFound)
+	return size, nil
 }
 
 func (s *MountStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, size int) error {
-	//
+	if err := s.createMeasureFile(size); err != nil {
+		return err
+	}
+	target, err := url.JoinPath(s.opt.RedirectBase, "measure", strconv.Itoa(size))
+	if err != nil {
+		return err
+	}
+	http.Redirect(rw, req, target, http.StatusFound)
+	return nil
+}
+
+func (s *MountStorage) createMeasureFile(size int) (err error) {
+	t := filepath.Join(s.opt.Path, "measure", strconv.Itoa(size))
+	if stat, err := os.Stat(t); err == nil {
+		size := (int64)(size) * mbChunkSize
+		x := stat.Size()
+		if x == size {
+			return nil
+		}
+		logDebugf("File [%d] size %d does not match %d", size, x, size)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		logErrorf("Cannot get stat of %s: %v", t, err)
+	}
+	logInfof("Creating measure file at %q", t)
+	fd, err := os.Create(t)
+	if err != nil {
+		logErrorf("Cannot create OSS mirror measure file %q: %v", t, err)
+		return
+	}
+	defer fd.Close()
+	for j := 0; j < size; j++ {
+		if _, err = fd.Write(mbChunk[:]); err != nil {
+			logErrorf("Cannot write OSS mirror measure file %q: %v", t, err)
+			return
+		}
+	}
+	return nil
+}
+
+func (s *MountStorage) checkAlive(ctx context.Context, size int) (supportRange bool, err error) {
+	targetSize := (int64)(size) * 1024 * 1024
+	logInfof("Checking %s for %d bytes ...", s.opt.RedirectBase, targetSize)
+
+	if err = s.createMeasureFile(size); err != nil {
+		return
+	}
+
+	target, err := url.JoinPath(s.opt.RedirectBase, "measure", strconv.Itoa(size))
+	if err != nil {
+		return false, fmt.Errorf("Cannot check webdav server: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Range", "bytes=1-")
+	req.Header.Set("User-Agent", ClusterUserAgentFull)
+	res, err := checkerClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("Check request failed %q: %w", target, err)
+	}
+	defer res.Body.Close()
+	logDebugf("Webdav check response status code %d %s", res.StatusCode, res.Status)
+	if supportRange = res.StatusCode == http.StatusPartialContent; supportRange {
+		logDebug("Webdav support Range header!")
+		targetSize--
+	} else if res.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("Check request failed %q: %d %s", target, res.StatusCode, res.Status)
+	} else {
+		crange := res.Header.Get("Content-Range")
+		if len(crange) > 0 {
+			logWarn("Non standard http response detected, responsed 'Content-Range' header with status 200, expected status 206")
+			fields := strings.Fields(crange)
+			if len(fields) >= 2 && fields[0] == "bytes" && strings.HasPrefix(fields[1], "1-") {
+				logDebug("Webdav support Range header?")
+				supportRange = true
+				targetSize--
+			}
+		}
+	}
+	logDebug("reading webdav server response")
+	start := time.Now()
+	n, err := io.Copy(io.Discard, res.Body)
+	if err != nil {
+		return false, fmt.Errorf("Webdav check request failed %q: %w", target, err)
+	}
+	used := time.Since(start)
+	if n != targetSize {
+		return false, fmt.Errorf("Webdav check request failed %q: expected %d bytes, but got %d bytes", target, targetSize, n)
+	}
+	rate := (float64)(n) / used.Seconds()
+	logInfof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, bytesToUnit(rate), supportRange)
+	return
 }

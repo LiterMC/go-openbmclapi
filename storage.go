@@ -20,6 +20,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -38,7 +39,7 @@ type Storage interface {
 	// SetOptions will be called with the same type of the Options() result
 	SetOptions(any)
 	// Init will be called before start to use a storage
-	Init() error
+	Init(context.Context) error
 
 	Size(hash string) (int64, error)
 	Open(hash string) (io.ReadCloser, error)
@@ -46,7 +47,7 @@ type Storage interface {
 	Remove(hash string) error
 	WalkDir(func(hash string) error) error
 
-	ServeDownload(rw http.ResponseWriter, req *http.Request, hash string) error
+	ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error)
 	ServeMeasure(rw http.ResponseWriter, req *http.Request, size int) error
 }
 
@@ -61,9 +62,9 @@ type StorageFactory struct {
 	NewConfig func() any
 }
 
-var storageFactories = make(map[string]func() any, 3)
+var storageFactories = make(map[string]StorageFactory, 3)
 
-func AddStorageFactory(typ string, inst StorageFactory) {
+func RegisterStorageFactory(typ string, inst StorageFactory) {
 	if inst.New == nil || inst.NewConfig == nil {
 		panic("nil function")
 	}
@@ -83,7 +84,7 @@ func (e *UnexpectedStorageTypeError) Error() string {
 		types = append(types, t)
 	}
 	sort.Strings(types)
-	return fmt.Errorf("Unexpected storage type %q, must be one of %s", e.Type, strings.Join(",", types))
+	return fmt.Sprintf("Unexpected storage type %q, must be one of %s", e.Type, strings.Join(types, ","))
 }
 
 type StorageOption struct {

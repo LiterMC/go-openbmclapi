@@ -34,7 +34,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -51,7 +50,6 @@ type Cluster struct {
 	publicPort uint16
 	username   string
 	password   string
-	useragent  string
 	prefix     string
 	byoc       bool
 
@@ -105,7 +103,6 @@ func NewCluster(
 		publicPort: publicPort,
 		username:   username,
 		password:   password,
-		useragent:  "openbmclapi-cluster/" + ClusterVersion,
 		prefix:     prefix,
 		byoc:       byoc,
 
@@ -171,7 +168,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		},
 		ExtraHeaders: http.Header{
 			"Origin":     {cr.prefix},
-			"User-Agent": {cr.useragent},
+			"User-Agent": {ClusterUserAgent},
 		},
 		DialTimeout: time.Minute * 6,
 	})
@@ -474,7 +471,7 @@ func (cr *Cluster) makeReq(ctx context.Context, method string, relpath string, q
 		return
 	}
 	req.SetBasicAuth(cr.username, cr.password)
-	req.Header.Set("User-Agent", cr.useragent)
+	req.Header.Set("User-Agent", ClusterUserAgent)
 	return
 }
 

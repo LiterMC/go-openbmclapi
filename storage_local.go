@@ -20,10 +20,17 @@
 package main
 
 import (
+	"compress/gzip"
+	"context"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 )
 
 type LocalStorageOption struct {
@@ -41,8 +48,15 @@ type LocalStorage struct {
 
 var _ Storage = (*LocalStorage)(nil)
 
+func init() {
+	RegisterStorageFactory(StorageLocal, StorageFactory{
+		New:       func() any { return new(LocalStorage) },
+		NewConfig: func() any { return new(LocalStorageOption) },
+	})
+}
+
 func (s *LocalStorage) String() string {
-	return fmt.Sprintf("<LocalStorage cache=%q>", s.CachePath)
+	return fmt.Sprintf("<LocalStorage cache=%q>", s.opt.CachePath)
 }
 
 func (s *LocalStorage) Options() any {
@@ -53,7 +67,7 @@ func (s *LocalStorage) SetOptions(newOpts any) {
 	s.opt = *(newOpts.(*LocalStorageOption))
 }
 
-func (s *LocalStorage) Init() (err error) {
+func (s *LocalStorage) Init(context.Context) (err error) {
 	tmpDir := s.opt.TmpPath()
 	os.RemoveAll(tmpDir)
 	// should be 0755 here because Windows permission issue
@@ -63,6 +77,7 @@ func (s *LocalStorage) Init() (err error) {
 	if err = initCache(s.opt.CachePath); err != nil {
 		return
 	}
+	return
 }
 
 func (s *LocalStorage) hashToPath(hash string) string {
@@ -70,7 +85,7 @@ func (s *LocalStorage) hashToPath(hash string) string {
 }
 
 func (s *LocalStorage) Size(hash string) (int64, error) {
-	stat, err := os.Open(s.hashToPath(hash))
+	stat, err := os.Stat(s.hashToPath(hash))
 	if err != nil {
 		return 0, err
 	}
@@ -90,47 +105,24 @@ func (s *LocalStorage) Remove(hash string) error {
 }
 
 func (s *LocalStorage) WalkDir(walker func(hash string) error) error {
-	var b [1]byte
-	for i := 0; i < 0x100; i++ {
-		b[0] = (byte)(i)
-		dir := hex.EncodeToString(b[:])
-		files, err := os.ReadDir(filepath.Join(s.opt.CachePath, dir))
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return
-		}
-		for _, f := range files {
-			if !f.IsDir() {
-				if name := f.Name(); len(name) >= 2 && name[:2] == dir {
-					if err = walker(f.Name()); err != nil {
-						return
-					}
-				}
-			}
-		}
-	}
-	return nil
+	return walkCacheDir(s.opt.CachePath, walker)
 }
 
-func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string) error {
+func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
 	acceptEncoding := splitCSV(req.Header.Get("Accept-Encoding"))
 	name := req.URL.Query().Get("name")
 
 	hasGzip := false
 	isGzip := false
 	path := s.hashToPath(hash)
-	if config.UseGzip {
+	if s.opt.Compressor == GzipCompressor {
 		if _, err := os.Stat(path + ".gz"); err == nil {
 			hasGzip = true
 		}
 	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		if !hasGzip {
-			if hasGzip, err = cr.DownloadFile(req.Context(), hash); err != nil {
-				return err
-			}
+			return 0, err
 		}
 		if hasGzip {
 			isGzip = true
@@ -141,16 +133,19 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 	if !isGzip && rw.Header().Get("Range") != "" {
 		fd, err := os.Open(path)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		defer fd.Close()
 
+		counter := &countReader{
+			ReadSeeker: fd,
+		}
 		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
 		rw.Header().Set("Content-Type", "application/octet-stream")
 		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 		rw.Header().Set("X-Bmclapi-Hash", hash)
-		http.ServeContent(rw, req, name, time.Time{}, fd)
-		return nil
+		http.ServeContent(rw, req, name, time.Time{}, counter)
+		return counter.n, nil
 	}
 
 	var r io.Reader
@@ -161,22 +156,24 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		}
 		fd, err := os.Open(path)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		defer fd.Close()
 		r = fd
+		size, _ = getFileSize(fd)
 		rw.Header().Set("Content-Encoding", "gzip")
 	} else {
 		fd, err := os.Open(path)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		defer fd.Close()
 		r = fd
 		if isGzip {
+			size = 0
 			if r, err = gzip.NewReader(r); err != nil {
 				logErrorf("Could not decompress %q: %v", path, err)
-				return err
+				return 0, err
 			}
 			isGzip = false
 		}
@@ -185,26 +182,54 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 	rw.Header().Set("Content-Type", "application/octet-stream")
 	rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 	rw.Header().Set("X-Bmclapi-Hash", hash)
-	if !isGzip {
-		if size, ok := cr.FileSet()[hash]; ok {
-			rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-		}
-	} else if size, err := getFileSize(r); err == nil {
+	if size > 0 {
 		rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	}
 	rw.WriteHeader(http.StatusOK)
-	if req.Method != http.MethodHead {
+	if req.Method == http.MethodGet {
 		var buf []byte
 		{
 			buf0 := bufPool.Get().(*[]byte)
 			defer bufPool.Put(buf0)
 			buf = *buf0
 		}
-		io.CopyBuffer(rw, r, buf)
+		return io.CopyBuffer(rw, r, buf)
+	}
+	return 0, nil
+}
+
+func (s *LocalStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, size int) error {
+	rw.Header().Set("Content-Length", strconv.Itoa(size*mbChunkSize))
+	rw.WriteHeader(http.StatusOK)
+	if req.Method == http.MethodGet {
+		for i := 0; i < size; i++ {
+			rw.Write(mbChunk[:])
+		}
 	}
 	return nil
 }
 
-func (s *LocalStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, size int) error {
-	//
+func walkCacheDir(cacheDir string, walker func(hash string) (err error)) (err error) {
+	var b [1]byte
+	for i := 0; i < 0x100; i++ {
+		b[0] = (byte)(i)
+		dir := hex.EncodeToString(b[:])
+		files, err := os.ReadDir(filepath.Join(cacheDir, dir))
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return err
+		}
+		for _, f := range files {
+			if !f.IsDir() {
+				if hash := f.Name(); len(hash) >= 2 && hash[:2] == dir {
+					if err := walker(hash); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
 }

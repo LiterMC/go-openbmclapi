@@ -39,6 +39,10 @@ import (
 	"time"
 )
 
+const mbChunkSize = 1024 * 1024
+
+var mbChunk [mbChunkSize]byte
+
 var closedCh = func() <-chan struct{} {
 	ch := make(chan struct{}, 0)
 	close(ch)

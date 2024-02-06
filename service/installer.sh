@@ -48,6 +48,7 @@ function fetchBlob(){
 	echo -e "\e[34m==> Downloaded $source\e[0m"
 	mv "$tmpf" "$target" || return $?
 	echo -e "\e[34m==> Installed to $target\e[0m"
+	chown $USERNAME "$target"
 	if [ -n "$filemod" ]; then
 		chmod "$filemod" "$target" || return $?
 	fi
@@ -92,7 +93,9 @@ case "`uname -m`" in
         GOARCH="arm"
     ;;
     *)
-        echo -e "\e[31mUnknown CPU architecture: `uname -m`\e[0m"
+        echo -e "\e[31m
+Unknown CPU architecture: `uname -m`
+Please report to https://github.com/LiterMC/go-openbmclapi/issues/new\e[0m"
         exit 1
 esac
 
@@ -101,8 +104,7 @@ echo -e "\e[34m==> Downloading $source\e[0m"
 curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"
 echo -e "\e[34m==> Add user openbmclapi and setting privilege\e[0m"
 if ! id $USERNAME >/dev/null 2>&1; then
-    useradd openbmclapi
-	[ -d $BASE_PATH/cache ] || { mkdir -p $BASE_PATH/cache $BASE_PATH/data; } || exit $?
+	useradd $USERNAME
 	[ -d $BASE_PATH/config.yaml ] || fetchBlob config.yaml $BASE_PATH/config.yaml 0600 || exit $?
 	chown -R $USERNAME:$USERNAME $BASE_PATH
 	chmod 0755 "$BASE_PATH/service-linux-go-openbmclapi" || exit $?

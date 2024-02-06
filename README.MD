@@ -195,3 +195,7 @@ Sub commands:
       overwrite | o : 覆盖存在的未压缩的目标文件
       keep | k : 不删除解压缩过的文件
 ```
+
+## 致谢
+
+[OpenBMCLAPI-TyeScript](https://github.com/bangbang93/openbmclapi)（@bangbang93）

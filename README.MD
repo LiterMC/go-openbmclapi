@@ -198,4 +198,4 @@ Sub commands:
 
 ## 致谢
 
-[OpenBMCLAPI-TyeScript](https://github.com/bangbang93/openbmclapi)（[@bangbang93](https://github.com/bangbang93/openbmclapi)）
+[OpenBMCLAPI-TyeScript](https://github.com/bangbang93/openbmclapi)（[@bangbang93](https://github.com/bangbang93)）

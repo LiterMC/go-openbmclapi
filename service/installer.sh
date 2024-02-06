@@ -101,7 +101,7 @@ source="${MIRROR_PREFIX}$latest_src/go-openbmclapi-linux-$GOARCH"
 echo -e "\e[34m==> Downloading $source\e[0m"
 curl -fL -o "$BASE_PATH/service-linux-go-openbmclapi" "$source"
 echo -e "\e[34m==> Add user openbmclapi and setting privilege\e[0m"
-if ! id $USERNAME; then
+if ! id $USERNAME >/dev/null 2>&1; then
     useradd openbmclapi
 	[ -d $BASE_PATH/cache ] || { mkdir -p $BASE_PATH/cache $BASE_PATH/data; } || exit $?
 	[ -d $BASE_PATH/config.yaml ] || fetchBlob config.yaml $BASE_PATH/config.yaml 0600 || exit $?

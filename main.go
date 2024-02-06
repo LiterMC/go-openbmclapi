@@ -334,21 +334,16 @@ START:
 		}()
 	}
 
-	var ossList []*OSSItem
-	if config.Oss.Enable {
-		ossList = config.Oss.List
-	}
-
 	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
-	cluster, err := NewCluster(ctx,
+	cluster := NewCluster(ctx,
 		"https://openbmclapi.bangbang93.com",
 		baseDir,
 		config.PublicHost, config.PublicPort,
 		config.ClusterId, config.ClusterSecret,
 		config.Byoc, dialer,
-		ossList,
+		config.Storages,
 	)
-	if err != nil {
+	if err := cluster.Init(); err != nil {
 		logError("Cannot init cluster:", err)
 		os.Exit(1)
 	}

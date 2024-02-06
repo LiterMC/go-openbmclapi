@@ -67,10 +67,6 @@ func splitCSV(line string) (values map[string]float32) {
 	return
 }
 
-func hashToFilename(hash string) string {
-	return filepath.Join(hash[0:2], hash)
-}
-
 func createInterval(ctx context.Context, do func(), delay time.Duration) {
 	logDebug("Interval created:", ctx)
 	go func() {

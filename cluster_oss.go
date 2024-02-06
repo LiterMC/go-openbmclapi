@@ -34,183 +34,20 @@ import (
 	"time"
 )
 
-type fileInfoWithTargets struct {
-	FileInfo
-	targets []string
-}
-
-func (cr *Cluster) CheckFilesOSS(dir string, files []FileInfo, heavy bool, missing map[string]*fileInfoWithTargets) {
-	addMissing := func(f FileInfo) {
-		if info := missing[f.Hash]; info != nil {
-			info.targets = append(info.targets, dir)
-		} else {
-			missing[f.Hash] = &fileInfoWithTargets{
-				FileInfo: f,
-				targets:  []string{dir},
-			}
-		}
-	}
-	logInfof("Start checking files at %q, heavy = %v", dir, heavy)
-	var hashBuf [64]byte
-	for i, f := range files {
-		p := filepath.Join(dir, hashToFilename(f.Hash))
-		logDebugf("Checking file %s [%.2f%%]", p, (float32)(i+1)/(float32)(len(files))*100)
-		if f.Size == 0 {
-			logDebugf("Skipped empty file %s", p)
-			continue
-		}
-		stat, err := os.Stat(p)
-		if err == nil {
-			if sz := stat.Size(); sz != f.Size {
-				logInfof("Found modified file: size of %q is %s, expect %s",
-					p, bytesToUnit((float64)(sz)), bytesToUnit((float64)(f.Size)))
-				goto MISSING
-			}
-			if heavy {
-				hashMethod, err := getHashMethod(len(f.Hash))
-				if err != nil {
-					logErrorf("Unknown hash method for %q", f.Hash)
-					continue
-				}
-				hw := hashMethod.New()
-
-				fd, err := os.Open(p)
-				if err != nil {
-					logErrorf("Could not open %q: %v", p, err)
-					goto MISSING
-				}
-				_, err = io.Copy(hw, fd)
-				fd.Close()
-				if err != nil {
-					logErrorf("Could not calculate hash for %q: %v", p, err)
-					continue
-				}
-				if hs := hex.EncodeToString(hw.Sum(hashBuf[:0])); hs != f.Hash {
-					logInfof("Found modified file: hash of %q is %s, expect %s", p, hs, f.Hash)
-					goto MISSING
-				}
-			}
-			continue
-		}
-		logDebugf("Could not found file %q", p)
-	MISSING:
-		os.Remove(p)
-		addMissing(f)
-	}
-	logInfo("File check finished")
-	return
-}
-
-func (cr *Cluster) ossSyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
-	missingMap := make(map[string]*fileInfoWithTargets, 4)
-	for _, item := range cr.ossList {
-		dir := filepath.Join(item.FolderPath, "download")
-		cr.CheckFilesOSS(dir, files, heavyCheck, missingMap)
-	}
-
-	missing := make([]*fileInfoWithTargets, 0, len(missingMap))
-	for _, f := range missingMap {
-		missing = append(missing, f)
-	}
-
-	fl := len(missing)
-	if fl == 0 {
-		logInfo("All oss files was synchronized")
-		return nil
-	}
-
-	var stats syncStats
-	stats.fl = fl
-	for _, f := range missing {
-		stats.totalsize += (float64)(f.Size)
-	}
-
-	logInfof("Starting sync files, count: %d, total: %s", fl, bytesToUnit(stats.totalsize))
-	start := time.Now()
-
-	done := make(chan struct{}, 1)
-
-	for _, f := range missing {
-		logDebugf("File %s is for %v", f.Hash, f.targets)
-		pathRes, err := cr.fetchFile(ctx, &stats, f.FileInfo)
-		if err != nil {
-			logWarn("File sync interrupted")
-			return err
-		}
-		go func(f *fileInfoWithTargets) {
-			defer func() {
-				select {
-				case done <- struct{}{}:
-				case <-ctx.Done():
-				}
-			}()
-			select {
-			case path := <-pathRes:
-				if path != "" {
-					defer os.Remove(path)
-					// acquire slot here
-					buf := <-cr.bufSlots
-					defer func() {
-						cr.bufSlots <- buf
-					}()
-					var srcFd *os.File
-					if srcFd, err = os.Open(path); err != nil {
-						return
-					}
-					defer srcFd.Close()
-					relpath := hashToFilename(f.Hash)
-					for _, target := range f.targets {
-						target = filepath.Join(target, relpath)
-						dstFd, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-						if err != nil {
-							logErrorf("Could not create %q: %v", target, err)
-							continue
-						}
-						if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-							logErrorf("Could not seek file %q: %v", path, err)
-							continue
-						}
-						_, err = io.CopyBuffer(dstFd, srcFd, buf)
-						dstFd.Close()
-						if err != nil {
-							logErrorf("Could not copy from %q to %q:\n\t%v", path, target, err)
-							continue
-						}
-					}
-				}
-			case <-ctx.Done():
-				return
-			}
-		}(f)
-	}
-	for i := len(missing); i > 0; i-- {
-		select {
-		case <-done:
-		case <-ctx.Done():
-			logWarn("File sync interrupted")
-			return ctx.Err()
-		}
-	}
-
-	use := time.Since(start)
-	logInfof("All files was synchronized, use time: %v, %s/s", use, bytesToUnit(stats.totalsize/use.Seconds()))
-	return nil
-}
-
 const glbChunkSize = 1024 * 1024
 
 var glbChunk [glbChunkSize]byte
 
-func createOssMirrorDir(item *OSSItem) {
-	logInfof("Creating OSS folder %s", item.FolderPath)
-	if err := os.MkdirAll(item.FolderPath, 0755); err != nil && !errors.Is(err, os.ErrExist) {
-		logErrorf("Cannot create OSS mirror folder %q: %v", item.FolderPath, err)
+func createOssMirrorDir(path string, createAll bool) {
+	logInfof("Creating OSS folder %s", path)
+	if err := os.MkdirAll(path, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		logErrorf("Cannot create OSS mirror folder %q: %v", path, err)
 		os.Exit(2)
 	}
 
-	if item.PreCreateMeasures {
+	if createAll {
 		logDebug("Creating measure files")
-		measureDir := filepath.Join(item.FolderPath, "measure")
+		measureDir := filepath.Join(path, "measure")
 		if err := os.Mkdir(measureDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 			logErrorf("Cannot create OSS mirror folder %q: %v", measureDir, err)
 			os.Exit(2)
@@ -252,15 +89,15 @@ func createMeasureFile(baseDir string, size int) (err error) {
 	return nil
 }
 
-func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int) (supportRange bool, err error) {
+func checkWebdav(ctx context.Context, client *http.Client, redirectBase string, folderPath string, size int) (supportRange bool, err error) {
 	targetSize := (int64)(size) * 1024 * 1024
-	logInfof("Checking %s for %d bytes ...", item.RedirectBase, targetSize)
+	logInfof("Checking %s for %d bytes ...", redirectBase, targetSize)
 
-	if err = createMeasureFile(filepath.Join(item.FolderPath, "measure"), size); err != nil {
+	if err = createMeasureFile(filepath.Join(folderPath, "measure"), size); err != nil {
 		return
 	}
 
-	target, err := url.JoinPath(item.RedirectBase, "measure", strconv.Itoa(size))
+	target, err := url.JoinPath(redirectBase, "measure", strconv.Itoa(size))
 	if err != nil {
 		return false, fmt.Errorf("Cannot check OSS server: %w", err)
 	}
@@ -303,43 +140,5 @@ func checkOSS(ctx context.Context, client *http.Client, item *OSSItem, size int)
 		return false, fmt.Errorf("OSS check request failed %q: expected %d bytes, but got %d bytes", target, targetSize, n)
 	}
 	logInfof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, bytesToUnit((float64)(n)/used.Seconds()), supportRange)
-	return
-}
-
-func (cr *Cluster) DownloadFileOSS(ctx context.Context, dir string, hash string) (err error) {
-	hashMethod, err := getHashMethod(len(hash))
-	if err != nil {
-		return
-	}
-
-	var buf []byte
-	{
-		buf0 := bufPool.Get().(*[]byte)
-		defer bufPool.Put(buf0)
-		buf = *buf0
-	}
-	f := FileInfo{
-		Path: "/openbmclapi/download/" + hash + "?noopen=1",
-		Hash: hash,
-		Size: -1,
-	}
-	target := filepath.Join(dir, hashToFilename(hash))
-	done, ok := cr.lockDownloading(target)
-	if ok {
-		select {
-		case err = <-done:
-		case <-cr.Disabled():
-		}
-		return
-	}
-	defer func() {
-		done <- err
-	}()
-	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf)
-	if err != nil {
-		return
-	}
-	defer os.Remove(path)
-	err = copyFile(path, target, 0644)
 	return
 }

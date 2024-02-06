@@ -28,16 +28,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type OSSItem struct {
-	FolderPath        string `yaml:"folder_path"`
-	RedirectBase      string `yaml:"redirect_base"`
-	PreCreateMeasures bool   `yaml:"pre-create-measures"`
-	Possibility       uint   `yaml:"possibility"`
-
-	supportRange bool
-	working      atomic.Bool
-}
-
 type ServeLimitConfig struct {
 	Enable     bool `yaml:"enable"`
 	MaxConn    int  `yaml:"max_conn"`
@@ -49,19 +39,6 @@ type DashboardConfig struct {
 	PwaName      string `yaml:"pwa-name"`
 	PwaShortName string `yaml:"pwa-short_name"`
 	PwaDesc      string `yaml:"pwa-description"`
-}
-
-type OSSConfig struct {
-	Enable bool       `yaml:"enable"`
-	List   []*OSSItem `yaml:"list"`
-}
-
-type HijackConfig struct {
-	Enable        bool   `yaml:"enable"`
-	ServerHost    string `yaml:"server_host"`
-	ServerPort    uint16 `yaml:"server_port"`
-	Path          string `yaml:"path"`
-	AntiHijackDNS string `yaml:"anti_hijack_dns"`
 }
 
 type Config struct {
@@ -85,8 +62,7 @@ type Config struct {
 	UseGzip              bool             `yaml:"use_gzip"`
 	ServeLimit           ServeLimitConfig `yaml:"serve_limit"`
 	Dashboard            DashboardConfig  `yaml:"dashboard"`
-	Oss                  OSSConfig        `yaml:"oss"`
-	Hijack               HijackConfig     `yaml:"hijack"`
+	Storages             []StorageOption  `yaml:"storages"`
 }
 
 func (cfg *Config) applyWebManifest(manifest map[string]any) {
@@ -129,24 +105,14 @@ var defaultConfig = Config{
 		PwaDesc:      "Go-Openbmclapi Internal Dashboard",
 	},
 
-	Oss: OSSConfig{
-		Enable: false,
-		List: []*OSSItem{
-			{
-				FolderPath:        "oss_mirror",
-				RedirectBase:      "https://oss.example.com/base/paths",
-				PreCreateMeasures: false,
-				Possibility:       0,
+	Storages: []StorageOption{
+		{
+			Type:   StorageLocal,
+			Weight: 100,
+			Data: LocalStorageOption{
+				CachePath: "cache",
 			},
 		},
-	},
-
-	Hijack: HijackConfig{
-		Enable:        false,
-		ServerHost:    "",
-		ServerPort:    8090,
-		Path:          "__hijack",
-		AntiHijackDNS: "8.8.8.8:53",
 	},
 }
 
@@ -157,6 +123,48 @@ func migrateConfig(data []byte, config *Config) {
 	}
 	if nohttps, ok := oldConfig["nohttps"].(bool); ok {
 		config.Byoc = nohttps
+	}
+	if config.Storages == nil {
+		if oss, ok := oldConfig["oss"].(map[string]any); ok {
+			var list []StorageOption
+			if oss["enable"] == true {
+				if list, ok := oss["list"].([]any); ok {
+					for _, v := range list {
+						if item, ok := v.(map[string]any); ok {
+							var (
+								stItem StorageOption
+								mountOpt = new(MountStorageOption)
+							)
+							stItem.Type = StorageMount
+							folderPath, ok := item["folder_path"].(string)
+							if !ok {
+								continue
+							}
+							mountOpt.FolderPath = folderPath
+							redirectBase, ok := item["redirect_base"].(string)
+							if !ok {
+								continue
+							}
+							mountOpt.RedirectBase = redirectBase
+							possibility, ok := item["possibility"].(int)
+							if !ok {
+								possibility = 100
+							}
+							stItem.Weight = (uint)(possibility)
+							stItem.Data = mountOpt
+							list = append(list, item)
+						}
+					}
+				}
+			} else {
+				list = []StorageOption{
+					{
+						Type: StorageLocal,
+					},
+				}
+			}
+			config.Storages = list
+		}
 	}
 }
 

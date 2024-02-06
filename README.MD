@@ -56,6 +56,8 @@ A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 4. 使用`systemctl start go-openbmclapi.service`启动服务
    - 使用`systemctl reload go-openbmclapi.service`可重新加载配置文件
    - 使用`systemctl stop go-openbmclapi.service`停止服务
+   - 使用`systemctl enable go-openbmclapi.service`让服务自启动
+   - 使用`systemctl disable go-openbmclapi.service`禁止服务自启动
    - 使用`journalctl -f --output cat -u go-openbmclapi.service`实时监听日志
 
 ### 从源代码运行

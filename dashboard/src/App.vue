@@ -38,7 +38,7 @@ const langNameMap: { [key: string]: string } = {
 				</template>
 			</Dropdown>
 		</div>
-		<a class="nav-github" target="_blank" tabindex="-1" href="https://github.com/LiterMC/go-openbmclapi">
+		<a class="nav-github" target="_blank" tabindex="-1" href="https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#go-openbmclapi">
 			<i class="pi pi-github"></i>
 			<span>Github</span>
 			<i class="pi pi-external-link"></i>

@@ -111,6 +111,14 @@ var defaultConfig = Config{
 	},
 
 	Storages: nil,
+
+	WebdavUsers: map[string]*WebDavUser{
+		"example-user": &WebDavUser{
+			EndPoint: "https://webdav.example.com/path/to/endpoint/",
+			Username: "example-username",
+			Password: "example-password",
+		},
+	},
 }
 
 func migrateConfig(data []byte, config *Config) {

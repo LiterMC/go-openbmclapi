@@ -30,3 +30,8 @@ storages:
       data:
         cache-path: cache
         compressor: ""
+webdav-users:
+    example-user:
+        endpoint: https://webdav.example.com/path/to/endpoint/
+        username: example-username
+        password: example-password

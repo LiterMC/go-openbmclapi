@@ -51,11 +51,12 @@ var (
 	_ yaml.Unmarshaler = (*WebDavStorageOption)(nil)
 )
 
-func (o *WebDavStorageOption) MarshalYAML() (v any, err error) {
+func (o *WebDavStorageOption) MarshalYAML() (any, error) {
 	if o.Alias != "" {
 		return o.basicWebDavStorageOption, nil
 	}
-	return o.WebDavUser, nil
+	type T WebDavStorageOption
+	return (*T)(o), nil
 }
 
 func (o *WebDavStorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
@@ -102,7 +103,7 @@ func (s *WebDavStorage) SetOptions(newOpts any) {
 func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 	if alias := s.opt.Alias; alias != "" {
 		user := config.WebdavUsers[alias]
-		if user != nil {
+		if user == nil {
 			logErrorf("Web dav user %q does not exists", alias)
 			os.Exit(1)
 		}

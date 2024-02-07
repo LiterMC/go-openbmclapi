@@ -40,27 +40,35 @@ type DashboardConfig struct {
 	PwaDesc      string `yaml:"pwa-description"`
 }
 
+type WebDavUser struct {
+	EndPoint string `yaml:"endpoint"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
 type Config struct {
-	Debug                bool             `yaml:"debug"`
-	RecordServeInfo      bool             `yaml:"record-serve-info"`
-	SkipFirstSync        bool             `yaml:"skip-first-sync"`
-	ExitWhenDisconnected bool             `yaml:"exit-when-disconnected"`
-	LogSlots             int              `yaml:"log-slots"`
-	Byoc                 bool             `yaml:"byoc"`
-	NoOpen               bool             `yaml:"noopen"`
-	NoHeavyCheck         bool             `yaml:"no-heavy-check"`
-	TrustedXForwardedFor bool             `yaml:"trusted-x-forwarded-for"`
-	PublicHost           string           `yaml:"public-host"`
-	PublicPort           uint16           `yaml:"public-port"`
-	Port                 uint16           `yaml:"port"`
-	ClusterId            string           `yaml:"cluster-id"`
-	ClusterSecret        string           `yaml:"cluster-secret"`
-	SyncInterval         int              `yaml:"sync-interval"`
-	KeepaliveTimeout     int              `yaml:"keepalive-timeout"`
-	DownloadMaxConn      int              `yaml:"download-max-conn"`
-	ServeLimit           ServeLimitConfig `yaml:"serve-limit"`
-	Dashboard            DashboardConfig  `yaml:"dashboard"`
-	Storages             []StorageOption  `yaml:"storages"`
+	Debug                bool   `yaml:"debug"`
+	RecordServeInfo      bool   `yaml:"record-serve-info"`
+	SkipFirstSync        bool   `yaml:"skip-first-sync"`
+	ExitWhenDisconnected bool   `yaml:"exit-when-disconnected"`
+	LogSlots             int    `yaml:"log-slots"`
+	Byoc                 bool   `yaml:"byoc"`
+	NoOpen               bool   `yaml:"noopen"`
+	NoHeavyCheck         bool   `yaml:"no-heavy-check"`
+	TrustedXForwardedFor bool   `yaml:"trusted-x-forwarded-for"`
+	PublicHost           string `yaml:"public-host"`
+	PublicPort           uint16 `yaml:"public-port"`
+	Port                 uint16 `yaml:"port"`
+	ClusterId            string `yaml:"cluster-id"`
+	ClusterSecret        string `yaml:"cluster-secret"`
+	SyncInterval         int    `yaml:"sync-interval"`
+	KeepaliveTimeout     int    `yaml:"keepalive-timeout"`
+	DownloadMaxConn      int    `yaml:"download-max-conn"`
+
+	ServeLimit  ServeLimitConfig       `yaml:"serve-limit"`
+	Dashboard   DashboardConfig        `yaml:"dashboard"`
+	Storages    []StorageOption        `yaml:"storages"`
+	WebdavUsers map[string]*WebDavUser `yaml:"webdav-users"`
 }
 
 func (cfg *Config) applyWebManifest(manifest map[string]any) {

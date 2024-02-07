@@ -145,8 +145,9 @@ func (s *MountStorage) WalkDir(walker func(hash string) error) error {
 
 func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
 	now := time.Now()
+	needCheck := now.Sub(s.lastCheck) > time.Minute*3
 	if s.working.Load() != 1 {
-		if now.Sub(s.lastCheck) > time.Minute && s.working.CompareAndSwap(0, 2) {
+		if needCheck && s.working.CompareAndSwap(0, 2) {
 			tctx, cancel := context.WithTimeout(req.Context(), time.Second*5)
 			if supportRange, err := s.checkAlive(tctx, 0); err == nil {
 				s.supportRange.Store(supportRange)
@@ -159,6 +160,17 @@ func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		if s.working.Load() != 1 {
 			return 0, errNotWorking
 		}
+	} else if needCheck {
+		go func() {
+			tctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+			if supportRange, err := s.checkAlive(tctx, 0); err == nil {
+				s.supportRange.Store(supportRange)
+				s.working.Store(1)
+			} else {
+				s.working.Store(0)
+			}
+		}()
 	}
 
 	target, err := url.JoinPath(s.opt.RedirectBase, "download", hash[:2], hash)
@@ -205,7 +217,7 @@ func (s *MountStorage) createMeasureFile(size int) (err error) {
 		if x == tsz {
 			return nil
 		}
-		logDebugf("File [%d] size %d does not match %d", size, x, size)
+		logDebugf("File [%d] size %d does not match %d", size, x, tsz)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		logErrorf("Cannot get stat of %s: %v", t, err)
 	}

@@ -401,12 +401,6 @@ func (cr *Cluster) Disabled() <-chan struct{} {
 	return cr.disabled
 }
 
-func (cr *Cluster) FileSet() map[string]int64 {
-	cr.mux.RLock()
-	defer cr.mux.RUnlock()
-	return cr.fileset
-}
-
 func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
 	cr.mux.RLock()
 	defer cr.mux.RUnlock()
@@ -720,19 +714,18 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 }
 
 func (cr *Cluster) gc() {
-	fileset := cr.FileSet()
 	for _, s := range cr.storages {
-		cr.gcFor(fileset, s)
+		cr.gcFor(s)
 	}
 }
 
-func (cr *Cluster) gcFor(fileset map[string]int64, s Storage) {
+func (cr *Cluster) gcFor(s Storage) {
 	logInfo("Starting garbage collector for", s.String())
 	err := s.WalkDir(func(hash string) error {
 		if cr.issync.Load() {
 			return context.Canceled
 		}
-		if _, ok := fileset[hash]; !ok {
+		if _, ok := cr.CachedFileSize(hash); !ok {
 			logInfo("Found outdated file:", hash)
 			s.Remove(hash)
 		}

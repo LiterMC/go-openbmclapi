@@ -141,7 +141,7 @@ function getDaysInMonth(): number {
 						:offset="29"
 						:data="stat.days"
 						:oldData="stat.prev.days"
-						:current="stat.date.day + new Date().getHours() / 24"
+						:current="stat.date.day + new Date().getUTCHours() / 24"
 						:formatXLabel="formatDay"
 					/>
 					<Skeleton v-else class="hits-chart"/>

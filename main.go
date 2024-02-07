@@ -408,7 +408,9 @@ START:
 			for _, f := range fl {
 				fileset[f.Hash] = f.Size
 			}
-			cluster.fileset.Store(&fileset)
+			cluster.mux.Lock()
+			cluster.fileset = fileset
+			cluster.mux.Unlock()
 		}
 		createInterval(ctx, func() {
 			logInfof("Fetching file list")

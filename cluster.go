@@ -53,8 +53,6 @@ type Cluster struct {
 	prefix     string
 	byoc       bool
 
-	cacheDir           string
-	tmpDir             string
 	dataDir            string
 	maxConn            int
 	storageOpts        []StorageOption
@@ -76,7 +74,7 @@ type Cluster struct {
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
 	downloading     map[string]chan error
-	fileset         atomic.Pointer[map[string]int64]
+	fileset         map[string]int64
 
 	client   *http.Client
 	bufSlots chan []byte
@@ -106,8 +104,6 @@ func NewCluster(
 		prefix:     prefix,
 		byoc:       byoc,
 
-		cacheDir:    filepath.Join(baseDir, "cache"),
-		tmpDir:      filepath.Join(baseDir, "cache", ".tmp"),
 		dataDir:     filepath.Join(baseDir, "data"),
 		maxConn:     config.DownloadMaxConn,
 		storageOpts: storageOpts,
@@ -406,11 +402,16 @@ func (cr *Cluster) Disabled() <-chan struct{} {
 }
 
 func (cr *Cluster) FileSet() map[string]int64 {
-	ptr := cr.fileset.Load()
-	if ptr == nil {
-		return nil
-	}
-	return *ptr
+	cr.mux.RLock()
+	defer cr.mux.RUnlock()
+	return cr.fileset
+}
+
+func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
+	cr.mux.RLock()
+	defer cr.mux.RUnlock()
+	size, ok = cr.fileset[hash]
+	return
 }
 
 type CertKeyPair struct {
@@ -549,8 +550,10 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	for _, f := range files {
 		fileset[f.Hash] = f.Size
 	}
-	cr.fileset.Store(&fileset)
+	cr.mux.Lock()
+	cr.fileset = fileset
 	cr.issync.Store(false)
+	cr.mux.Unlock()
 
 	go cr.gc()
 }
@@ -829,7 +832,9 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod 
 		err = fmt.Errorf("Unexpected status code: %d", res.StatusCode)
 		return
 	}
-	switch strings.ToLower(res.Header.Get("Content-Encoding")) {
+	switch ce := strings.ToLower(res.Header.Get("Content-Encoding")); ce {
+	case "":
+		r = res.Body
 	case "gzip":
 		if r, err = gzip.NewReader(res.Body); err != nil {
 			return
@@ -839,12 +844,13 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod 
 			return
 		}
 	default:
-		r = res.Body
+		err = fmt.Errorf("Unexpected Content-Encoding %q", ce)
+		return
 	}
 
 	hw := hashMethod.New()
 
-	if fd, err = os.CreateTemp(cr.tmpDir, "*.downloading"); err != nil {
+	if fd, err = os.CreateTemp("", "*.downloading"); err != nil {
 		return
 	}
 	path = fd.Name()
@@ -886,7 +892,7 @@ func (cr *Cluster) lockDownloading(target string) (chan error, bool) {
 	return ch, false
 }
 
-func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (compressed bool, err error) {
+func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	hashMethod, err := getHashMethod(len(hash))
 	if err != nil {
 		return
@@ -915,6 +921,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (compressed bo
 	defer func() {
 		done <- err
 	}()
+
 	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf)
 	if err != nil {
 		return
@@ -924,6 +931,12 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (compressed bo
 		return
 	}
 	defer srcFd.Close()
+	var stat os.FileInfo
+	if stat, err = srcFd.Stat(); err != nil {
+		return
+	}
+	size := stat.Size()
+
 	for _, target := range cr.storages {
 		dst, err := target.Create(f.Hash)
 		if err != nil {
@@ -943,5 +956,9 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (compressed bo
 			continue
 		}
 	}
+
+	cr.mux.Lock()
+	cr.fileset[hash] = size
+	cr.mux.Unlock()
 	return
 }

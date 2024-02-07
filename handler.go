@@ -275,11 +275,14 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 
 	var err error
 	// check if file was indexed in the fileset
-	size, ok := cr.FileSet()[hash]
+	size, ok := cr.CachedFileSize(hash)
 	if !ok {
-		// TODO: download file and update fileset
-		rw.WriteHeader(http.StatusNotFound)
-		return
+		logInfof("Downloading %s", hash)
+		if err := cr.DownloadFile(req.Context(), hash); err != nil {
+			logErrorf("Could not download %s: %v", hash, err)
+			rw.WriteHeader(http.StatusNotFound)
+			return
+		}
 	}
 	forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
 		storage := cr.storages[i]

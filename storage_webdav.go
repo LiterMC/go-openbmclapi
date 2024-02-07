@@ -37,13 +37,15 @@ import (
 )
 
 type basicWebDavStorageOption struct {
-	Alias          string `yaml:"alias,omitempty"`
-	PreGenMeasures bool   `yaml:"pre-gen-measures"`
 }
 
 type WebDavStorageOption struct {
-	basicWebDavStorageOption
-	*WebDavUser
+	PreGenMeasures bool `yaml:"pre-gen-measures"`
+
+	Alias     string      `yaml:"alias,omitempty"`
+	aliasUser *WebDavUser `yaml:"-"`
+
+	WebDavUser `yaml:",inline,omitempty"`
 }
 
 var (
@@ -52,25 +54,50 @@ var (
 )
 
 func (o *WebDavStorageOption) MarshalYAML() (any, error) {
-	if o.Alias != "" {
-		return o.basicWebDavStorageOption, nil
-	}
 	type T WebDavStorageOption
 	return (*T)(o), nil
 }
 
 func (o *WebDavStorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	o.Alias = ""
-	if err = n.Decode(&o.basicWebDavStorageOption); err != nil {
-		return
-	}
-	if o.Alias != "" {
-		return
-	}
-	if err = n.Decode(&o.WebDavUser); err != nil {
+	type T WebDavStorageOption
+	if err = n.Decode((*T)(o)); err != nil {
 		return
 	}
 	return
+}
+
+func (o *WebDavStorageOption) GetEndPoint() string {
+	if o.EndPoint != "" {
+		return o.EndPoint
+	}
+	if o.Alias != "" {
+		// assert o.aliasUser != nil
+		return o.aliasUser.EndPoint
+	}
+	return ""
+}
+
+func (o *WebDavStorageOption) GetUsername() string {
+	if o.Username != "" {
+		return o.Username
+	}
+	if o.Alias != "" {
+		// assert o.aliasUser != nil
+		return o.aliasUser.Username
+	}
+	return ""
+}
+
+func (o *WebDavStorageOption) GetPassword() string {
+	if o.Password != "" {
+		return o.Password
+	}
+	if o.Alias != "" {
+		// assert o.aliasUser != nil
+		return o.aliasUser.Password
+	}
+	return ""
 }
 
 type WebDavStorage struct {
@@ -89,7 +116,7 @@ func init() {
 }
 
 func (s *WebDavStorage) String() string {
-	return fmt.Sprintf("<WebDavStorage endpoint=%q user=%s>", s.opt.EndPoint, s.opt.Username)
+	return fmt.Sprintf("<WebDavStorage endpoint=%q user=%s>", s.opt.GetEndPoint(), s.opt.GetUsername())
 }
 
 func (s *WebDavStorage) Options() any {
@@ -102,17 +129,17 @@ func (s *WebDavStorage) SetOptions(newOpts any) {
 
 func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 	if alias := s.opt.Alias; alias != "" {
-		user := config.WebdavUsers[alias]
-		if user == nil {
+		user, ok := config.WebdavUsers[alias]
+		if !ok {
 			logErrorf("Web dav user %q does not exists", alias)
 			os.Exit(1)
 		}
-		s.opt.WebDavUser = user
+		s.opt.aliasUser = user
 	}
 
 	if s.cli, err = webdav.NewClient(
-		webdav.HTTPClientWithBasicAuth(http.DefaultClient, s.opt.Username, s.opt.Password),
-		s.opt.EndPoint); err != nil {
+		webdav.HTTPClientWithBasicAuth(http.DefaultClient, s.opt.GetUsername(), s.opt.GetPassword()),
+		s.opt.GetEndPoint()); err != nil {
 		return
 	}
 
@@ -166,7 +193,7 @@ var noRedirectCli = &http.Client{
 }
 
 func (s *WebDavStorage) serveWithRedirectIfPossible(rw http.ResponseWriter, req *http.Request, size int64, path string) (int64, error) {
-	target, err := url.JoinPath(s.opt.EndPoint, path)
+	target, err := url.JoinPath(s.opt.GetEndPoint(), path)
 	if err != nil {
 		return 0, err
 	}
@@ -228,7 +255,7 @@ func copyHeader(key string, dst, src http.Header) {
 }
 
 func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
-	target, err := url.JoinPath(s.opt.EndPoint, "download", hash[0:2], hash)
+	target, err := url.JoinPath(s.opt.GetEndPoint(), "download", hash[0:2], hash)
 	if err != nil {
 		return 0, err
 	}
@@ -286,7 +313,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 	if err := s.createMeasureFile(req.Context(), size); err != nil {
 		return err
 	}
-	target, err := url.JoinPath(s.opt.EndPoint, "measure", strconv.Itoa(size))
+	target, err := url.JoinPath(s.opt.GetEndPoint(), "measure", strconv.Itoa(size))
 	if err != nil {
 		return err
 	}

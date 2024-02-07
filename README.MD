@@ -169,6 +169,31 @@ storages:
         redirect-base: https://oss.example.com/base/paths
         # 启动之前在 measure 子文件夹内生成 1-200MB 的测速文件 (默认为动态生成)
         pre-gen-measures: false
+    # local 为本地存储
+    - type: local
+      # 使用该子节点的概率 (非负整数)
+      weight: 100
+      # 节点附加数据
+      data:
+        # 链接到下方 webdav-users 的键值对
+        alias: example-user
+        # Webdav 入口 URL
+        endpoint: https://webdav.example.com/path/to/optional/another/endpoint/
+        # 用户名
+        username: optional-another-username
+        # 密码
+        password: optional-another-password
+        # 同上
+        pre-gen-measures: false
+
+webdav-users:
+    example-user:
+        # Webdav 入口 URL
+        endpoint: https://webdav.example.com/path/to/endpoint/
+        # 用户名
+        username: example-username
+        # 密码
+        password: example-password
 
 ```
 

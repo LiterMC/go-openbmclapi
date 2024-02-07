@@ -41,9 +41,9 @@ type DashboardConfig struct {
 }
 
 type WebDavUser struct {
-	EndPoint string `yaml:"endpoint"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	EndPoint string `yaml:"endpoint,omitempty"`
+	Username string `yaml:"username,omitempty"`
+	Password string `yaml:"password,omitempty"`
 }
 
 type Config struct {

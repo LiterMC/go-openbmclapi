@@ -159,7 +159,7 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 }
 
 func (s *WebDavStorage) hashToPath(hash string) string {
-	return path.Join(hash[0:2], hash)
+	return path.Join("download", hash[0:2], hash)
 }
 
 func (s *WebDavStorage) Size(hash string) (int64, error) {
@@ -190,61 +190,6 @@ var noRedirectCli = &http.Client{
 	CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	},
-}
-
-func (s *WebDavStorage) serveWithRedirectIfPossible(rw http.ResponseWriter, req *http.Request, size int64, path string) (int64, error) {
-	target, err := url.JoinPath(s.opt.GetEndPoint(), path)
-	if err != nil {
-		return 0, err
-	}
-	tgReq, err := http.NewRequestWithContext(req.Context(), http.MethodHead, target, nil)
-	if err != nil {
-		return 0, err
-	}
-	rangeH := req.Header.Get("Range")
-	if rangeH != "" {
-		tgReq.Header.Set("Range", rangeH)
-	}
-	copyHeader("If-Modified-Since", tgReq.Header, req.Header)
-	copyHeader("If-Unmodified-Since", tgReq.Header, req.Header)
-	copyHeader("If-None-Match", tgReq.Header, req.Header)
-	copyHeader("If-Match", tgReq.Header, req.Header)
-	copyHeader("If-Range", tgReq.Header, req.Header)
-	resp, err := noRedirectCli.Do(tgReq)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	rwh := rw.Header()
-	switch resp.StatusCode / 100 {
-	case 3:
-		// fix the size for Ranged request
-		rgs, err := gosrc.ParseRange(rangeH, size)
-		if err == nil && len(rgs) > 0 {
-			var newSize int64 = 0
-			for _, r := range rgs {
-				newSize += r.Length
-			}
-			if newSize < size {
-				size = newSize
-			}
-		}
-		copyHeader("Location", rwh, resp.Header)
-		copyHeader("ETag", rwh, resp.Header)
-		copyHeader("Last-Modified", rwh, resp.Header)
-		rw.WriteHeader(resp.StatusCode)
-		return size, nil
-	case 2:
-		copyHeader("ETag", rwh, resp.Header)
-		copyHeader("Last-Modified", rwh, resp.Header)
-		copyHeader("Content-Length", rwh, resp.Header)
-		copyHeader("Content-Range", rwh, resp.Header)
-		rw.WriteHeader(resp.StatusCode)
-		n, _ := io.Copy(rw, resp.Body)
-		return n, nil
-	default:
-		return 0, webdav.NewHTTPError(resp.StatusCode, nil)
-	}
 }
 
 func copyHeader(key string, dst, src http.Header) {

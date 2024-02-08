@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -53,6 +54,7 @@ type MountStorage struct {
 
 	supportRange atomic.Bool
 	working      atomic.Int32
+	checkMux     sync.RWMutex
 	lastCheck    time.Time
 }
 
@@ -145,32 +147,52 @@ func (s *MountStorage) WalkDir(walker func(hash string) error) error {
 
 func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
 	now := time.Now()
-	needCheck := now.Sub(s.lastCheck) > time.Minute*3
 	if s.working.Load() != 1 {
-		if needCheck && s.working.CompareAndSwap(0, 2) {
-			tctx, cancel := context.WithTimeout(req.Context(), time.Second*5)
-			if supportRange, err := s.checkAlive(tctx, 0); err == nil {
-				s.supportRange.Store(supportRange)
-				s.working.Store(1)
-			} else {
-				s.working.Store(0)
-			}
-			cancel()
-		}
-		if s.working.Load() != 1 {
+		if !s.working.CompareAndSwap(0, 2) {
 			return 0, errNotWorking
 		}
-	} else if needCheck {
-		go func() {
-			tctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-			defer cancel()
-			if supportRange, err := s.checkAlive(tctx, 0); err == nil {
-				s.supportRange.Store(supportRange)
-				s.working.Store(1)
-			} else {
-				s.working.Store(0)
-			}
-		}()
+		s.checkMux.Lock()
+		needCheck := now.Sub(s.lastCheck) > time.Minute*3
+		if needCheck {
+			s.lastCheck = now
+		}
+		s.checkMux.Unlock()
+		if !needCheck {
+			s.working.Store(0)
+			return 0, errNotWorking
+		}
+		tctx, cancel := context.WithTimeout(req.Context(), time.Second*5)
+		supportRange, err := s.checkAlive(tctx, 0)
+		cancel()
+		if err != nil {
+			s.working.Store(0)
+			return 0, errNotWorking
+		}
+		s.supportRange.Store(supportRange)
+		s.working.Store(1)
+	} else {
+		s.checkMux.RLock()
+		lastCheck := s.lastCheck
+		s.checkMux.RUnlock()
+		if now.Sub(lastCheck) > time.Minute*3 {
+			go func() {
+				s.checkMux.Lock()
+				if s.lastCheck != lastCheck {
+					s.checkMux.Unlock()
+					return
+				}
+				s.lastCheck = now
+				s.checkMux.Unlock()
+				tctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+				defer cancel()
+				if supportRange, err := s.checkAlive(tctx, 0); err == nil {
+					s.supportRange.Store(supportRange)
+					s.working.Store(1)
+				} else {
+					s.working.Store(0)
+				}
+			}()
+		}
 	}
 
 	target, err := url.JoinPath(s.opt.RedirectBase, "download", hash[:2], hash)

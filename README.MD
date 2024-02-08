@@ -181,7 +181,7 @@ storages:
         username: optional-another-username
         # 密码
         password: optional-another-password
-        # 同上
+        # 启动之前生成 1-200MB 的测速文件 (默认为动态生成)
         pre-gen-measures: false
 
 webdav-users:

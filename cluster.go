@@ -931,7 +931,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	size := stat.Size()
 
 	for _, target := range cr.storages {
-		dst, err := target.Create(f.Hash)
+		dst, err := target.Create(hash)
 		if err != nil {
 			logErrorf("Could not create %q: %v", target.String(), err)
 			continue
@@ -945,7 +945,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 			err = e
 		}
 		if err != nil {
-			logErrorf("Could not copy from %q to %s:\n\t%v", path, target.String(), err)
+			logErrorf("Could not copy file from %q to %s/%s:\n\t%v", path, target.String(), hash, err)
 			continue
 		}
 	}

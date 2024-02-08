@@ -42,10 +42,11 @@ type basicWebDavStorageOption struct {
 type WebDavStorageOption struct {
 	PreGenMeasures bool `yaml:"pre-gen-measures"`
 
-	Alias     string      `yaml:"alias,omitempty"`
-	aliasUser *WebDavUser `yaml:"-"`
+	Alias     string `yaml:"alias,omitempty"`
+	aliasUser *WebDavUser
 
-	WebDavUser `yaml:",inline,omitempty"`
+	WebDavUser   `yaml:",inline,omitempty"`
+	fullEndPoint string
 }
 
 var (
@@ -68,14 +69,7 @@ func (o *WebDavStorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 }
 
 func (o *WebDavStorageOption) GetEndPoint() string {
-	if o.EndPoint != "" {
-		return o.EndPoint
-	}
-	if o.Alias != "" {
-		// assert o.aliasUser != nil
-		return o.aliasUser.EndPoint
-	}
-	return ""
+	return o.fullEndPoint
 }
 
 func (o *WebDavStorageOption) GetUsername() string {
@@ -135,19 +129,37 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 			os.Exit(1)
 		}
 		s.opt.aliasUser = user
+		var end *url.URL
+		if end, err = url.Parse(s.opt.aliasUser.EndPoint); err != nil {
+			return
+		}
+		if s.opt.EndPoint != "" {
+			var full *url.URL
+			if full, err = end.Parse(s.opt.EndPoint); err != nil {
+				return
+			}
+			s.opt.fullEndPoint = full.String()
+		} else {
+			s.opt.fullEndPoint = s.opt.aliasUser.EndPoint
+		}
+	} else {
+		s.opt.fullEndPoint = s.opt.EndPoint
 	}
 
 	if s.cli, err = webdav.NewClient(
-		webdav.HTTPClientWithBasicAuth(http.DefaultClient, s.opt.GetUsername(), s.opt.GetPassword()),
+		&HTTPClientWithUserAgent{
+			HTTPClient: webdav.HTTPClientWithBasicAuth(http.DefaultClient, s.opt.GetUsername(), s.opt.GetPassword()),
+			UserAgent:  ClusterUserAgentFull,
+		},
 		s.opt.GetEndPoint()); err != nil {
 		return
 	}
 
 	if err = s.cli.Mkdir(ctx, "measure"); err != nil {
-		logErrorf("Could not create measure folder %v", err)
+		logErrorf("Could not create measure folder for %s: %v", s.String(), err)
 	}
 	if s.opt.PreGenMeasures {
-		logInfo("Creating measure files")
+		logInfo("Creating measure files at %s", s.String())
 		for i := 1; i <= 200; i++ {
 			if err := s.createMeasureFile(ctx, i); err != nil {
 				os.Exit(2)
@@ -239,6 +251,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		return 0, err
 	}
 	defer resp.Body.Close()
+	logDebugf("Requested %q: status=%d", target, resp.StatusCode)
 	rwh := rw.Header()
 	switch resp.StatusCode / 100 {
 	case 3:
@@ -299,6 +312,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 	}
 	defer resp.Body.Close()
 	rwh := rw.Header()
+	logDebugf("Requested %q: status=%d", target, resp.StatusCode)
 	switch resp.StatusCode / 100 {
 	case 3:
 		copyHeader("Location", rwh, resp.Header)
@@ -307,6 +321,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 		rw.WriteHeader(resp.StatusCode)
 		return nil
 	case 2:
+		// Do not read empty file from webdav, it's not helpful
 		fallthrough
 	default:
 		rw.Header().Set("Content-Length", strconv.Itoa(size*mbChunkSize))
@@ -331,8 +346,8 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err er
 			return nil
 		}
 		logDebugf("File [%d] size %d does not match %d", size, stat.Size, tsz)
-	} else if ctx.Err() != nil {
-		return ctx.Err()
+	} else if e := ctx.Err(); e != nil {
+		return e
 	} else if !errors.Is(err, os.ErrNotExist) {
 		logErrorf("Cannot get stat of %s: %v", t, err)
 	}
@@ -342,7 +357,12 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err er
 		logErrorf("Cannot create measure file %q: %v", t, err)
 		return
 	}
-	defer w.Close()
+	defer func() {
+		if e := w.Close(); e != nil && err == nil {
+			logErrorf("Could not create measure file %q: %v", t, err)
+			err = e
+		}
+	}()
 	if size == 0 {
 		if _, err = w.Write(mbChunk[:2]); err != nil {
 			logErrorf("Cannot write measure file %q: %v", t, err)
@@ -357,4 +377,14 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err er
 		}
 	}
 	return nil
+}
+
+type HTTPClientWithUserAgent struct {
+	webdav.HTTPClient
+	UserAgent string
+}
+
+func (c *HTTPClientWithUserAgent) Do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", c.UserAgent)
+	return c.HTTPClient.Do(req)
 }

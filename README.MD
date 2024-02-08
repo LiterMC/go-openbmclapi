@@ -91,7 +91,7 @@ bash ./start.sh
 # 是否打印调试日志, 默认为否
 debug: false
 # 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
-record_serve_info: false
+record-serve-info: false
 # 跳过第一次同步, 直接启动节点 (debug用)
 skip-first-sync: false
 # 是否在连接断开后直接退出
@@ -103,7 +103,7 @@ byoc: false
 # 是否仅从主服务器下载文件
 noopen: false
 # 跳过文件哈希值校验
-no_heavy_check: false
+no-heavy-check: false
 # 是否信任 X-Forwarded-For 标头 (有反代时启用)
 trusted-x-forwarded-for: false
 # 实际开放的公网主机名, 同 CLUSTER_IP
@@ -122,8 +122,6 @@ sync-interval: 10
 keepalive-timeout: 10
 # 同步文件时最多打开的连接数量
 download-max-conn: 64
-# 是否启用 gzip 压缩
-use_gzip: false
 # 服务器上行限制
 serve-limit:
   # 是否启用上行限制

@@ -224,6 +224,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 	if err != nil {
 		return 0, err
 	}
+	tgReq.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
 	rangeH := req.Header.Get("Range")
 	if rangeH != "" {
 		tgReq.Header.Set("Range", rangeH)
@@ -282,6 +283,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 	if err != nil {
 		return err
 	}
+	tgReq.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
 	rangeH := req.Header.Get("Range")
 	if rangeH != "" {
 		tgReq.Header.Set("Range", rangeH)

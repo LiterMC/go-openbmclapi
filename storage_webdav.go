@@ -163,11 +163,11 @@ func (s *WebDavStorage) hashToPath(hash string) string {
 }
 
 func (s *WebDavStorage) Size(hash string) (int64, error) {
-	stat, err := os.Stat(s.hashToPath(hash))
+	stat, err := s.cli.Stat(context.Background(), s.hashToPath(hash))
 	if err != nil {
 		return 0, err
 	}
-	return stat.Size(), nil
+	return stat.Size, nil
 }
 
 func (s *WebDavStorage) Open(hash string) (io.ReadCloser, error) {
@@ -183,6 +183,22 @@ func (s *WebDavStorage) Remove(hash string) error {
 }
 
 func (s *WebDavStorage) WalkDir(walker func(hash string) error) error {
+	ctx := context.Background()
+	for _, dir := range hex256 {
+		files, err := s.cli.ReadDir(ctx, dir, false)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if !f.IsDir {
+				if hash := path.Base(f.Path); len(hash) >= 2 && hash[:2] == dir {
+					if err := walker(hash); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 

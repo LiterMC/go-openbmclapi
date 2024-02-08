@@ -209,11 +209,18 @@ func (s *LocalStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 	return nil
 }
 
-func walkCacheDir(cacheDir string, walker func(hash string) (err error)) (err error) {
+var hex256 = func() (hex256 []string) {
+	hex256 = make([]string, 0x100)
 	var b [1]byte
 	for i := 0; i < 0x100; i++ {
 		b[0] = (byte)(i)
-		dir := hex.EncodeToString(b[:])
+		hex256[i] = hex.EncodeToString(b[:])
+	}
+	return
+}()
+
+func walkCacheDir(cacheDir string, walker func(hash string) (err error)) (err error) {
+	for _, dir := range hex256 {
 		files, err := os.ReadDir(filepath.Join(cacheDir, dir))
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {

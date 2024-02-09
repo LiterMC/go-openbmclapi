@@ -312,10 +312,14 @@ START:
 	)
 
 	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
+	publicPort := config.PublicPort
+	if publicPort == 0 {
+		publicPort = config.Port
+	}
 	cluster := NewCluster(ctx,
 		"https://openbmclapi.bangbang93.com",
 		baseDir,
-		config.PublicHost, config.PublicPort,
+		config.PublicHost, publicPort,
 		config.ClusterId, config.ClusterSecret,
 		config.Byoc, dialer,
 		config.Storages,
@@ -377,7 +381,7 @@ START:
 			if publicHost == "" {
 				publicHost = config.PublicHost
 			}
-			logInfof("Server public at https://%s:%d (%s)", publicHost, config.PublicPort, clusterSvr.Addr)
+			logInfof("Server public at https://%s:%d (%s)", publicHost, publicPort, clusterSvr.Addr)
 		} else {
 			go func() {
 				defer listener.Close()
@@ -386,7 +390,7 @@ START:
 					os.Exit(1)
 				}
 			}()
-			logInfof("Server public at https://%s:%d (%s)", config.PublicHost, config.PublicPort, clusterSvr.Addr)
+			logInfof("Server public at https://%s:%d (%s)", config.PublicHost, publicPort, clusterSvr.Addr)
 		}
 
 		logInfof("Fetching file list")

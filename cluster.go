@@ -554,20 +554,24 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 
 type fileInfoWithTargets struct {
 	FileInfo
+	tgMux   sync.Mutex
 	targets []Storage
 }
 
-func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, missing map[string]*fileInfoWithTargets) {
+func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, missing *SyncMap[string, *fileInfoWithTargets]) {
 	addMissing := func(f FileInfo) {
-		if info := missing[f.Hash]; info != nil {
-			info.targets = append(info.targets, storage)
-		} else {
-			missing[f.Hash] = &fileInfoWithTargets{
+		if info, has := missing.GetOrSet(f.Hash, func() *fileInfoWithTargets {
+			return &fileInfoWithTargets{
 				FileInfo: f,
 				targets:  []Storage{storage},
 			}
+		}); has {
+			info.tgMux.Lock()
+			info.targets = append(info.targets, storage)
+			info.tgMux.Unlock()
 		}
 	}
+
 	logInfof("Start checking files for %s, heavy = %v", storage.String(), heavy)
 	var buf [1024 * 32]byte
 	for i, f := range files {
@@ -611,28 +615,33 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 		}
 		logDebugf("Could not found file %q", hash)
 	MISSING:
-		storage.Remove(f.Hash)
 		addMissing(f)
 	}
-	logInfo("File check finished")
+	logInfo("File check finished for %s", storage.String())
 	return
 }
 
 func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
-	missingMap := make(map[string]*fileInfoWithTargets, 4)
+	missingMap := NewSyncMap[string, *fileInfoWithTargets]()
+	var wg sync.WaitGroup
 	for _, s := range cr.storages {
-		cr.checkFileFor(s, files, heavyCheck, missingMap)
+		wg.Add(1)
+		go func(s Storage) {
+			defer wg.Done()
+			cr.checkFileFor(s, files, heavyCheck, missingMap)
+		}(s)
 	}
+	wg.Wait()
 
-	missing := make([]*fileInfoWithTargets, 0, len(missingMap))
-	for _, f := range missingMap {
-		missing = append(missing, f)
-	}
-
-	fl := len(missing)
+	fl := len(missingMap.m)
 	if fl == 0 {
 		logInfo("All oss files was synchronized")
 		return nil
+	}
+
+	missing := make([]*fileInfoWithTargets, 0, len(missingMap.m))
+	for _, f := range missingMap.m {
+		missing = append(missing, f)
 	}
 
 	var stats syncStats

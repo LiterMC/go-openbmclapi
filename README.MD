@@ -73,10 +73,10 @@ A: 服务端启动时会输出 `https://<public-host>:<public-port>`, 访问这�
 ### 从源代码运行
 
 1. 下载本仓库 _(可以使用`git clone https://github.com/LiterMC/go-openbmclapi.git`)_
-2. 确保您的服务器上装有`go 1.21+`
+2. 确保您的服务器上装有 `go 1.21+` 以及 `node & npm`
 3. cd进入本仓库
 4. 配置配置文件或环境变量
-5. 使用`go run .`运行本程序
+5. 使用 `go generate . && go run .` 运行本程序
 
 ### 第三方自更新+无依赖直接运行脚本
 

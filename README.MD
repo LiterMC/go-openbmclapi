@@ -57,6 +57,11 @@ A: 服务端启动时会输出 `https://<public-host>:<public-port>`, 访问这�
    sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh)"
    ```
    > 注意, 新版新增使用 `openbmclapi` 用户执行程序, 可能需要执行 `sudo chown -R openbmclapi /opt/openbmclapi` 指令修复权限
+
+   国内对 Github 的支持较差, 可以使用 ghproxy 等镜像站运行脚本, 本例中使用了 [crashmc.com](https://crashmc.com) 提供的 CDN:
+   ```sh
+   MIRROR_PREFIX=https://cdn.crashmc.com/ sudo bash -c "$(curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh)"
+   ```
 3. 配置`/opt/openbmclapi/config.yaml`配置文件
 4. 使用`systemctl start go-openbmclapi.service`启动服务
    - 使用`systemctl reload go-openbmclapi.service`可重新加载配置文件

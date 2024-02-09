@@ -7,8 +7,8 @@ byoc: false
 noopen: false
 no-heavy-check: false
 trusted-x-forwarded-for: false
-public-host: example.com
-public-port: 8080
+public-host: ""
+public-port: 0
 port: 4000
 cluster-id: ${CLUSTER_ID}
 cluster-secret: ${CLUSTER_SECRET}

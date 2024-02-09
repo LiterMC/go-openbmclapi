@@ -32,6 +32,10 @@ A: 检查 [Go Platform Values](https://gist.github.com/asukakenji/f15ba7e588ac42
 Q: 版本号格式  
 A: `v<openbmclapi 版本>-<go-openbmclapi 构建计数>`, 例: `v1.6.7-60`
 
+Q: 面板在哪里访问?  
+A: 服务端启动时会输出 `https://<public-host>:<public-port>`, 访问这个地址就可以了
+   > 注: 面板与 openbmclapi 下载服务共用一个端口, 并非单独配置
+
 ## 安装
 
 ### 无依赖直接运行

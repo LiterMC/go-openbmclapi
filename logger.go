@@ -50,10 +50,10 @@ func logX(x string, args ...any) {
 	buf.WriteString(time.Now().Format(logTimeFormat))
 	buf.WriteString("]: ")
 	buf.WriteString(c)
-	fmt.Fprintln(os.Stdout, buf.String())
+	buf.WriteByte('\n')
+	os.Stdout.Write(buf.Bytes())
 	if fd := logfile.Load(); fd != nil {
 		fd.Write(buf.Bytes())
-		fd.Write([]byte{'\n'})
 	}
 }
 
@@ -67,10 +67,10 @@ func logXf(x string, format string, args ...any) {
 	buf.WriteString(time.Now().Format(logTimeFormat))
 	buf.WriteString("]: ")
 	buf.WriteString(c)
-	fmt.Fprintln(os.Stdout, buf.String())
+	buf.WriteByte('\n')
+	os.Stdout.Write(buf.Bytes())
 	if fd := logfile.Load(); fd != nil {
 		fd.Write(buf.Bytes())
-		fd.Write([]byte{'\n'})
 	}
 }
 

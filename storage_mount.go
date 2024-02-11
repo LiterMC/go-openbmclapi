@@ -230,6 +230,7 @@ func (s *MountStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 
 func (s *MountStorage) createMeasureFile(size int) (err error) {
 	t := filepath.Join(s.opt.Path, "measure", strconv.Itoa(size))
+	logDebugf("Checking measure file %q", t)
 	if stat, err := os.Stat(t); err == nil {
 		tsz := (int64)(size) * mbChunkSize
 		if size == 0 {

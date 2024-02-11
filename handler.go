@@ -77,6 +77,18 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
 			rw.Header().Set("X-Powered-By", "go-openbmclapi; url=https://github.com/LiterMC/go-openbmclapi")
 			ua := req.Header.Get("User-Agent")
+			var addr string
+			if config.TrustedXForwardedFor {
+				// X-Forwarded-For: <client>, <proxy1>, <proxy2>
+				adr, _ := split(req.Header.Get("X-Forwarded-For"), ',')
+				addr = strings.TrimSpace(adr)
+			}
+			if addr == "" {
+				addr, _, _ = net.SplitHostPort(req.RemoteAddr)
+			}
+			if config.RecordServeInfo {
+				logDebugf("Serving %s | %-4s %s | %q", addr, req.Method, req.RequestURI, ua)
+			}
 			srw := &statusResponseWriter{ResponseWriter: rw}
 			start := time.Now()
 
@@ -84,15 +96,6 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 
 			used := time.Since(start)
 			if config.RecordServeInfo {
-				var addr string
-				if config.TrustedXForwardedFor {
-					// X-Forwarded-For: <client>, <proxy1>, <proxy2>
-					adr, _ := split(req.Header.Get("X-Forwarded-For"), ',')
-					addr = strings.TrimSpace(adr)
-				}
-				if addr == "" {
-					addr, _, _ = net.SplitHostPort(req.RemoteAddr)
-				}
 				if used > time.Minute {
 					used = used.Truncate(time.Second)
 				} else if used > time.Second {

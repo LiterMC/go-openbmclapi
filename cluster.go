@@ -574,9 +574,9 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 
 	logInfof("Start checking files for %s, heavy = %v", storage.String(), heavy)
 	var buf [1024 * 32]byte
-	for i, f := range files {
+	for _, f := range files {
 		hash := f.Hash
-		logDebugf("Checking file %s [%.2f%%]", hash, (float32)(i+1)/(float32)(len(files))*100)
+		// logDebugf("Checking file %s [%.2f%%]", hash, (float32)(i+1)/(float32)(len(files))*100)
 		if f.Size == 0 {
 			logDebugf("Skipped empty file %s", hash)
 			continue
@@ -617,7 +617,7 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 	MISSING:
 		addMissing(f)
 	}
-	logInfo("File check finished for %s", storage.String())
+	logInfof("File check finished for %s", storage.String())
 	return
 }
 

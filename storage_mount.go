@@ -183,6 +183,7 @@ func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 				}
 				s.lastCheck = now
 				s.checkMux.Unlock()
+
 				tctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 				defer cancel()
 				if supportRange, err := s.checkAlive(tctx, 0); err == nil {

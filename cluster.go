@@ -74,6 +74,7 @@ type Cluster struct {
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
 	downloading     map[string]chan error
+	fileMux         sync.RWMutex
 	fileset         map[string]int64
 
 	client   *http.Client
@@ -402,8 +403,8 @@ func (cr *Cluster) Disabled() <-chan struct{} {
 }
 
 func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
-	cr.mux.RLock()
-	defer cr.mux.RUnlock()
+	cr.fileMux.RLock()
+	defer cr.fileMux.RUnlock()
 	size, ok = cr.fileset[hash]
 	return
 }
@@ -544,10 +545,10 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	for _, f := range files {
 		fileset[f.Hash] = f.Size
 	}
-	cr.mux.Lock()
+	cr.fileMux.Lock()
 	cr.fileset = fileset
 	cr.issync.Store(false)
-	cr.mux.Unlock()
+	cr.fileMux.Unlock()
 
 	go cr.gc()
 }
@@ -959,8 +960,8 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		}
 	}
 
-	cr.mux.Lock()
+	cr.fileMux.Lock()
 	cr.fileset[hash] = size
-	cr.mux.Unlock()
+	cr.fileMux.Unlock()
 	return
 }

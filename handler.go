@@ -208,6 +208,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, "404 Not Found", http.StatusNotFound)
 			return
 		}
+		logDebugf("Serving download %s", hash)
 
 		query := req.URL.Query()
 		if !checkQuerySign(hash, cr.password, query) {
@@ -215,6 +216,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		logDebugf("Handling download %s", hash)
 		cr.handleDownload(rw, req, hash)
 		return
 	case strings.HasPrefix(rawpath, "/measure/"):
@@ -281,7 +283,9 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 
 	var err error
 	// check if file was indexed in the fileset
+	logDebugf("Getting cached file size for %s", hash)
 	size, ok := cr.CachedFileSize(hash)
+	logDebugf("Cached file size for %s is %d", hash, size)
 	if !ok {
 		logInfof("Downloading %s", hash)
 		if err := cr.DownloadFile(req.Context(), hash); err != nil {

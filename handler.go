@@ -236,7 +236,10 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, fmt.Sprintf("measure size %d out of range (0, 200]", n), http.StatusBadRequest)
 			return
 		}
-		cr.storages[0].ServeMeasure(rw, req, n)
+		if err := cr.storages[0].ServeMeasure(rw, req, n); err != nil {
+			logErrorf("Could not serve measure %d: %v", n, err)
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	case strings.HasPrefix(rawpath, "/api/"):
 		version, _ := split(rawpath[len("/api/"):], '/')

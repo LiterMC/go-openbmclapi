@@ -55,6 +55,9 @@ jobs:
         name: Action Checkout
         uses: actions/checkout@v3
       -
+        name: Get current tag
+        run: echo "TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+      -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       -
@@ -67,5 +70,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
-        name: Build docker images
-        run: /usr/bin/env bash ./dockerbuild.sh
+        name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            craftmine/go-openbmclapi:latest
+            craftmine/go-openbmclapi:${{env.TAG}}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

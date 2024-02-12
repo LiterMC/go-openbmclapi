@@ -96,7 +96,7 @@ var defaultConfig = Config{
 	ClusterSecret:        "${CLUSTER_SECRET}",
 	SyncInterval:         10,
 	KeepaliveTimeout:     10,
-	DownloadMaxConn:      64,
+	DownloadMaxConn:      16,
 	ServeLimit: ServeLimitConfig{
 		Enable:     false,
 		MaxConn:    16384,
@@ -292,4 +292,13 @@ func readConfig() (config Config) {
 		config.NoOpen = false
 	}
 	return
+}
+
+type OpenbmclapiAgentSyncConfig struct {
+	Source      string `json:"source"`
+	Concurrency int    `json:"concurrency"`
+}
+
+type OpenbmclapiAgentConfig struct {
+	Sync OpenbmclapiAgentSyncConfig `json:"sync"`
 }

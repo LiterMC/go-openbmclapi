@@ -14,7 +14,7 @@ cluster-id: ${CLUSTER_ID}
 cluster-secret: ${CLUSTER_SECRET}
 sync-interval: 10
 keepalive-timeout: 10
-download-max-conn: 64
+download-max-conn: 16
 serve-limit:
     enable: false
     max-conn: 16384

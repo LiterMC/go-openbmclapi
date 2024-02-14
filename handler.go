@@ -208,7 +208,6 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, "404 Not Found", http.StatusNotFound)
 			return
 		}
-		logDebugf("Serving download %s", hash)
 
 		query := req.URL.Query()
 		if !checkQuerySign(hash, cr.password, query) {
@@ -283,9 +282,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 
 	var err error
 	// check if file was indexed in the fileset
-	logDebugf("Getting cached file size for %s", hash)
 	size, ok := cr.CachedFileSize(hash)
-	logDebugf("Cached file size for %s is %d", hash, size)
 	if !ok {
 		logInfof("Downloading %s", hash)
 		if err := cr.DownloadFile(req.Context(), hash); err != nil {
@@ -310,7 +307,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		return true
 	})
 	if err != nil {
-		logDebugf("[handler]: OSS redirect failed: %v", err)
+		logDebugf("[handler]: failed to serve download: %v", err)
 		if errors.Is(err, os.ErrNotExist) {
 			http.Error(rw, "404 Status Not Found", http.StatusNotFound)
 			return
@@ -318,5 +315,5 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logDebug("[handler]: OSS redirect successed")
+	logDebug("[handler]: download served successed")
 }

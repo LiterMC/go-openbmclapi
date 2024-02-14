@@ -38,6 +38,8 @@ import (
 	"runtime/pprof"
 )
 
+const ClusterServerURL = "https://openbmclapi.bangbang93.com"
+
 var (
 	KeepAliveInterval = time.Second * 59
 )
@@ -317,7 +319,7 @@ START:
 		publicPort = config.Port
 	}
 	cluster := NewCluster(ctx,
-		"https://openbmclapi.bangbang93.com",
+		ClusterServerURL,
 		baseDir,
 		config.PublicHost, publicPort,
 		config.ClusterId, config.ClusterSecret,
@@ -407,6 +409,9 @@ START:
 
 		if !config.SkipFirstSync {
 			cluster.SyncFiles(ctx, fl, false)
+			if ctx.Err() != nil {
+				return
+			}
 		} else {
 			fileset := make(map[string]int64, len(fl))
 			for _, f := range fl {

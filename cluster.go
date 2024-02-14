@@ -25,6 +25,7 @@ import (
 	"context"
 	"crypto"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -510,7 +511,7 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		data, _ := io.ReadAll(res.Body)
-		err = fmt.Errorf("Unexpected status code: %d %s Body:\n%s", res.StatusCode, res.Status, (string)(data))
+		err = fmt.Errorf("Unexpected status code: %d %s Body:\n\t%s", res.StatusCode, res.Status, (string)(data))
 		return
 	}
 	logDebug("Parsing filelist body ...")
@@ -520,6 +521,29 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 	}
 	defer zr.Close()
 	if err = avro.NewDecoderForSchema(fileListSchema, zr).Decode(&files); err != nil {
+		return
+	}
+	return
+}
+
+func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
+	req, err := cr.makeReq(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
+	if err != nil {
+		return
+	}
+	res, err := cr.client.Do(req)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(res.Body)
+		err = fmt.Errorf("Unexpected status code: %d %s Body:\n\t%s", res.StatusCode, res.Status, (string)(data))
+		return
+	}
+	cfg = new(OpenbmclapiAgentConfig)
+	if err = json.NewDecoder(res.Body).Decode(cfg); err != nil {
+		cfg = nil
 		return
 	}
 	return
@@ -636,7 +660,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 
 	fl := len(missingMap.m)
 	if fl == 0 {
-		logInfo("All oss files was synchronized")
+		logInfo("All files was synchronized")
 		return nil
 	}
 
@@ -687,7 +711,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 					for _, target := range f.targets {
 						dst, err := target.Create(f.Hash)
 						if err != nil {
-							logErrorf("Could not create %q: %v", target, err)
+							logErrorf("Could not create %s: %v", target.String(), err)
 							continue
 						}
 						if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
@@ -695,11 +719,11 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 							continue
 						}
 						_, err = io.CopyBuffer(dst, srcFd, buf)
-						if e := dst.Close(); e != nil && err == nil {
-							err = e
+						if e := dst.Close(); e != nil {
+							err = errors.Join(err, e)
 						}
 						if err != nil {
-							logErrorf("Could not copy from %q to %q:\n\t%v", path, target, err)
+							logErrorf("Could not copy from %q to %s:\n\t%v", path, target.String(), err)
 							continue
 						}
 					}

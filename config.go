@@ -20,6 +20,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"strconv"
@@ -112,13 +113,7 @@ var defaultConfig = Config{
 
 	Storages: nil,
 
-	WebdavUsers: map[string]*WebDavUser{
-		"example-user": &WebDavUser{
-			EndPoint: "https://webdav.example.com/path/to/endpoint/",
-			Username: "example-username",
-			Password: "example-password",
-		},
-	},
+	WebdavUsers: map[string]*WebDavUser{},
 }
 
 func migrateConfig(data []byte, config *Config) {
@@ -241,13 +236,23 @@ func readConfig() (config Config) {
 				},
 			}
 		}
+		if len(config.WebdavUsers) == 0 {
+			config.WebdavUsers["example-user"] = &WebDavUser{
+				EndPoint: "https://webdav.example.com/path/to/endpoint/",
+				Username: "example-username",
+				Password: "example-password",
+			}
+		}
 	}
 
-	if data, err = yaml.Marshal(config); err != nil {
+	var buf bytes.Buffer
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2)
+	if err = encoder.Encode(config); err != nil {
 		logError("Cannot encode config:", err)
 		os.Exit(1)
 	}
-	if err = os.WriteFile(configPath, data, 0600); err != nil {
+	if err = os.WriteFile(configPath, buf.Bytes(), 0600); err != nil {
 		logError("Cannot write config:", err)
 		os.Exit(1)
 	}

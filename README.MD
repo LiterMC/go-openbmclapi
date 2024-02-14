@@ -133,23 +133,23 @@ keepalive-timeout: 10
 download-max-conn: 64
 # 服务器上行限制
 serve-limit:
-  # 是否启用上行限制
-  enable: false
-  # 最大连接数量
-  max-conn: 16384
-  # 上行速率限制 (KiB/s), 0 表示无限制
-  upload-rate: 0
+    # 是否启用上行限制
+    enable: false
+    # 最大连接数量
+    max-conn: 16384
+    # 上行速率限制 (KiB/s), 0 表示无限制
+    upload-rate: 0
 
 # 内置的仪表板
 dashboard:
-  # 是否启用
-  enable: true
-  # PWA 的名称, 在桌面设备上显示
-  pwa-name: GoOpenBmclApi Dashboard
-  # PWA 短名称, 在移动设备上显示
-  pwa-short_name: GOBA Dash
-  # PWA 描述
-  pwa-description: Go-Openbmclapi Internal Dashboard
+    # 是否启用
+    enable: true
+    # PWA 的名称, 在桌面设备上显示
+    pwa-name: GoOpenBmclApi Dashboard
+    # PWA 短名称, 在移动设备上显示
+    pwa-short_name: GOBA Dash
+    # PWA 描述
+    pwa-description: Go-Openbmclapi Internal Dashboard
 
 # 子存储节点列表
 storages:

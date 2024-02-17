@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -58,4 +59,21 @@ func (c *RedisCache) Get(key string) (value string, ok bool) {
 		return "", false
 	}
 	return cmd.Val(), true
+}
+
+func (c *RedisCache) SetBytes(key string, value []byte, opt CacheOpt) {
+	v := base64.RawStdEncoding.EncodeToString(value)
+	c.Set(key, v, opt)
+}
+
+func (c *RedisCache) GetBytes(key string) (value []byte, ok bool) {
+	v, ok := c.Get(key)
+	if !ok {
+		return nil, false
+	}
+	value, err := base64.RawStdEncoding.DecodeString(v)
+	if err != nil {
+		return nil, false
+	}
+	return value, true
 }

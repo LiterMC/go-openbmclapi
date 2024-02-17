@@ -21,24 +21,44 @@ package main
 
 import (
 	"time"
+
+	"github.com/patrickmn/go-cache"
 )
 
-type CacheOpt struct {
-	Expiration time.Duration
+type InMemCache struct {
+	cache *cache.Cache
 }
 
-type Cache interface {
-	Set(key string, value string, opt CacheOpt)
-	Get(key string) (value string, ok bool)
-	SetBytes(key string, value []byte, opt CacheOpt)
-	GetBytes(key string) (value []byte, ok bool)
+var _ Cache = (*InMemCache)(nil)
+
+func NewInMemCache() *InMemCache {
+	return &InMemCache{
+		cache: cache.New(cache.NoExpiration, time.Minute),
+	}
 }
 
-type noCache struct{}
+func (c *InMemCache) Set(key string, value string, opt CacheOpt) {
+	c.cache.Set(key, value, opt.Expiration)
+}
 
-func (noCache) Set(key string, value string, opt CacheOpt)      {}
-func (noCache) Get(key string) (value string, ok bool)          { return "", false }
-func (noCache) SetBytes(key string, value []byte, opt CacheOpt) {}
-func (noCache) GetBytes(key string) (value []byte, ok bool)     { return nil, false }
+func (c *InMemCache) Get(key string) (value string, ok bool) {
+	v, ok := c.cache.Get(key)
+	if !ok {
+		return "", false
+	}
+	value, ok = v.(string)
+	return
+}
 
-var NoCache Cache = (*noCache)(nil)
+func (c *InMemCache) SetBytes(key string, value []byte, opt CacheOpt) {
+	c.cache.Set(key, value, opt.Expiration)
+}
+
+func (c *InMemCache) GetBytes(key string) (value []byte, ok bool) {
+	v, ok := c.cache.Get(key)
+	if !ok {
+		return nil, false
+	}
+	value, ok = v.([]byte)
+	return
+}

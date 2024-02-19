@@ -709,25 +709,13 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 					}
 					defer srcFd.Close()
 					for _, target := range f.targets {
-						dst, err := target.Create(f.Hash)
+						if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
+							logErrorf("Could not seek file %q to start: %v", path, err)
+							continue
+						}
+						err := target.Create(f.Hash, srcFd)
 						if err != nil {
 							logErrorf("Could not create %s: %v", target.String(), err)
-							continue
-						}
-						if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-							logErrorf("Could not seek file %q: %v", path, err)
-							continue
-						}
-						_, err = io.CopyBuffer(dst, srcFd, buf)
-						if e := dst.Close(); e != nil {
-							if err == nil {
-								err = e
-							} else {
-								err = errors.Join(err, e)
-							}
-						}
-						if err != nil {
-							logErrorf("Could not copy from %q to %s:\n\t%v", path, target.String(), err)
 							continue
 						}
 					}
@@ -969,21 +957,13 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	size := stat.Size()
 
 	for _, target := range cr.storages {
-		dst, err := target.Create(hash)
-		if err != nil {
-			logErrorf("Could not create %q: %v", target.String(), err)
-			continue
-		}
 		if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
 			logErrorf("Could not seek file %q: %v", path, err)
 			continue
 		}
-		_, err = io.CopyBuffer(dst, srcFd, buf)
-		if e := dst.Close(); e != nil && err == nil {
-			err = e
-		}
+		err := target.Create(hash, srcFd)
 		if err != nil {
-			logErrorf("Could not copy file from %q to %s/%s:\n\t%v", path, target.String(), hash, err)
+			logErrorf("Could not create %q: %v", target.String(), err)
 			continue
 		}
 	}

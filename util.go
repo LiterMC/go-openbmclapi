@@ -273,6 +273,16 @@ func (devNull) ReadAt([]byte, int64) (int, error) { return 0, io.EOF }
 func (devNull) Seek(int64, int) (int64, error)    { return 0, nil }
 func (devNull) Write(buf []byte) (int, error)     { return len(buf), nil }
 
+type noChangeReader struct{}
+
+var (
+	NoChangeReader = noChangeReader{}
+
+	_ io.Reader = NoChangeReader
+)
+
+func (noChangeReader) Read(buf []byte) (int, error) { return len(buf), nil }
+
 var errNotSeeker = errors.New("r is not an io.Seeker")
 
 func getFileSize(r io.Reader) (n int64, err error) {

@@ -21,13 +21,11 @@ package main
 
 import (
 	"context"
-	"errors"
-	"io"
 	"os"
 )
 
 func cmdUploadWebdav(args []string) {
-	config := readConfig()
+	config = readConfig()
 
 	var localOpt *LocalStorageOption
 	webdavOpts := make([]*WebDavStorageOption, 0, 4)
@@ -82,6 +80,8 @@ func cmdUploadWebdav(args []string) {
 			}
 			if sz, err := s.Size(hash); err == nil && sz == size {
 				return nil
+			} else if err != nil {
+				logDebugf("Cannot get size of %s at %s: %v", hash, s.String(), err)
 			}
 
 			r, err := local.Open(hash)
@@ -90,25 +90,9 @@ func cmdUploadWebdav(args []string) {
 				return nil
 			}
 			defer r.Close()
-			w, err := s.Create(hash)
-			if err != nil {
+			if err = s.Create(hash, r); err != nil {
 				logErrorf("Cannot create %s at %s: %v", hash, s.String(), err)
 				return err
-			}
-
-			var buf [1024 * 1024]byte
-			_, err = io.CopyBuffer(w, r, buf[:])
-			if e := w.Close(); e != nil {
-				if err == nil {
-					err = e
-				} else {
-					err = errors.Join(err, e)
-				}
-			}
-			if err != nil {
-				s.Remove(hash)
-				logErrorf("Cannot copy %s to %s: %v", hash, s.String(), err)
-				return nil
 			}
 			logInfof("File %s copied to %s", hash, s.String())
 			return nil

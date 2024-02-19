@@ -96,8 +96,17 @@ func (s *LocalStorage) Open(hash string) (io.ReadCloser, error) {
 	return os.Open(s.hashToPath(hash))
 }
 
-func (s *LocalStorage) Create(hash string) (io.WriteCloser, error) {
-	return os.Create(s.hashToPath(hash))
+func (s *LocalStorage) Create(hash string, r io.Reader) error {
+	fd, err := os.Create(s.hashToPath(hash))
+	if err != nil {
+		return err
+	}
+	var buf [1024 * 512]byte
+	_, err = io.CopyBuffer(fd, r, buf[:])
+	if e := fd.Close(); e != nil && err == nil {
+		err = e
+	}
+	return err
 }
 
 func (s *LocalStorage) Remove(hash string) error {

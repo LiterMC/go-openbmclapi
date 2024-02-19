@@ -31,7 +31,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/emersion/go-webdav"
+	"github.com/studio-b12/gowebdav"
 	"gopkg.in/yaml.v3"
 
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
@@ -95,7 +95,7 @@ func (o *WebDavStorageOption) GetPassword() string {
 type WebDavStorage struct {
 	opt WebDavStorageOption
 
-	cli *webdav.Client
+	cli *gowebdav.Client
 }
 
 var _ Storage = (*WebDavStorage)(nil)
@@ -149,16 +149,10 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		s.opt.fullEndPoint = s.opt.EndPoint
 	}
 
-	if s.cli, err = webdav.NewClient(
-		&HTTPClientWithUserAgent{
-			HTTPClient: webdav.HTTPClientWithBasicAuth(http.DefaultClient, s.opt.GetUsername(), s.opt.GetPassword()),
-			UserAgent:  ClusterUserAgentFull,
-		},
-		s.opt.GetEndPoint()); err != nil {
-		return
-	}
+	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())
+	s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
 
-	if err := s.cli.Mkdir(ctx, "measure"); err != nil {
+	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {
 			logErrorf("Could not create measure folder for %s: %v", s.String(), err)
 		}
@@ -180,35 +174,34 @@ func (s *WebDavStorage) hashToPath(hash string) string {
 }
 
 func (s *WebDavStorage) Size(hash string) (int64, error) {
-	stat, err := s.cli.Stat(context.Background(), s.hashToPath(hash))
+	stat, err := s.cli.Stat(s.hashToPath(hash))
 	if err != nil {
 		return 0, err
 	}
-	return stat.Size, nil
+	return stat.Size(), nil
 }
 
 func (s *WebDavStorage) Open(hash string) (io.ReadCloser, error) {
-	return s.cli.Open(context.Background(), s.hashToPath(hash))
+	return s.cli.ReadStream(s.hashToPath(hash))
 }
 
-func (s *WebDavStorage) Create(hash string) (io.WriteCloser, error) {
-	return s.cli.Create(context.Background(), s.hashToPath(hash))
+func (s *WebDavStorage) Create(hash string, r io.Reader) error {
+	return s.cli.WriteStream(s.hashToPath(hash), r, 0644)
 }
 
 func (s *WebDavStorage) Remove(hash string) error {
-	return s.cli.RemoveAll(context.Background(), s.hashToPath(hash))
+	return s.cli.Remove(s.hashToPath(hash))
 }
 
 func (s *WebDavStorage) WalkDir(walker func(hash string) error) error {
-	ctx := context.Background()
 	for _, dir := range hex256 {
-		files, err := s.cli.ReadDir(ctx, dir, false)
+		files, err := s.cli.ReadDir(dir)
 		if err != nil {
 			continue
 		}
 		for _, f := range files {
-			if !f.IsDir {
-				if hash := path.Base(f.Path); len(hash) >= 2 && hash[:2] == dir {
+			if !f.IsDir() {
+				if hash := f.Name(); len(hash) >= 2 && hash[:2] == dir {
 					if err := walker(hash); err != nil {
 						return err
 					}
@@ -285,7 +278,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		n, _ := io.Copy(rw, resp.Body)
 		return n, nil
 	default:
-		return 0, webdav.NewHTTPError(resp.StatusCode, nil)
+		return 0, fmt.Errorf("Unexpected status %d", resp.StatusCode)
 	}
 }
 
@@ -342,54 +335,32 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 
 func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err error) {
 	t := path.Join("measure", strconv.Itoa(size))
-	if stat, err := s.cli.Stat(ctx, t); err == nil {
-		tsz := (int64)(size) * mbChunkSize
-		if size == 0 {
-			tsz = 2
-		}
-		if stat.Size == tsz {
+	tsz := (int64)(size) * mbChunkSize
+	if size == 0 {
+		tsz = 2
+	}
+	if stat, err := s.cli.Stat(t); err == nil {
+		sz := stat.Size()
+		if sz == tsz {
 			return nil
 		}
-		logDebugf("File [%d] size %d does not match %d", size, stat.Size, tsz)
+		logDebugf("File [%d] size %d does not match %d", size, sz, tsz)
 	} else if e := ctx.Err(); e != nil {
 		return e
 	} else if !errors.Is(err, os.ErrNotExist) {
 		logErrorf("Cannot get stat of %s: %v", t, err)
 	}
 	logInfof("Creating measure file at %q", t)
-	w, err := s.cli.Create(ctx, t)
-	if err != nil {
-		logErrorf("Cannot create measure file %q: %v", t, err)
-		return
-	}
-	defer func() {
-		if e := w.Close(); e != nil && err == nil {
-			logErrorf("Could not create measure file %q: %v", t, err)
-			err = e
-		}
-	}()
 	if size == 0 {
-		if _, err = w.Write(mbChunk[:2]); err != nil {
-			logErrorf("Cannot write measure file %q: %v", t, err)
+		if err = s.cli.Write(t, mbChunk[:2], 0644); err != nil {
+			logErrorf("Cannot create measure file %q: %v", t, err)
 			return
 		}
 	} else {
-		for j := 0; j < size; j++ {
-			if _, err = w.Write(mbChunk[:]); err != nil {
-				logErrorf("Cannot write measure file %q: %v", t, err)
-				return
-			}
+		if err = s.cli.WriteStream(t, &io.LimitedReader{R: NoChangeReader, N: tsz}, 0644); err != nil {
+			logErrorf("Cannot create measure file %q: %v", t, err)
+			return
 		}
 	}
 	return nil
-}
-
-type HTTPClientWithUserAgent struct {
-	webdav.HTTPClient
-	UserAgent string
-}
-
-func (c *HTTPClientWithUserAgent) Do(req *http.Request) (*http.Response, error) {
-	req.Header.Set("User-Agent", c.UserAgent)
-	return c.HTTPClient.Do(req)
 }

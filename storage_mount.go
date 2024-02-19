@@ -133,8 +133,17 @@ func (s *MountStorage) Open(hash string) (io.ReadCloser, error) {
 	return os.Open(s.hashToPath(hash))
 }
 
-func (s *MountStorage) Create(hash string) (io.WriteCloser, error) {
-	return os.Create(s.hashToPath(hash))
+func (s *MountStorage) Create(hash string, r io.Reader) error {
+	fd, err := os.Create(s.hashToPath(hash))
+	if err != nil {
+		return err
+	}
+	var buf [1024 * 512]byte
+	_, err = io.CopyBuffer(fd, r, buf[:])
+	if e := fd.Close(); e != nil && err == nil {
+		err = e
+	}
+	return err
 }
 
 func (s *MountStorage) Remove(hash string) error {

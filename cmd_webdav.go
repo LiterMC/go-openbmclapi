@@ -79,12 +79,7 @@ func cmdUploadWebdav(args []string) {
 				logErrorf("Cannot get stat of %s: %v", hash, err)
 				return nil
 			}
-			sz, err := s.Size(hash)
-			if err != nil {
-				logErrorf("Cannot get stat of %s at %s: %v", hash, s.String(), err)
-				return nil
-			}
-			if sz == size {
+			if sz, err := s.Size(hash); err == nil && sz == size {
 				return nil
 			}
 

@@ -720,7 +720,11 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 						}
 						_, err = io.CopyBuffer(dst, srcFd, buf)
 						if e := dst.Close(); e != nil {
-							err = errors.Join(err, e)
+							if err == nil {
+								err = e
+							} else {
+								err = errors.Join(err, e)
+							}
 						}
 						if err != nil {
 							logErrorf("Could not copy from %q to %s:\n\t%v", path, target.String(), err)

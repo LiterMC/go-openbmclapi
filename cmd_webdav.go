@@ -94,12 +94,17 @@ func cmdUploadWebdav(args []string) {
 				logErrorf("Cannot create %s at %s: %v", hash, s.String(), err)
 				return err
 			}
-			defer w.Close()
 
 			var buf [1024 * 1024]byte
 			_, err = io.CopyBuffer(w, r, buf[:])
+			if e := w.Close(); e != nil {
+				if err == nil {
+					err = e
+				} else {
+					err = errors.Join(err, e)
+				}
+			}
 			if err != nil {
-				w.Close()
 				s.Remove(hash)
 				logErrorf("Cannot copy %s to %s: %v", hash, s.String(), err)
 				return nil

@@ -29,13 +29,13 @@ COPY . "/go/src/${REPO}"
 COPY --from=WEB_BUILD "/web/dist" "/go/src/${REPO}/${NPM_DIR}/dist"
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
- CGO_ENABLED=0 go build -v -o "/go/bin/application" -ldflags="-X 'main.BuildVersion=${TAG}'" "."
+ CGO_ENABLED=0 go build -v -o "/go/bin/go-openbmclapi" -ldflags="-X 'main.BuildVersion=${TAG}'" "."
 
 FROM alpine:latest
 
-WORKDIR /web/work
-COPY ./config.yaml /web/work/config.yaml
+WORKDIR /opt/openbmclapi
+COPY ./config.yaml /opt/openbmclapi/config.yaml
 
-COPY --from=BUILD "/go/bin/application" "/web/application"
+COPY --from=BUILD "/go/bin/go-openbmclapi" "/go-openbmclapi"
 
-CMD ["/web/application"]
+CMD ["/go-openbmclapi"]

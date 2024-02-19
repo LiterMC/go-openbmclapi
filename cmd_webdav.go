@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 )

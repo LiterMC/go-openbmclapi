@@ -16,6 +16,7 @@ docker run -d --name my-go-openbmclapi \
 	-e CLUSTER_PUBLIC_PORT=${CLUSTER_PUBLIC_PORT} \
 	-e CLUSTER_IP=${CLUSTER_IP} \
 	-v "${PWD}/cache":/opt/openbmclapi/cache \
+	-v "${PWD}/data":/opt/openbmclapi/data \
 	-v "${PWD}/logs":/opt/openbmclapi/logs \
 	-v "${PWD}/config.yaml":/opt/openbmclapi/config.yaml \
 	-p ${CLUSTER_PORT}:4000 \

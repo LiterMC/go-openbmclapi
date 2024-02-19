@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -149,7 +150,9 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		s.opt.fullEndPoint = s.opt.EndPoint
 	}
 
-	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())
+	s.cli = gowebdav.NewAuthClient(s.opt.GetEndPoint(), gowebdav.NewEmptyAuth())
+	s.cli.SetHeader("Authorization", "Basic "+
+		base64.StdEncoding.EncodeToString(([]byte)(s.opt.GetUsername()+":"+s.opt.GetPassword())))
 	s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
 
 	if err := s.cli.Mkdir("measure", 0755); err != nil {

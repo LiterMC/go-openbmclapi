@@ -36,9 +36,6 @@ import (
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 )
 
-type basicWebDavStorageOption struct {
-}
-
 type WebDavStorageOption struct {
 	PreGenMeasures bool `yaml:"pre-gen-measures"`
 

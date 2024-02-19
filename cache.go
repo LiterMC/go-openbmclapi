@@ -41,4 +41,35 @@ func (noCache) Get(key string) (value string, ok bool)          { return "", fal
 func (noCache) SetBytes(key string, value []byte, opt CacheOpt) {}
 func (noCache) GetBytes(key string) (value []byte, ok bool)     { return nil, false }
 
-var NoCache Cache = (*noCache)(nil)
+var NoCache Cache = noCache{}
+
+type nsCache struct {
+	ns    string
+	cache Cache
+}
+
+func NewCacheWithNamespace(c Cache, ns string) Cache {
+	if c == NoCache {
+		return NoCache
+	}
+	return &nsCache{
+		ns:    ns,
+		cache: c,
+	}
+}
+
+func (c *nsCache) Set(key string, value string, opt CacheOpt) {
+	c.cache.Set(c.ns+key, value, opt)
+}
+
+func (c *nsCache) Get(key string) (value string, ok bool) {
+	return c.cache.Get(c.ns + key)
+}
+
+func (c *nsCache) SetBytes(key string, value []byte, opt CacheOpt) {
+	c.cache.SetBytes(c.ns+key, value, opt)
+}
+
+func (c *nsCache) GetBytes(key string) (value []byte, ok bool) {
+	return c.cache.GetBytes(c.ns + key)
+}

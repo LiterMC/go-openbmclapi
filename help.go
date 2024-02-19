@@ -55,4 +55,7 @@ func printHelp() {
 	fmt.Println("      " + "verbose | v : Show decompressing files")
 	fmt.Println("      " + "overwrite | o : Overwrite uncompressed file even if it exists")
 	fmt.Println("      " + "keep | k : Keep compressed file")
+	fmt.Println()
+	fmt.Println("  upload-webdav")
+	fmt.Println("  \t" + "Upload objects from local storage to webdav storage")
 }

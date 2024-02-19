@@ -29,6 +29,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 
 	"github.com/emersion/go-webdav"
 	"gopkg.in/yaml.v3"
@@ -118,6 +119,11 @@ func (s *WebDavStorage) SetOptions(newOpts any) {
 	s.opt = *(newOpts.(*WebDavStorageOption))
 }
 
+func webdavIsHTTPError(err error, code int) bool {
+	expect := fmt.Sprintf("%v %v", code, http.StatusText(code))
+	return strings.Contains(err.Error(), expect)
+}
+
 func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 	if alias := s.opt.Alias; alias != "" {
 		user, ok := config.WebdavUsers[alias]
@@ -152,8 +158,10 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		return
 	}
 
-	if err = s.cli.Mkdir(ctx, "measure"); err != nil {
-		logErrorf("Could not create measure folder for %s: %v", s.String(), err)
+	if err := s.cli.Mkdir(ctx, "measure"); err != nil {
+		if !webdavIsHTTPError(err, http.StatusConflict) {
+			logErrorf("Could not create measure folder for %s: %v", s.String(), err)
+		}
 	}
 	if s.opt.PreGenMeasures {
 		logInfo("Creating measure files at %s", s.String())

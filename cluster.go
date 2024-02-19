@@ -598,7 +598,7 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 	}
 
 	sizeMap := make(map[string]int64, len(files))
-	storages.WalkDir(func(hash string, size int64) error {
+	storage.WalkDir(func(hash string, size int64) error {
 		sizeMap[hash] = size
 		return nil
 	})

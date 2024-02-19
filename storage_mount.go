@@ -150,7 +150,7 @@ func (s *MountStorage) Remove(hash string) error {
 	return os.Remove(s.hashToPath(hash))
 }
 
-func (s *MountStorage) WalkDir(walker func(hash string) error) error {
+func (s *MountStorage) WalkDir(walker func(hash string, size int64) error) error {
 	return walkCacheDir(s.opt.CachePath(), walker)
 }
 

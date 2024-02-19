@@ -597,6 +597,12 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 		}
 	}
 
+	sizeMap := make(map[string]int64, len(files))
+	storages.WalkDir(func(hash string, size int64) error {
+		sizeMap[hash] = size
+		return nil
+	})
+
 	logInfof("Start checking files for %s, heavy = %v", storage.String(), heavy)
 	var buf [1024 * 32]byte
 	for _, f := range files {
@@ -606,7 +612,7 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 			logDebugf("Skipped empty file %s", hash)
 			continue
 		}
-		if size, err := storage.Size(hash); err == nil {
+		if size, ok := sizeMap[hash]; ok {
 			if size != f.Size {
 				logInfof("Found modified file: size of %q is %s, expect %s",
 					hash, bytesToUnit((float64)(size)), bytesToUnit((float64)(f.Size)))
@@ -747,7 +753,7 @@ func (cr *Cluster) gc() {
 
 func (cr *Cluster) gcFor(s Storage) {
 	logInfo("Starting garbage collector for", s.String())
-	err := s.WalkDir(func(hash string) error {
+	err := s.WalkDir(func(hash string, _ int64) error {
 		if cr.issync.Load() {
 			return context.Canceled
 		}
@@ -848,7 +854,7 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo, hashMethod 
 		return
 	}
 	if res.StatusCode != http.StatusOK {
-		err = fmt.Errorf("Unexpected status code: %d", res.StatusCode)
+		err = &HTTPStatusError{Code: res.StatusCode}
 		return
 	}
 	switch ce := strings.ToLower(res.Header.Get("Content-Encoding")); ce {

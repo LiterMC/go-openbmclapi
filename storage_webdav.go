@@ -153,7 +153,7 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 	s.cli = gowebdav.NewAuthClient(s.opt.GetEndPoint(), gowebdav.NewEmptyAuth())
 	s.cli.SetHeader("Authorization", "Basic "+
 		base64.StdEncoding.EncodeToString(([]byte)(s.opt.GetUsername()+":"+s.opt.GetPassword())))
-	s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
+	// s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
 
 	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {
@@ -170,6 +170,33 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		logInfo("Measure files created")
 	}
 	return
+}
+
+func (s *WebDavStorage) putFile(path string, r io.Reader) error {
+	target, err := url.JoinPath(s.opt.GetEndPoint(), path)
+	if err != nil {
+		return err
+	}
+	logDebugf("Putting %q", target)
+	cr := &countReader{r.(io.ReadSeeker), 0}
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, cr)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	switch res.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
+		logDebugf("read %d bytes", cr.n)
+		return nil
+	default:
+		return &HTTPStatusError{Code: res.StatusCode}
+	}
 }
 
 func (s *WebDavStorage) hashToPath(hash string) string {
@@ -189,14 +216,14 @@ func (s *WebDavStorage) Open(hash string) (io.ReadCloser, error) {
 }
 
 func (s *WebDavStorage) Create(hash string, r io.Reader) error {
-	return s.cli.WriteStream(s.hashToPath(hash), r, 0644)
+	return s.putFile(s.hashToPath(hash), r)
 }
 
 func (s *WebDavStorage) Remove(hash string) error {
 	return s.cli.Remove(s.hashToPath(hash))
 }
 
-func (s *WebDavStorage) WalkDir(walker func(hash string) error) error {
+func (s *WebDavStorage) WalkDir(walker func(hash string, size int64) error) error {
 	for _, dir := range hex256 {
 		files, err := s.cli.ReadDir(dir)
 		if err != nil {
@@ -205,7 +232,7 @@ func (s *WebDavStorage) WalkDir(walker func(hash string) error) error {
 		for _, f := range files {
 			if !f.IsDir() {
 				if hash := f.Name(); len(hash) >= 2 && hash[:2] == dir {
-					if err := walker(hash); err != nil {
+					if err := walker(hash, f.Size()); err != nil {
 						return err
 					}
 				}
@@ -229,7 +256,7 @@ func copyHeader(key string, dst, src http.Header) {
 }
 
 func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
-	target, err := url.JoinPath(s.opt.GetEndPoint(), "download", hash[0:2], hash)
+	target, err := url.JoinPath(s.opt.GetEndPoint(), s.hashToPath(hash))
 	if err != nil {
 		return 0, err
 	}
@@ -281,7 +308,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		n, _ := io.Copy(rw, resp.Body)
 		return n, nil
 	default:
-		return 0, fmt.Errorf("Unexpected status %d", resp.StatusCode)
+		return 0, &HTTPStatusError{Code: resp.StatusCode}
 	}
 }
 
@@ -354,16 +381,9 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err er
 		logErrorf("Cannot get stat of %s: %v", t, err)
 	}
 	logInfof("Creating measure file at %q", t)
-	if size == 0 {
-		if err = s.cli.Write(t, mbChunk[:2], 0644); err != nil {
-			logErrorf("Cannot create measure file %q: %v", t, err)
-			return
-		}
-	} else {
-		if err = s.cli.WriteStream(t, &io.LimitedReader{R: NoChangeReader, N: tsz}, 0644); err != nil {
-			logErrorf("Cannot create measure file %q: %v", t, err)
-			return
-		}
+	if err = s.putFile(t, &io.LimitedReader{R: NoChangeReader, N: tsz}); err != nil {
+		logErrorf("Cannot create measure file %q: %v", t, err)
+		return
 	}
 	return nil
 }

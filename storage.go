@@ -45,7 +45,7 @@ type Storage interface {
 	Open(hash string) (io.ReadCloser, error)
 	Create(hash string, r io.Reader) error
 	Remove(hash string) error
-	WalkDir(func(hash string) error) error
+	WalkDir(func(hash string, size int64) error) error
 
 	ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error)
 	ServeMeasure(rw http.ResponseWriter, req *http.Request, size int) error

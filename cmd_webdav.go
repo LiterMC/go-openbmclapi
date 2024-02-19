@@ -72,12 +72,7 @@ func cmdUploadWebdav(args []string) {
 	}
 
 	for _, s := range webdavs {
-		local.WalkDir(func(hash string) error {
-			size, err := local.Size(hash)
-			if err != nil {
-				logErrorf("Cannot get stat of %s: %v", hash, err)
-				return nil
-			}
+		local.WalkDir(func(hash string, size int64) error {
 			if sz, err := s.Size(hash); err == nil && sz == size {
 				return nil
 			} else if err != nil {

@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -387,4 +388,12 @@ func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, has bool) {
 		m.m[k] = v
 	}
 	return
+}
+
+type HTTPStatusError struct {
+	Code int
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("Unexpected http status %d %s", e.Code, http.StatusText(e.Code))
 }

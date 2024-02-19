@@ -113,7 +113,7 @@ func (s *LocalStorage) Remove(hash string) error {
 	return os.Remove(s.hashToPath(hash))
 }
 
-func (s *LocalStorage) WalkDir(walker func(hash string) error) error {
+func (s *LocalStorage) WalkDir(walker func(hash string, size int64) error) error {
 	return walkCacheDir(s.opt.CachePath, walker)
 }
 
@@ -228,7 +228,7 @@ var hex256 = func() (hex256 []string) {
 	return
 }()
 
-func walkCacheDir(cacheDir string, walker func(hash string) (err error)) (err error) {
+func walkCacheDir(cacheDir string, walker func(hash string, size int64) (err error)) (err error) {
 	for _, dir := range hex256 {
 		files, err := os.ReadDir(filepath.Join(cacheDir, dir))
 		if err != nil {
@@ -240,8 +240,10 @@ func walkCacheDir(cacheDir string, walker func(hash string) (err error)) (err er
 		for _, f := range files {
 			if !f.IsDir() {
 				if hash := f.Name(); len(hash) >= 2 && hash[:2] == dir {
-					if err := walker(hash); err != nil {
-						return err
+					if info, err := f.Info(); err == nil {
+						if err := walker(hash, info.Size()); err != nil {
+							return err
+						}
 					}
 				}
 			}

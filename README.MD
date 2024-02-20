@@ -131,68 +131,83 @@ sync-interval: 10
 keepalive-timeout: 10
 # 同步文件时最多打开的连接数量
 download-max-conn: 64
+
+# 缓存
+cache:
+  # 缓存类型:
+  #   nocache: 不缓存
+  #   inmem: 程序内内存缓存
+  #   redis: Redis 缓存
+  type: inmem
+
 # 服务器上行限制
 serve-limit:
-    # 是否启用上行限制
-    enable: false
-    # 最大连接数量
-    max-conn: 16384
-    # 上行速率限制 (KiB/s), 0 表示无限制
-    upload-rate: 0
+  # 是否启用上行限制
+  enable: false
+  # 最大连接数量
+  max-conn: 16384
+  # 上行速率限制 (KiB/s), 0 表示无限制
+  upload-rate: 0
 
 # 内置的仪表板
 dashboard:
-    # 是否启用
-    enable: true
-    # PWA 的名称, 在桌面设备上显示
-    pwa-name: GoOpenBmclApi Dashboard
-    # PWA 短名称, 在移动设备上显示
-    pwa-short_name: GOBA Dash
-    # PWA 描述
-    pwa-description: Go-Openbmclapi Internal Dashboard
+  # 是否启用
+  enable: true
+  # PWA 的名称, 在桌面设备上显示
+  pwa-name: GoOpenBmclApi Dashboard
+  # PWA 短名称, 在移动设备上显示
+  pwa-short_name: GOBA Dash
+  # PWA 描述
+  pwa-description: Go-Openbmclapi Internal Dashboard
 
 # 子存储节点列表
 # 注意: measure 测量请求总是以第一个存储为准
 storages:
-    # local 为本地存储
-    - type: local
-      # 使用该子节点的概率 (非负整数)
-      weight: 100
-      # 节点附加数据
-      data:
-        # cache 文件夹到路径
-        cache-path: cache
-        # 压缩方式 (目前未使用)
-        compressor: ""
-    # mount 为网络存储 (与旧版 oss 选项含义大致相同)
-    - type: mount
-      # 使用该子节点的概率 (非负整数)
-      # 设为 0 将使该子节点成为备选节点 (若该节点前一个节点失效才会使用该节点), 如果所有子节点均为 0 则平均分配
-      weight: 0
-      # 节点附加数据
-      data:
-        # 文件夹路径
-        path: oss_mirror
-        # 对应的网络URL路径
-        redirect-base: https://oss.example.com/base/paths
-        # 启动之前在 measure 子文件夹内生成 1-200MB 的测速文件 (默认为动态生成)
-        pre-gen-measures: false
-    # webdav 使用 webdav 存储
-    - type: webdav
-      # 使用该子节点的概率 (非负整数)
-      weight: 100
-      # 节点附加数据
-      data:
-        # 链接到下方 webdav-users 的键值对
-        alias: example-user
-        # Webdav 入口 URL
-        endpoint: ../optional/another/endpoint/
-        # 用户名
-        username: optional-another-username
-        # 密码
-        password: optional-another-password
-        # 启动之前生成 1-200MB 的测速文件 (默认为动态生成)
-        pre-gen-measures: false
+  # local 为本地存储
+  - type: local
+    # 使用该子节点的概率 (非负整数)
+    weight: 100
+    # 节点附加数据
+    data:
+      # cache 文件夹到路径
+      cache-path: cache
+      # 压缩方式 (目前未使用)
+      compressor: ""
+  # mount 为网络存储 (与旧版 oss 选项含义大致相同)
+  - type: mount
+    # 使用该子节点的概率 (非负整数)
+    # 设为 0 将使该子节点成为备选节点 (若该节点前一个节点失效才会使用该节点), 如果所有子节点均为 0 则平均分配
+    weight: 0
+    # 节点附加数据
+    data:
+      # 文件夹路径
+      path: oss_mirror
+      # 对应的网络URL路径
+      redirect-base: https://oss.example.com/base/paths
+      # 启动之前在 measure 子文件夹内生成 1-200MB 的测速文件 (默认为动态生成)
+      pre-gen-measures: false
+  # webdav 使用 webdav 存储
+  - type: webdav
+    # 
+    id: webdav-storage-1
+    # 使用该子节点的概率 (非负整数)
+    weight: 100
+    # 节点附加数据
+    data:
+      # 链接到下方 webdav-users 的键值对
+      alias: example-user
+      # 相对于 alias 中的 Webdav 入口 URL
+      endpoint: ../optional/another/endpoint/
+      # [可选] 覆盖 alias 中的用户名
+      username: optional-another-username
+      # [可选] 覆盖 alias 中的密码
+      password: optional-another-password
+      # 启动之前生成 1-200MB 的测速文件 (默认为动态生成)
+      pre-gen-measures: false
+      # 设置为 true 后将跟踪 302 请求 (即不会将最终用户重定向到网盘)
+      follow-redirect: false
+      # 重定向链接缓存世界, 仅当 follow-redirect 为 false 时有用. 0 表示不缓存重定向
+      redirect-link-cache: 0s
 
 webdav-users:
     example-user:

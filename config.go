@@ -40,7 +40,7 @@ type CacheConfig struct {
 	Type string `yaml:"type"`
 	Data any    `yaml:"data,omitempty"`
 
-	newCache func() Cache
+	newCache func() Cache `yaml:"-"`
 }
 
 func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
@@ -48,7 +48,7 @@ func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 		Type string  `yaml:"type"`
 		Data RawYAML `yaml:"data,omitempty"`
 	}
-	if err = n.Decode(cfg); err != nil {
+	if err = n.Decode(&cfg); err != nil {
 		return
 	}
 	c.Type = cfg.Type
@@ -138,7 +138,8 @@ var defaultConfig = Config{
 	DownloadMaxConn:      16,
 
 	Cache: CacheConfig{
-		Type: "inmem",
+		Type:     "inmem",
+		newCache: func() Cache { return NewInMemCache() },
 	},
 
 	ServeLimit: ServeLimitConfig{
@@ -292,8 +293,8 @@ func readConfig() (config Config) {
 		ids := make(map[string]int, len(config.Storages))
 		for i, s := range config.Storages {
 			if s.Id == "" {
-				logErrorf("Empty storage id at [%d]", i)
-				os.Exit(1)
+				s.Id = fmt.Sprintf("storage-%d", i)
+				config.Storages[i].Id = s.Id
 			}
 			if j, ok := ids[s.Id]; ok {
 				logErrorf("Duplicated storage id %q at [%d] and [%d], please edit the config.", s.Id, i, j)

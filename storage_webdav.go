@@ -267,7 +267,7 @@ func copyHeader(key string, dst, src http.Header) {
 }
 
 func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
-	if s.opt.RedirectLinkCache > 0 {
+	if !s.opt.FollowRedirect && s.opt.RedirectLinkCache > 0 {
 		if location, ok := s.cache.Get(hash); ok {
 			// fix the size for Ranged request
 			rgs, err := gosrc.ParseRange(req.Header.Get("Range"), size)
@@ -305,12 +305,19 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 	copyHeader("If-None-Match", tgReq.Header, req.Header)
 	copyHeader("If-Match", tgReq.Header, req.Header)
 	copyHeader("If-Range", tgReq.Header, req.Header)
-	resp, err := noRedirectCli.Do(tgReq)
+
+	cli := noRedirectCli
+	if s.opt.FollowRedirect {
+		cli = http.DefaultClient
+	}
+
+	resp, err := cli.Do(tgReq)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 	logDebugf("Requested %q: status=%d", target, resp.StatusCode)
+
 	rwh := rw.Header()
 	switch resp.StatusCode / 100 {
 	case 3:

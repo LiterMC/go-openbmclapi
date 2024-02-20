@@ -430,7 +430,7 @@ func (d YAMLDuration) MarshalYAML() (any, error) {
 
 func (d *YAMLDuration) UnmarshalYAML(n *yaml.Node) (err error) {
 	var v string
-	if err = n.Decode(v); err != nil {
+	if err = n.Decode(&v); err != nil {
 		return
 	}
 	var td time.Duration

@@ -100,14 +100,14 @@ type BasicStorageOption struct {
 }
 
 type StorageOption struct {
-	BasicStorageOption
-	Data any `yaml:"data"`
+	BasicStorageOption `yaml:",inline"`
+	Data               any `yaml:"data"`
 }
 
 func (o *StorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	var opts struct {
-		BasicStorageOption
-		Data RawYAML `yaml:"data"`
+		BasicStorageOption `yaml:",inline"`
+		Data               RawYAML `yaml:"data"`
 	}
 	if err = n.Decode(&opts); err != nil {
 		return

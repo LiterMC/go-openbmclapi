@@ -109,6 +109,9 @@ START:
 	)
 
 	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
+
+	cache := config.Cache.newCache()
+
 	publicPort := config.PublicPort
 	if publicPort == 0 {
 		publicPort = config.Port
@@ -120,6 +123,7 @@ START:
 		config.ClusterId, config.ClusterSecret,
 		config.Byoc, dialer,
 		config.Storages,
+		cache,
 	)
 	if err := cluster.Init(ctx); err != nil {
 		logError("Cannot init cluster:", err)

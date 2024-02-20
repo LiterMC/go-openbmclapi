@@ -22,8 +22,10 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -32,6 +34,41 @@ type ServeLimitConfig struct {
 	Enable     bool `yaml:"enable"`
 	MaxConn    int  `yaml:"max-conn"`
 	UploadRate int  `yaml:"upload-rate"`
+}
+
+type CacheConfig struct {
+	Type string `yaml:"type"`
+	Data any    `yaml:"data,omitempty"`
+
+	newCache func() Cache
+}
+
+func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
+	var cfg struct {
+		Type string  `yaml:"type"`
+		Data RawYAML `yaml:"data,omitempty"`
+	}
+	if err = n.Decode(cfg); err != nil {
+		return
+	}
+	c.Type = cfg.Type
+	c.Data = nil
+	switch strings.ToLower(c.Type) {
+	case "no", "off", "disabled", "nocache", "no-cache":
+		c.newCache = func() Cache { return NoCache }
+	case "mem", "memory", "inmem":
+		c.newCache = func() Cache { return NewInMemCache() }
+	case "redis":
+		opt := new(RedisOptions)
+		if err = cfg.Data.Decode(opt); err != nil {
+			return
+		}
+		c.Data = opt
+		c.newCache = func() Cache { return NewRedisCache(opt.ToRedis()) }
+	default:
+		return fmt.Errorf("Unexpected cache type %q", c.Type)
+	}
+	return nil
 }
 
 type DashboardConfig struct {
@@ -66,6 +103,7 @@ type Config struct {
 	KeepaliveTimeout     int    `yaml:"keepalive-timeout"`
 	DownloadMaxConn      int    `yaml:"download-max-conn"`
 
+	Cache       CacheConfig            `yaml:"cache"`
 	ServeLimit  ServeLimitConfig       `yaml:"serve-limit"`
 	Dashboard   DashboardConfig        `yaml:"dashboard"`
 	Storages    []StorageOption        `yaml:"storages"`
@@ -98,6 +136,11 @@ var defaultConfig = Config{
 	SyncInterval:         10,
 	KeepaliveTimeout:     10,
 	DownloadMaxConn:      16,
+
+	Cache: CacheConfig{
+		Type: "inmem",
+	},
+
 	ServeLimit: ServeLimitConfig{
 		Enable:     false,
 		MaxConn:    16384,

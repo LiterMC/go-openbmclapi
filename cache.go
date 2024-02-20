@@ -21,6 +21,8 @@ package main
 
 import (
 	"time"
+
+	"github.com/gregjones/httpcache"
 )
 
 type CacheOpt struct {
@@ -32,6 +34,7 @@ type Cache interface {
 	Get(key string) (value string, ok bool)
 	SetBytes(key string, value []byte, opt CacheOpt)
 	GetBytes(key string) (value []byte, ok bool)
+	Delete(key string)
 }
 
 type noCache struct{}
@@ -40,6 +43,7 @@ func (noCache) Set(key string, value string, opt CacheOpt)      {}
 func (noCache) Get(key string) (value string, ok bool)          { return "", false }
 func (noCache) SetBytes(key string, value []byte, opt CacheOpt) {}
 func (noCache) GetBytes(key string) (value []byte, ok bool)     { return nil, false }
+func (noCache) Delete(key string)                               {}
 
 var NoCache Cache = noCache{}
 
@@ -72,4 +76,28 @@ func (c *nsCache) SetBytes(key string, value []byte, opt CacheOpt) {
 
 func (c *nsCache) GetBytes(key string) (value []byte, ok bool) {
 	return c.cache.GetBytes(c.ns + key)
+}
+
+func (c *nsCache) Delete(key string) {
+	c.cache.Delete(c.ns + key)
+}
+
+type httpCacheWrapper struct {
+	c Cache
+}
+
+func (c httpCacheWrapper) Set(key string, value []byte) {
+	c.c.SetBytes(key, value, CacheOpt{})
+}
+
+func (c httpCacheWrapper) Get(key string) (value []byte, ok bool) {
+	return c.c.GetBytes(key)
+}
+
+func (c httpCacheWrapper) Delete(key string) {
+	c.c.Delete(key)
+}
+
+func WrapToHTTPCache(c Cache) httpcache.Cache {
+	return httpCacheWrapper{c}
 }

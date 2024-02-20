@@ -34,6 +34,24 @@ type RedisCache struct {
 
 var _ Cache = (*RedisCache)(nil)
 
+type RedisOptions struct {
+	Network    string `yaml:"network"`
+	Addr       string `yaml:"addr"`
+	ClientName string `yaml:"client-name"`
+	Username   string `yaml:"username"`
+	Password   string `yaml:"password"`
+}
+
+func (o RedisOptions) ToRedis() *redis.Options {
+	return &redis.Options{
+		Network:    o.Network,
+		Addr:       o.Addr,
+		ClientName: o.ClientName,
+		Username:   o.Username,
+		Password:   o.Password,
+	}
+}
+
 func NewRedisCache(opt *redis.Options) *RedisCache {
 	return NewRedisCacheByClient(redis.NewClient(opt))
 }
@@ -76,4 +94,10 @@ func (c *RedisCache) GetBytes(key string) (value []byte, ok bool) {
 		return nil, false
 	}
 	return value, true
+}
+
+func (c *RedisCache) Delete(key string) {
+	ctx, cancel := context.WithTimeout(c.Context, time.Second)
+	defer cancel()
+	c.Client.Del(ctx)
 }

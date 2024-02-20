@@ -62,3 +62,7 @@ func (c *InMemCache) GetBytes(key string) (value []byte, ok bool) {
 	value, ok = v.([]byte)
 	return
 }
+
+func (c *InMemCache) Delete(key string) {
+	c.cache.Delete(key)
+}

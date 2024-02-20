@@ -38,6 +38,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 const mbChunkSize = 1024 * 1024
@@ -396,4 +398,22 @@ type HTTPStatusError struct {
 
 func (e *HTTPStatusError) Error() string {
 	return fmt.Sprintf("Unexpected http status %d %s", e.Code, http.StatusText(e.Code))
+}
+
+type RawYAML struct {
+	*yaml.Node
+}
+
+var (
+	_ yaml.Marshaler   = RawYAML{}
+	_ yaml.Unmarshaler = (*RawYAML)(nil)
+)
+
+func (r RawYAML) MarshalYAML() (interface{}, error) {
+	return r.Node, nil
+}
+
+func (r *RawYAML) UnmarshalYAML(n *yaml.Node) (err error) {
+	r.Node = n
+	return nil
 }

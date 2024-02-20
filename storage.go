@@ -93,24 +93,6 @@ func (e *UnexpectedStorageTypeError) Error() string {
 	return fmt.Sprintf("Unexpected storage type %q, must be one of %s", e.Type, strings.Join(types, ","))
 }
 
-type RawYAML struct {
-	*yaml.Node
-}
-
-var (
-	_ yaml.Marshaler   = RawYAML{}
-	_ yaml.Unmarshaler = (*RawYAML)(nil)
-)
-
-func (r RawYAML) MarshalYAML() (interface{}, error) {
-	return r.Node, nil
-}
-
-func (r *RawYAML) UnmarshalYAML(n *yaml.Node) (err error) {
-	r.Node = n
-	return nil
-}
-
 type StorageOption struct {
 	Type   string `yaml:"type"`
 	Weight uint   `yaml:"weight"`

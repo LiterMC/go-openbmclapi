@@ -42,6 +42,7 @@ import (
 
 	"github.com/LiterMC/socket.io"
 	"github.com/LiterMC/socket.io/engine.io"
+	"github.com/gregjones/httpcache"
 	"github.com/hamba/avro/v2"
 	"github.com/klauspost/compress/zstd"
 	"github.com/vbauerster/mpb/v8"
@@ -62,6 +63,8 @@ type Cluster struct {
 	storages           []Storage
 	storageWeights     []uint
 	storageTotalWeight uint
+	cache              Cache
+	httpCache          Cache
 
 	stats  Stats
 	hits   atomic.Int32
@@ -100,11 +103,22 @@ func NewCluster(
 	username string, password string,
 	byoc bool, dialer *net.Dialer,
 	storageOpts []StorageOption,
+	cache Cache,
 ) (cr *Cluster) {
-	transport := &http.Transport{}
+	transport := http.DefaultTransport
 	if dialer != nil {
-		transport.DialContext = dialer.DialContext
+		transport = &http.Transport{
+			DialContext: dialer.DialContext,
+		}
 	}
+
+	if cache != NoCache {
+		transport = &httpcache.Transport{
+			Transport: transport,
+			Cache:     WrapToHTTPCache(NewCacheWithNamespace(cache, "http@")),
+		}
+	}
+
 	cr = &Cluster{
 		host:       host,
 		publicPort: publicPort,
@@ -116,6 +130,7 @@ func NewCluster(
 		dataDir:     filepath.Join(baseDir, "data"),
 		maxConn:     config.DownloadMaxConn,
 		storageOpts: storageOpts,
+		cache:       cache,
 
 		disabled: make(chan struct{}, 0),
 
@@ -481,17 +496,18 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 	return
 }
 
-func (cr *Cluster) makeReq(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
-	var target *url.URL
-	if target, err = url.Parse(cr.prefix); err != nil {
+func (cr *Cluster) makeReqWithAuth(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
+	var u *url.URL
+	if u, err = url.Parse(cr.prefix); err != nil {
 		return
 	}
-	target.Path = path.Join(target.Path, relpath)
+	u.Path = path.Join(u.Path, relpath)
 	if query != nil {
-		target.RawQuery = query.Encode()
+		u.RawQuery = query.Encode()
 	}
+	target := u.String()
 
-	req, err = http.NewRequestWithContext(ctx, method, target.String(), nil)
+	req, err = http.NewRequestWithContext(ctx, method, target, nil)
 	if err != nil {
 		return
 	}
@@ -521,7 +537,7 @@ var fileListSchema = avro.MustParse(`{
 }`)
 
 func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error) {
-	req, err := cr.makeReq(ctx, http.MethodGet, "/openbmclapi/files", nil)
+	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/files", nil)
 	if err != nil {
 		return
 	}
@@ -548,7 +564,7 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 }
 
 func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
-	req, err := cr.makeReq(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
+	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
 	if err != nil {
 		return
 	}
@@ -623,7 +639,7 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 
 	logInfof("Start checking files for %s, heavy = %v", storage.String(), heavy)
 
-	pg := mpb.New(mpb.WithAutoRefresh())
+	pg := mpb.New(mpb.WithAutoRefresh(), mpb.WithWidth(140))
 	setLogOutput(pg)
 	defer setLogOutput(nil)
 
@@ -728,7 +744,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		stats.totalSize += f.Size
 	}
 
-	pg := mpb.New(mpb.WithAutoRefresh())
+	pg := mpb.New(mpb.WithAutoRefresh(), mpb.WithWidth(140))
 	stats.pg = pg
 	setLogOutput(pg)
 	defer setLogOutput(nil)
@@ -944,7 +960,7 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo,
 	if config.NoOpen {
 		query = noOpenQuery
 	}
-	if req, err = cr.makeReq(ctx, http.MethodGet, f.Path, query); err != nil {
+	if req, err = cr.makeReqWithAuth(ctx, http.MethodGet, f.Path, query); err != nil {
 		return
 	}
 	req.Header.Set("Accept-Encoding", "gzip, deflate")

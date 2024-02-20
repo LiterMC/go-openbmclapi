@@ -212,8 +212,9 @@ func (s *WebDavStorage) Size(hash string) (int64, error) {
 	return stat.Size(), nil
 }
 
-func (s *WebDavStorage) Open(hash string) (io.ReadCloser, error) {
-	return s.cli.ReadStream(s.hashToPath(hash))
+func (s *WebDavStorage) Open(hash string) (r io.ReadCloser, err error) {
+	r, err = s.cli.ReadStream(s.hashToPath(hash))
+	return
 }
 
 func (s *WebDavStorage) Create(hash string, r io.ReadSeeker) error {

@@ -5,6 +5,8 @@ if [ $(id -u) -ne 0 ]; then
 	exit 1
 fi
 
+echo "MIRROR_PREFIX=${MIRROR_PREFIX}"
+
 REPO='LiterMC/go-openbmclapi'
 RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"
 RAW_REPO="$RAW_PREFIX/$REPO"

@@ -84,15 +84,10 @@ type Cluster struct {
 	fileset         map[string]int64
 
 	client   *http.Client
-	bufSlots chan slotInfo
+	bufSlots *BufSlots
 
 	handlerAPIv0 http.Handler
 	handlerAPIv1 http.Handler
-}
-
-type slotInfo struct {
-	id  int
-	buf []byte
 }
 
 func NewCluster(
@@ -142,13 +137,7 @@ func NewCluster(
 	}
 	close(cr.disabled)
 
-	cr.bufSlots = make(chan slotInfo, cr.maxConn)
-	for i := 0; i < cr.maxConn; i++ {
-		cr.bufSlots <- slotInfo{
-			id:  i,
-			buf: make([]byte, 1024*512),
-		}
-	}
+	cr.bufSlots = NewBufSlots(cr.maxConn)
 
 	{
 		var (
@@ -181,14 +170,7 @@ func (cr *Cluster) Init(ctx context.Context) error {
 }
 
 func (cr *Cluster) allocBuf(ctx context.Context) (slotId int, buf []byte, free func()) {
-	select {
-	case slot := <-cr.bufSlots:
-		return slot.id, slot.buf, func() {
-			cr.bufSlots <- slot
-		}
-	case <-ctx.Done():
-		return 0, nil, nil
-	}
+	return cr.bufSlots.Alloc(ctx)
 }
 
 func (cr *Cluster) Connect(ctx context.Context) bool {
@@ -587,6 +569,8 @@ func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, 
 }
 
 type syncStats struct {
+	slots *BufSlots
+
 	totalSize          int64
 	okCount, failCount atomic.Int32
 	totalFiles         int
@@ -733,12 +717,19 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		return nil
 	}
 
+	ccfg, err := cr.GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+	logInfof("Sync config: %#v", ccfg.Sync)
+
 	missing := make([]*fileInfoWithTargets, 0, len(missingMap.m))
 	for _, f := range missingMap.m {
 		missing = append(missing, f)
 	}
 
 	var stats syncStats
+	stats.slots = NewBufSlots(ccfg.Sync.Concurrency)
 	stats.totalFiles = totalFiles
 	for _, f := range missing {
 		stats.totalSize += f.Size
@@ -753,7 +744,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	stats.lastInc.Store(time.Now().UnixNano())
 	stats.totalBar = pg.AddBar(stats.totalSize,
 		mpb.BarRemoveOnComplete(),
-		mpb.BarPriority(cap(cr.bufSlots)),
+		mpb.BarPriority(stats.slots.Cap()),
 		mpb.PrependDecorators(
 			decor.Name("Total: "),
 			decor.NewPercentage("%.2f"),
@@ -773,7 +764,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	logInfof("Starting sync files, count: %d, total: %s", totalFiles, bytesToUnit((float64)(stats.totalSize)))
 	start := time.Now()
 
-	done := make(chan struct{}, 1)
+	done := make(chan struct{}, 0)
 
 	for _, f := range missing {
 		logDebugf("File %s is for %v", f.Hash, f.targets)
@@ -794,7 +785,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 				if path != "" {
 					defer os.Remove(path)
 					// acquire slot here
-					slotId, buf, free := cr.allocBuf(ctx)
+					slotId, buf, free := stats.slots.Alloc(ctx)
 					if buf == nil {
 						return
 					}
@@ -870,7 +861,7 @@ func (cr *Cluster) gcFor(s Storage) {
 func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) (<-chan string, error) {
 	const maxRetryCount = 5
 
-	slotId, buf, free := cr.allocBuf(ctx)
+	slotId, buf, free := stats.slots.Alloc(ctx)
 	if buf == nil {
 		return nil, ctx.Err()
 	}
@@ -1045,11 +1036,12 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	}
 
 	var buf []byte
-	{
-		buf0 := bufPool.Get().(*[]byte)
-		defer bufPool.Put(buf0)
-		buf = *buf0
+	_, buf, free := cr.allocBuf(ctx)
+	if buf == nil {
+		return ctx.Err()
 	}
+	defer free()
+
 	f := FileInfo{
 		Path: "/openbmclapi/download/" + hash + "?noopen=1",
 		Hash: hash,

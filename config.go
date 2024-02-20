@@ -296,7 +296,7 @@ func readConfig() (config Config) {
 				os.Exit(1)
 			}
 			if j, ok := ids[s.Id]; ok {
-				logErrorf("Duplicated storage id at [%d] and [%d], please edit the config.", i, j)
+				logErrorf("Duplicated storage id %q at [%d] and [%d], please edit the config.", s.Id, i, j)
 				os.Exit(1)
 			}
 			ids[s.Id] = i

@@ -417,3 +417,44 @@ func (r *RawYAML) UnmarshalYAML(n *yaml.Node) (err error) {
 	r.Node = n
 	return nil
 }
+
+type slotInfo struct {
+	id  int
+	buf []byte
+}
+
+type BufSlots struct {
+	c chan slotInfo
+}
+
+func NewBufSlots(size int) *BufSlots {
+	c := make(chan slotInfo, size)
+	for i := 0; i < size; i++ {
+		c <- slotInfo{
+			id:  i,
+			buf: make([]byte, 1024*512),
+		}
+	}
+	return &BufSlots{
+		c: c,
+	}
+}
+
+func (s *BufSlots) Len() int {
+	return len(s.c)
+}
+
+func (s *BufSlots) Cap() int {
+	return cap(s.c)
+}
+
+func (s *BufSlots) Alloc(ctx context.Context) (slotId int, buf []byte, free func()) {
+	select {
+	case slot := <-s.c:
+		return slot.id, slot.buf, func() {
+			s.c <- slot
+		}
+	case <-ctx.Done():
+		return 0, nil, nil
+	}
+}

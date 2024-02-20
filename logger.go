@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -33,8 +34,31 @@ import (
 
 var logdir string = "logs"
 var logfile atomic.Pointer[os.File]
+var logStdout atomic.Pointer[io.Writer]
 
 var logTimeFormat string = "15:04:05"
+
+func setLogOutput(out io.Writer) {
+	if out == nil {
+		logStdout.Store(nil)
+	} else {
+		logStdout.Store(&out)
+	}
+}
+
+func logWrite(buf []byte) {
+	{
+		out := logStdout.Load()
+		if out != nil {
+			(*out).Write(buf)
+		} else {
+			os.Stdout.Write(buf)
+		}
+	}
+	if fd := logfile.Load(); fd != nil {
+		fd.Write(buf)
+	}
+}
 
 func logX(x string, args ...any) {
 	sa := make([]string, len(args))
@@ -51,10 +75,7 @@ func logX(x string, args ...any) {
 	buf.WriteString("]: ")
 	buf.WriteString(c)
 	buf.WriteByte('\n')
-	os.Stdout.Write(buf.Bytes())
-	if fd := logfile.Load(); fd != nil {
-		fd.Write(buf.Bytes())
-	}
+	logWrite(buf.Bytes())
 }
 
 func logXf(x string, format string, args ...any) {
@@ -68,10 +89,7 @@ func logXf(x string, format string, args ...any) {
 	buf.WriteString("]: ")
 	buf.WriteString(c)
 	buf.WriteByte('\n')
-	os.Stdout.Write(buf.Bytes())
-	if fd := logfile.Load(); fd != nil {
-		fd.Write(buf.Bytes())
-	}
+	logWrite(buf.Bytes())
 }
 
 func logDebug(args ...any) {

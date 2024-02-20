@@ -21,7 +21,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -150,10 +149,8 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		s.opt.fullEndPoint = s.opt.EndPoint
 	}
 
-	s.cli = gowebdav.NewAuthClient(s.opt.GetEndPoint(), gowebdav.NewEmptyAuth())
-	s.cli.SetHeader("Authorization", "Basic "+
-		base64.StdEncoding.EncodeToString(([]byte)(s.opt.GetUsername()+":"+s.opt.GetPassword())))
-	// s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
+	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())
+	s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
 
 	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {
@@ -172,18 +169,23 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 	return
 }
 
-func (s *WebDavStorage) putFile(path string, r io.Reader) error {
+func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
+	size, err := getFileSize(r)
+	if err != nil {
+		return err
+	}
 	target, err := url.JoinPath(s.opt.GetEndPoint(), path)
 	if err != nil {
 		return err
 	}
 	logDebugf("Putting %q", target)
-	cr := &countReader{r.(io.ReadSeeker), 0}
+	cr := &countReader{r, 0}
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, cr)
 	if err != nil {
 		return err
 	}
 	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
+	req.ContentLength = size
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -192,7 +194,6 @@ func (s *WebDavStorage) putFile(path string, r io.Reader) error {
 	defer res.Body.Close()
 	switch res.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
-		logDebugf("read %d bytes", cr.n)
 		return nil
 	default:
 		return &HTTPStatusError{Code: res.StatusCode}
@@ -215,7 +216,7 @@ func (s *WebDavStorage) Open(hash string) (io.ReadCloser, error) {
 	return s.cli.ReadStream(s.hashToPath(hash))
 }
 
-func (s *WebDavStorage) Create(hash string, r io.Reader) error {
+func (s *WebDavStorage) Create(hash string, r io.ReadSeeker) error {
 	return s.putFile(s.hashToPath(hash), r)
 }
 
@@ -225,7 +226,7 @@ func (s *WebDavStorage) Remove(hash string) error {
 
 func (s *WebDavStorage) WalkDir(walker func(hash string, size int64) error) error {
 	for _, dir := range hex256 {
-		files, err := s.cli.ReadDir(dir)
+		files, err := s.cli.ReadDir(path.Join("download", dir))
 		if err != nil {
 			continue
 		}
@@ -381,7 +382,7 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err er
 		logErrorf("Cannot get stat of %s: %v", t, err)
 	}
 	logInfof("Creating measure file at %q", t)
-	if err = s.putFile(t, &io.LimitedReader{R: NoChangeReader, N: tsz}); err != nil {
+	if err = s.putFile(t, io.NewSectionReader(EmptyReader, 0, tsz)); err != nil {
 		logErrorf("Cannot create measure file %q: %v", t, err)
 		return
 	}

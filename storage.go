@@ -43,7 +43,7 @@ type Storage interface {
 
 	Size(hash string) (int64, error)
 	Open(hash string) (io.ReadCloser, error)
-	Create(hash string, r io.Reader) error
+	Create(hash string, r io.ReadSeeker) error
 	Remove(hash string) error
 	WalkDir(func(hash string, size int64) error) error
 

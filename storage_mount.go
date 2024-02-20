@@ -133,7 +133,7 @@ func (s *MountStorage) Open(hash string) (io.ReadCloser, error) {
 	return os.Open(s.hashToPath(hash))
 }
 
-func (s *MountStorage) Create(hash string, r io.Reader) error {
+func (s *MountStorage) Create(hash string, r io.ReadSeeker) error {
 	fd, err := os.Create(s.hashToPath(hash))
 	if err != nil {
 		return err

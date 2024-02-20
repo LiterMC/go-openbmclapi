@@ -92,11 +92,15 @@ func (s *LocalStorage) Size(hash string) (int64, error) {
 	return stat.Size(), nil
 }
 
-func (s *LocalStorage) Open(hash string) (io.ReadCloser, error) {
+func (s *LocalStorage) OpenFd(hash string) (*os.File, error) {
 	return os.Open(s.hashToPath(hash))
 }
 
-func (s *LocalStorage) Create(hash string, r io.Reader) error {
+func (s *LocalStorage) Open(hash string) (io.ReadCloser, error) {
+	return s.OpenFd(hash)
+}
+
+func (s *LocalStorage) Create(hash string, r io.ReadSeeker) error {
 	fd, err := os.Create(s.hashToPath(hash))
 	if err != nil {
 		return err

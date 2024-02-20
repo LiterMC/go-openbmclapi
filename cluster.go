@@ -44,6 +44,8 @@ import (
 	"github.com/LiterMC/socket.io/engine.io"
 	"github.com/hamba/avro/v2"
 	"github.com/klauspost/compress/zstd"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 )
 
 type Cluster struct {
@@ -597,17 +599,33 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 		}
 	}
 
+	logInfof("Start checking files for %s, heavy = %v", storage.String(), heavy)
+
+	pb := mpb.New(mpb.WithAutoRefresh())
+	setLogOutput(pb)
+	defer setLogOutput(nil)
+
+	bar := pb.AddBar((int64)(len(files)),
+		mpb.BarRemoveOnComplete(),
+		mpb.PrependDecorators(
+			decor.Name("Checking "+storage.String()),
+		),
+		mpb.AppendDecorators(
+			decor.CountersNoUnit("%.d / %.d", decor.WCSyncSpaceR),
+		),
+	)
+
 	sizeMap := make(map[string]int64, len(files))
 	storage.WalkDir(func(hash string, size int64) error {
 		sizeMap[hash] = size
 		return nil
 	})
 
-	logInfof("Start checking files for %s, heavy = %v", storage.String(), heavy)
 	var buf [1024 * 32]byte
 	for _, f := range files {
 		hash := f.Hash
 		// logDebugf("Checking file %s [%.2f%%]", hash, (float32)(i+1)/(float32)(len(files))*100)
+		bar.Increment()
 		if f.Size == 0 {
 			logDebugf("Skipped empty file %s", hash)
 			continue
@@ -648,21 +666,16 @@ func (cr *Cluster) checkFileFor(storage Storage, files []FileInfo, heavy bool, m
 	MISSING:
 		addMissing(f)
 	}
+	pb.Wait()
 	logInfof("File check finished for %s", storage.String())
 	return
 }
 
 func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
 	missingMap := NewSyncMap[string, *fileInfoWithTargets]()
-	var wg sync.WaitGroup
 	for _, s := range cr.storages {
-		wg.Add(1)
-		go func(s Storage) {
-			defer wg.Done()
-			cr.checkFileFor(s, files, heavyCheck, missingMap)
-		}(s)
+		cr.checkFileFor(s, files, heavyCheck, missingMap)
 	}
-	wg.Wait()
 
 	fl := len(missingMap.m)
 	if fl == 0 {

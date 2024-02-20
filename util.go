@@ -274,15 +274,15 @@ func (devNull) ReadAt([]byte, int64) (int, error) { return 0, io.EOF }
 func (devNull) Seek(int64, int) (int64, error)    { return 0, nil }
 func (devNull) Write(buf []byte) (int, error)     { return len(buf), nil }
 
-type noChangeReader struct{}
+type emptyReader struct{}
 
 var (
-	NoChangeReader = noChangeReader{}
+	EmptyReader = emptyReader{}
 
-	_ io.Reader = NoChangeReader
+	_ io.ReaderAt = EmptyReader
 )
 
-func (noChangeReader) Read(buf []byte) (int, error) { return len(buf), nil }
+func (emptyReader) ReadAt(buf []byte, _ int64) (int, error) { return len(buf), nil }
 
 var errNotSeeker = errors.New("r is not an io.Seeker")
 

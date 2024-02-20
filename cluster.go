@@ -569,7 +569,8 @@ func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, 
 }
 
 type syncStats struct {
-	slots *BufSlots
+	slots  *BufSlots
+	noOpen bool
 
 	totalSize          int64
 	okCount, failCount atomic.Int32
@@ -721,7 +722,8 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	if err != nil {
 		return err
 	}
-	logInfof("Sync config: %#v", ccfg.Sync)
+	syncCfg := ccfg.Sync
+	logInfof("Sync config: %#v", syncCfg)
 
 	missing := make([]*fileInfoWithTargets, 0, len(missingMap.m))
 	for _, f := range missingMap.m {
@@ -729,7 +731,8 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	}
 
 	var stats syncStats
-	stats.slots = NewBufSlots(ccfg.Sync.Concurrency)
+	stats.noOpen = config.NoOpen || syncCfg.Source == "center"
+	stats.slots = NewBufSlots(syncCfg.Concurrency)
 	stats.totalFiles = totalFiles
 	for _, f := range missing {
 		stats.totalSize += f.Size
@@ -905,7 +908,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 			hashMethod, err := getHashMethod(len(f.Hash))
 			if err == nil {
 				var path string
-				if path, err = cr.fetchFileWithBuf(ctx, f, hashMethod, buf, func(r io.Reader) io.Reader {
+				if path, err = cr.fetchFileWithBuf(ctx, f, hashMethod, buf, stats.noOpen, func(r io.Reader) io.Reader {
 					return ProxyReader(r, bar, stats.totalBar, &stats.lastInc)
 				}); err == nil {
 					pathRes <- path
@@ -940,6 +943,7 @@ var noOpenQuery = url.Values{
 
 func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo,
 	hashMethod crypto.Hash, buf []byte,
+	noOpen bool,
 	wrapper func(io.Reader) io.Reader) (path string, err error) {
 	var (
 		query url.Values = nil
@@ -948,7 +952,7 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo,
 		fd    *os.File
 		r     io.Reader
 	)
-	if config.NoOpen {
+	if noOpen {
 		query = noOpenQuery
 	}
 	if req, err = cr.makeReqWithAuth(ctx, http.MethodGet, f.Path, query); err != nil {
@@ -1043,7 +1047,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	defer free()
 
 	f := FileInfo{
-		Path: "/openbmclapi/download/" + hash + "?noopen=1",
+		Path: "/openbmclapi/download/" + hash,
 		Hash: hash,
 		Size: -1,
 	}
@@ -1060,7 +1064,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		done <- err
 	}()
 
-	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, nil)
+	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, true, nil)
 	if err != nil {
 		return
 	}

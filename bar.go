@@ -27,6 +27,39 @@ import (
 	"github.com/vbauerster/mpb/v8"
 )
 
+type ProxiedReader struct {
+	io.Reader
+	bar, total *mpb.Bar
+	lastRead   time.Time
+	lastInc    *atomic.Int64
+}
+
+func ProxyReader(r io.Reader, bar, total *mpb.Bar, lastInc *atomic.Int64) *ProxiedReader {
+	return &ProxiedReader{
+		Reader:  r,
+		bar:     bar,
+		total:   total,
+		lastInc: lastInc,
+	}
+}
+
+func (p *ProxiedReader) Read(buf []byte) (n int, err error) {
+	start := p.lastRead
+	if start.IsZero() {
+		start = time.Now()
+	}
+	n, err = p.Reader.Read(buf)
+	end := time.Now()
+	p.lastRead = end
+	used := end.Sub(start)
+
+	p.bar.EwmaIncrBy(n, used)
+	nowSt := end.UnixNano()
+	last := p.lastInc.Swap(nowSt)
+	p.total.EwmaIncrBy(n, (time.Duration)(nowSt-last)*time.Nanosecond)
+	return
+}
+
 type ProxiedReadSeeker struct {
 	io.ReadSeeker
 	bar, total *mpb.Bar

@@ -92,58 +92,70 @@ func cmdUploadWebdav(args []string) {
 		slots <- slot
 	}
 
+	type fileInfo struct {
+		Hash string
+		Size int64
+	}
+
 	var (
 		totalSize, totalFiles int64
 		uploadedFiles         atomic.Int64
 
 		localFiles  = make(map[string]int64)
-		webdavFiles = make([]map[string]int64, len(webdavs))
+		webdavFiles = make([][]fileInfo, len(webdavs))
 	)
 	local.WalkDir(func(hash string, size int64) error {
 		localFiles[hash] = size
-		totalSize += size
 		return nil
 	})
 
 	var wg sync.WaitGroup
-	pb := mpb.New(mpb.WithWaitGroup(&wg), mpb.WithAutoRefresh())
-	setLogOutput(pb)
+	pg := mpb.New(mpb.WithWaitGroup(&wg), mpb.WithAutoRefresh())
+	setLogOutput(pg)
 
-	webdavBar := pb.AddBar((int64)(len(webdavs)),
+	webdavBar := pg.AddBar(0,
 		mpb.BarRemoveOnComplete(),
 		mpb.BarPriority(maxProc),
 		mpb.PrependDecorators(
-			decor.Name("Counting webdavs"),
+			decor.Name("Counting webdav objects"),
 		),
 		mpb.AppendDecorators(
 			decor.CountersNoUnit("(%d / %d) "),
 			decor.EwmaETA(decor.ET_STYLE_GO, 30),
 		),
 	)
+	webdavBar.SetTotal((int64)(len(localFiles)*len(webdavs)), false)
 	for i, s := range webdavs {
 		start := time.Now()
-		files := make(map[string]int64)
-		for k, v := range localFiles {
-			files[k] = v
-		}
+		fileSet := make(map[string]int64)
 		err := s.WalkDir(func(hash string, size int64) error {
-			if sz, ok := files[hash]; ok && sz == size {
-				delete(files, hash)
-			}
+			fileSet[hash] = size
 			return nil
 		})
 		if err != nil {
 			logErrorf("Cannot walk %s: %v", s, err)
 			os.Exit(2)
 		}
+		files := make([]fileInfo, 0, 100)
+		for hash, size := range localFiles {
+			if fileSet[hash] != size {
+				files = append(files, fileInfo{
+					Hash: hash,
+					Size: size,
+				})
+				totalSize += size
+			}
+		}
 		totalFiles += (int64)(len(files))
 		webdavFiles[i] = files
 		webdavBar.EwmaIncrement(time.Since(start))
 	}
+	webdavBar.SetTotal(-1, true)
+	webdavBar.Wait()
 
 	lastInc := new(atomic.Int64)
 	lastInc.Store(time.Now().UnixNano())
-	totalBar := pb.AddBar(totalSize*(int64)(len(webdavs)),
+	totalBar := pg.AddBar(totalSize,
 		mpb.BarRemoveOnComplete(),
 		mpb.BarPriority(maxProc),
 		mpb.PrependDecorators(
@@ -167,7 +179,8 @@ func cmdUploadWebdav(args []string) {
 	for i, files := range webdavFiles {
 		s := webdavs[i]
 		logInfof("Storage %s need sync %d files", s, len(files))
-		for hash, size := range files {
+		for _, info := range files {
+			hash, size := info.Hash, info.Size
 			slot := <-slots
 
 			fd, err := local.OpenFd(hash)
@@ -177,7 +190,7 @@ func cmdUploadWebdav(args []string) {
 				continue
 			}
 
-			bar := pb.AddBar(0,
+			bar := pg.AddBar(0,
 				mpb.BarPriority(slot),
 				mpb.PrependDecorators(
 					decor.Name(fmt.Sprintf("> Uploading %s/%s", s.String(), hash), decor.WCSyncSpaceR),
@@ -218,6 +231,6 @@ func cmdUploadWebdav(args []string) {
 		}
 	}
 
-	pb.Wait()
+	pg.Wait()
 	setLogOutput(nil)
 }

@@ -154,7 +154,7 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 
 	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {
-			logErrorf("Could not create measure folder for %s: %v", s.String(), err)
+			logWarnf("Could not create measure folder for %s: %v", s.String(), err)
 		}
 	}
 	if s.opt.PreGenMeasures {

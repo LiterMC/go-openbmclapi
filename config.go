@@ -271,8 +271,11 @@ func readConfig() (config Config) {
 		if len(config.Storages) == 0 {
 			config.Storages = []StorageOption{
 				{
-					Type:   StorageLocal,
-					Weight: 100,
+					BasicStorageOption: BasicStorageOption{
+						Id:     "local",
+						Type:   StorageLocal,
+						Weight: 100,
+					},
 					Data: &LocalStorageOption{
 						CachePath: "cache",
 					},
@@ -285,6 +288,18 @@ func readConfig() (config Config) {
 				Username: "example-username",
 				Password: "example-password",
 			}
+		}
+		ids := make(map[string]int, len(config.Storages))
+		for i, s := range config.Storages {
+			if s.Id == "" {
+				logErrorf("Empty storage id at [%d]", i)
+				os.Exit(1)
+			}
+			if j, ok := ids[s.Id]; ok {
+				logErrorf("Duplicated storage id at [%d] and [%d], please edit the config.", i, j)
+				os.Exit(1)
+			}
+			ids[s.Id] = i
 		}
 	}
 

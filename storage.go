@@ -93,17 +93,21 @@ func (e *UnexpectedStorageTypeError) Error() string {
 	return fmt.Sprintf("Unexpected storage type %q, must be one of %s", e.Type, strings.Join(types, ","))
 }
 
-type StorageOption struct {
+type BasicStorageOption struct {
 	Type   string `yaml:"type"`
+	Id     string `yaml:"id"`
 	Weight uint   `yaml:"weight"`
-	Data   any    `yaml:"data"`
+}
+
+type StorageOption struct {
+	BasicStorageOption
+	Data any `yaml:"data"`
 }
 
 func (o *StorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	var opts struct {
-		Type   string  `yaml:"type"`
-		Weight uint    `yaml:"weight"`
-		Data   RawYAML `yaml:"data"`
+		BasicStorageOption
+		Data RawYAML `yaml:"data"`
 	}
 	if err = n.Decode(&opts); err != nil {
 		return
@@ -112,8 +116,7 @@ func (o *StorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	if !ok {
 		return &UnexpectedStorageTypeError{opts.Type}
 	}
-	o.Type = opts.Type
-	o.Weight = opts.Weight
+	o.BasicStorageOption = opts.BasicStorageOption
 	o.Data = f.NewConfig()
 	return opts.Data.Decode(o.Data)
 }

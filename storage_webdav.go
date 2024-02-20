@@ -38,12 +38,14 @@ import (
 )
 
 type WebDavStorageOption struct {
-	PreGenMeasures bool `yaml:"pre-gen-measures"`
+	PreGenMeasures    bool         `yaml:"pre-gen-measures"`
+	FollowRedirect    bool         `yaml:"follow-redirect"`
+	RedirectLinkCache YAMLDuration `yaml:"redirect-link-cache"`
 
-	Alias     string `yaml:"alias,omitempty"`
-	aliasUser *WebDavUser
+	Alias      string `yaml:"alias,omitempty"`
+	WebDavUser `yaml:",inline,omitempty"`
 
-	WebDavUser   `yaml:",inline,omitempty"`
+	aliasUser    *WebDavUser
 	fullEndPoint string
 }
 
@@ -95,7 +97,8 @@ func (o *WebDavStorageOption) GetPassword() string {
 type WebDavStorage struct {
 	opt WebDavStorageOption
 
-	cli *gowebdav.Client
+	cache Cache
+	cli   *gowebdav.Client
 }
 
 var _ Storage = (*WebDavStorage)(nil)
@@ -124,7 +127,7 @@ func webdavIsHTTPError(err error, code int) bool {
 	return strings.Contains(err.Error(), expect)
 }
 
-func (s *WebDavStorage) Init(ctx context.Context) (err error) {
+func (s *WebDavStorage) Init(ctx context.Context, cluster *Cluster) (err error) {
 	if alias := s.opt.Alias; alias != "" {
 		user, ok := config.WebdavUsers[alias]
 		if !ok {
@@ -147,6 +150,12 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		}
 	} else {
 		s.opt.fullEndPoint = s.opt.EndPoint
+	}
+
+	if cluster == nil {
+		s.cache = NoCache
+	} else {
+		s.cache = NewCacheWithNamespace(cluster.cache, fmt.Sprintf("redirect-cache@%s;%s@", s.opt.GetUsername(), s.opt.GetEndPoint()))
 	}
 
 	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())
@@ -258,6 +267,26 @@ func copyHeader(key string, dst, src http.Header) {
 }
 
 func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
+	if s.opt.RedirectLinkCache > 0 {
+		if location, ok := s.cache.Get(hash); ok {
+			// fix the size for Ranged request
+			rgs, err := gosrc.ParseRange(req.Header.Get("Range"), size)
+			if err == nil && len(rgs) > 0 {
+				var newSize int64 = 0
+				for _, r := range rgs {
+					newSize += r.Length
+				}
+				if newSize < size {
+					size = newSize
+				}
+			}
+			rw.Header().Set("Location", location)
+			rw.Header().Set("Cache-Control", fmt.Sprintf("public,max-age=%d", (int64)(s.opt.RedirectLinkCache.Dur().Seconds())))
+			rw.WriteHeader(http.StatusFound)
+			return size, nil
+		}
+	}
+
 	target, err := url.JoinPath(s.opt.GetEndPoint(), s.hashToPath(hash))
 	if err != nil {
 		return 0, err
@@ -296,9 +325,14 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 				size = newSize
 			}
 		}
-		copyHeader("Location", rwh, resp.Header)
+		location := resp.Header.Get("Location")
+		rwh.Set("Location", location)
 		copyHeader("ETag", rwh, resp.Header)
 		copyHeader("Last-Modified", rwh, resp.Header)
+		if s.opt.RedirectLinkCache > 0 {
+			rwh.Set("Cache-Control", fmt.Sprintf("public,max-age=%d", (int64)(s.opt.RedirectLinkCache.Dur().Seconds())))
+			s.cache.Set(hash, location, CacheOpt{Expiration: s.opt.RedirectLinkCache.Dur()})
+		}
 		rw.WriteHeader(resp.StatusCode)
 		return size, nil
 	case 2:

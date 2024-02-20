@@ -39,7 +39,7 @@ type Storage interface {
 	// SetOptions will be called with the same type of the Options() result
 	SetOptions(any)
 	// Init will be called before start to use a storage
-	Init(context.Context) error
+	Init(context.Context, *Cluster) error
 
 	Size(hash string) (int64, error)
 	Open(hash string) (io.ReadCloser, error)

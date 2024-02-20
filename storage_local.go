@@ -67,7 +67,7 @@ func (s *LocalStorage) SetOptions(newOpts any) {
 	s.opt = *(newOpts.(*LocalStorageOption))
 }
 
-func (s *LocalStorage) Init(context.Context) (err error) {
+func (s *LocalStorage) Init(context.Context, *Cluster) (err error) {
 	tmpDir := s.opt.TmpPath()
 	os.RemoveAll(tmpDir)
 	// should be 0755 here because Windows permission issue

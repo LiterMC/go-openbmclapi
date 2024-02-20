@@ -160,7 +160,7 @@ func NewCluster(
 func (cr *Cluster) Init(ctx context.Context) error {
 	// Init storaged
 	for _, s := range cr.storages {
-		s.Init(ctx)
+		s.Init(ctx, cr)
 	}
 	// read old stats
 	if err := cr.stats.Load(cr.dataDir); err != nil {

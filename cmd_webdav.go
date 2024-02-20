@@ -61,7 +61,7 @@ func cmdUploadWebdav(args []string) {
 
 	var local LocalStorage
 	local.SetOptions(localOpt)
-	if err := local.Init(ctx); err != nil {
+	if err := local.Init(ctx, nil); err != nil {
 		logErrorf("Cannot initialize %s: %v", local.String(), err)
 		os.Exit(1)
 	}
@@ -71,7 +71,7 @@ func cmdUploadWebdav(args []string) {
 	for i, opt := range webdavOpts {
 		s := new(WebDavStorage)
 		s.SetOptions(opt)
-		if err := s.Init(ctx); err != nil {
+		if err := s.Init(ctx, nil); err != nil {
 			logErrorf("Cannot initialize %s: %v", s.String(), err)
 			os.Exit(1)
 		}

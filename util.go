@@ -409,12 +409,35 @@ var (
 	_ yaml.Unmarshaler = (*RawYAML)(nil)
 )
 
-func (r RawYAML) MarshalYAML() (interface{}, error) {
+func (r RawYAML) MarshalYAML() (any, error) {
 	return r.Node, nil
 }
 
 func (r *RawYAML) UnmarshalYAML(n *yaml.Node) (err error) {
 	r.Node = n
+	return nil
+}
+
+type YAMLDuration time.Duration
+
+func (d YAMLDuration) Dur() time.Duration {
+	return (time.Duration)(d)
+}
+
+func (d YAMLDuration) MarshalYAML() (any, error) {
+	return (time.Duration)(d).String(), nil
+}
+
+func (d *YAMLDuration) UnmarshalYAML(n *yaml.Node) (err error) {
+	var v string
+	if err = n.Decode(v); err != nil {
+		return
+	}
+	var td time.Duration
+	if td, err = time.ParseDuration(v); err != nil {
+		return
+	}
+	*d = (YAMLDuration)(td)
 	return nil
 }
 

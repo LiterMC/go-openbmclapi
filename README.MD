@@ -152,6 +152,7 @@ dashboard:
     pwa-description: Go-Openbmclapi Internal Dashboard
 
 # 子存储节点列表
+# 注意: measure 测量请求总是以第一个存储为准
 storages:
     # local 为本地存储
     - type: local

@@ -312,7 +312,11 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			http.Error(rw, "404 Status Not Found", http.StatusNotFound)
 			return
 		}
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		if _, ok := err.(*HTTPStatusError); ok {
+			http.Error(rw, err.Error(), http.StatusBadGateway)
+		} else {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 	logDebug("[handler]: download served successed")

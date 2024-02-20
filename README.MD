@@ -129,7 +129,7 @@ cluster-secret: ${CLUSTER_SECRET}
 sync-interval: 10
 # 发送心跳包的超时限制 (秒), 网不好就调高点
 keepalive-timeout: 10
-# 同步文件时最多打开的连接数量
+# 同步文件时最多打开的连接数量. 注意: 该选项目前没用
 download-max-conn: 64
 
 # 缓存

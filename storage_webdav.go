@@ -38,6 +38,7 @@ import (
 )
 
 type WebDavStorageOption struct {
+	MaxConn           int          `yaml:"max-conn"`
 	PreGenMeasures    bool         `yaml:"pre-gen-measures"`
 	FollowRedirect    bool         `yaml:"follow-redirect"`
 	RedirectLinkCache YAMLDuration `yaml:"redirect-link-cache"`
@@ -60,7 +61,13 @@ func (o *WebDavStorageOption) MarshalYAML() (any, error) {
 }
 
 func (o *WebDavStorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
+	// set default values
+	o.MaxConn = 16
+	o.PreGenMeasures = false
+	o.FollowRedirect = false
+	o.RedirectLinkCache = 0
 	o.Alias = ""
+
 	type T WebDavStorageOption
 	if err = n.Decode((*T)(o)); err != nil {
 		return

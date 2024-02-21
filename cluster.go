@@ -77,6 +77,7 @@ type Cluster struct {
 	disabled        chan struct{}
 	waitEnable      []chan struct{}
 	shouldEnable    bool
+	reconnectCount  int
 	socket          *socket.Socket
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
@@ -200,18 +201,33 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		logErrorf("Could not parse Engine.IO options: %v; exit.", err)
 		os.Exit(1)
 	}
+
+	cr.reconnectCount = 0
+
+	if config.Debug {
+		engio.OnRecv(func(_ *engine.Socket, data []byte) {
+			logDebugf("Engine.IO recv: %q", (string)(data))
+		})
+		engio.OnSend(func(_ *engine.Socket, data []byte) {
+			logDebugf("Engine.IO sending: %q", (string)(data))
+		})
+	}
 	engio.OnDisconnect(func(_ *engine.Socket, err error) {
 		if config.ExitWhenDisconnected {
-			logErrorf("Cluster disconnected from remote; exit.")
-			os.Exit(0x08)
+			if cr.shouldEnable {
+				logErrorf("Cluster disconnected from remote; exit.")
+				os.Exit(0x08)
+			}
 		}
 		go cr.disconnected()
 	})
-	engio.OnRecv(func(_ *engine.Socket, data []byte) {
-		logDebugf("Engine.IO recv: %q", (string)(data))
-	})
-	engio.OnSend(func(_ *engine.Socket, data []byte) {
-		logDebugf("Engine.IO sending: %q", (string)(data))
+	engio.OnDialError(func(_ *engine.Socket, err error) {
+		if cr.reconnectCount++; cr.reconnectCount > 8 {
+			if cr.shouldEnable {
+				logErrorf("Cluster failed to connect too much times; exit.")
+				os.Exit(0x08)
+			}
+		}
 	})
 
 	cr.socket = socket.NewSocket(engio)
@@ -222,6 +238,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 				os.Exit(0x08)
 			}
 		}
+		cr.reconnectCount = 0
 	})
 	cr.socket.OnDisconnect(func(*socket.Socket, string) {
 		go cr.disconnected()
@@ -260,6 +277,12 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 	if cr.enabled.Load() {
 		logDebug("Extra enable")
+		return
+	}
+
+	if !cr.socket.IO().Connected() && config.ExitWhenDisconnected {
+		logErrorf("Cluster disconnected from remote; exit.")
+		os.Exit(0x08)
 		return
 	}
 

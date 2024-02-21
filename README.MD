@@ -165,6 +165,8 @@ dashboard:
 storages:
   # local 为本地存储
   - type: local
+    # 节点 ID
+    id: local-storage-1
     # 使用该子节点的概率 (非负整数)
     weight: 100
     # 节点附加数据
@@ -175,6 +177,8 @@ storages:
       compressor: ""
   # mount 为网络存储 (与旧版 oss 选项含义大致相同)
   - type: mount
+    # 节点 ID
+    id: mount-storage-1
     # 使用该子节点的概率 (非负整数)
     # 设为 0 将使该子节点成为备选节点 (若该节点前一个节点失效才会使用该节点), 如果所有子节点均为 0 则平均分配
     weight: 0
@@ -188,12 +192,20 @@ storages:
       pre-gen-measures: false
   # webdav 使用 webdav 存储
   - type: webdav
-    # 
+    # 节点 ID
     id: webdav-storage-1
     # 使用该子节点的概率 (非负整数)
     weight: 100
     # 节点附加数据
     data:
+      # 最多同时发起的连接数
+      max-conn: 16
+      # 启动之前生成 1-200MB 的测速文件 (默认为动态生成)
+      pre-gen-measures: false
+      # 设置为 true 后将跟踪 302 请求 (即不会将最终用户重定向到网盘)
+      follow-redirect: false
+      # 重定向链接的缓存时间, 仅当 follow-redirect 为 false 时有用. 0 表示不缓存重定向链接
+      redirect-link-cache: 0s
       # 链接到下方 webdav-users 的键值对
       alias: example-user
       # 相对于 alias 中的 Webdav 入口 URL
@@ -202,12 +214,6 @@ storages:
       username: optional-another-username
       # [可选] 覆盖 alias 中的密码
       password: optional-another-password
-      # 启动之前生成 1-200MB 的测速文件 (默认为动态生成)
-      pre-gen-measures: false
-      # 设置为 true 后将跟踪 302 请求 (即不会将最终用户重定向到网盘)
-      follow-redirect: false
-      # 重定向链接缓存世界, 仅当 follow-redirect 为 false 时有用. 0 表示不缓存重定向
-      redirect-link-cache: 0s
 
 webdav-users:
     example-user:

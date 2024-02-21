@@ -139,6 +139,13 @@ cache:
   #   inmem: 程序内内存缓存
   #   redis: Redis 缓存
   type: inmem
+  # 如果使用 Redis 缓存则还需要配置用户名密码等:
+  data:
+    network: tcp
+    addr: "redis.server.hostname:6379"
+    client-name: "go-openbmclapi"
+    username: redis-username
+    password: redis-password
 
 # 服务器上行限制
 serve-limit:

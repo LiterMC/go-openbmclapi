@@ -657,7 +657,7 @@ func (cr *Cluster) checkFileFor(
 				_, err = fmt.Fprintln(w, "\t", lastCheckingHash)
 			}
 			return
-		}), true),
+		}), false),
 	)
 	defer bar.Wait()
 	defer bar.Abort(true)

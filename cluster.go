@@ -659,8 +659,12 @@ func (cr *Cluster) checkFileFor(
 		checkingHashMux  sync.Mutex
 		checkingHash     string
 		lastCheckingHash string
-		sema             = NewSemaphore(storage.MaxOpen())
+		slots            *BufSlots
 	)
+
+	if heavy {
+		slots = NewBufSlots(storage.MaxOpen())
+	}
 
 	bar := pg.AddBar((int64)(len(files)),
 		mpb.BarRemoveOnComplete(),
@@ -668,7 +672,7 @@ func (cr *Cluster) checkFileFor(
 			decor.Name("> Checking "+storage.String()),
 			decor.OnCondition(
 				decor.Any(func(decor.Statistics) string {
-					return fmt.Sprintf("(%d / %d) ", sema.Len(), sema.Cap())
+					return fmt.Sprintf("(%d / %d) ", slots.Len(), slots.Cap())
 				}),
 				heavy,
 			),
@@ -698,7 +702,6 @@ func (cr *Cluster) checkFileFor(
 		return nil
 	})
 
-	var buf [1024 * 32]byte
 	for _, f := range files {
 		if ctx.Err() != nil {
 			return
@@ -720,11 +723,12 @@ func (cr *Cluster) checkFileFor(
 				if err != nil {
 					logErrorf("Unknown hash method for %q", hash)
 				} else {
-					if !sema.AcquireWithContext(ctx) {
+					_, buf, free := slots.Alloc(ctx)
+					if buf == nil {
 						return
 					}
-					go func(f FileInfo) {
-						defer sema.Release()
+					go func(f FileInfo, buf []byte, free func()) {
+						defer free()
 						r, err := storage.Open(hash)
 						if err != nil {
 							logErrorf("Could not open %q: %v", hash, err)
@@ -742,7 +746,7 @@ func (cr *Cluster) checkFileFor(
 						}
 						addMissing(f)
 						bar.EwmaIncrement(time.Since(start))
-					}(f)
+					}(f, buf, free)
 					continue
 				}
 			}

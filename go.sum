@@ -6,6 +6,8 @@ github.com/LiterMC/socket.io v0.1.2 h1:iCWxwjqEiGXDm8v8b3hoXO1SDnfpqFEBjAVOaNQE7
 github.com/LiterMC/socket.io v0.1.2/go.mod h1:60lM7+qdBnP64Fk2fB6WmAS6HxI6WCdhlcvaSnutx50=
 github.com/LiterMC/socket.io v0.1.3 h1:bqpPBwgocbLgxYVlilUwcNluQXJqKqWGcitovb/SCxc=
 github.com/LiterMC/socket.io v0.1.3/go.mod h1:60lM7+qdBnP64Fk2fB6WmAS6HxI6WCdhlcvaSnutx50=
+github.com/LiterMC/socket.io v0.1.4 h1:2FyJsbLkRYwqOZOtHEPGmdnIRSbtwI02QnYeYh7oACY=
+github.com/LiterMC/socket.io v0.1.4/go.mod h1:60lM7+qdBnP64Fk2fB6WmAS6HxI6WCdhlcvaSnutx50=
 github.com/VividCortex/ewma v1.2.0 h1:f58SaIzcDXrSy3kWaHNvuJgJ3Nmz59Zji6XoJR/q1ow=
 github.com/VividCortex/ewma v1.2.0/go.mod h1:nz4BbCtbLyFDeC9SUHbtcT5644juEuWfUAUnGx7j5l4=
 github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d h1:licZJFw2RwpHMqeKTCYkitsPqHNxTmd4SNR5r94FGM8=

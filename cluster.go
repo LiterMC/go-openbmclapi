@@ -227,7 +227,13 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		}
 	})
 
-	cr.socket = socket.NewSocket(engio)
+	token, err := cr.GetAuthToken(ctx)
+	if err != nil {
+		logErrorf("Could not get auth token: %v; exit.", err)
+		os.Exit(2)
+	}
+
+	cr.socket = socket.NewSocket(engio, socket.WithAuthToken(token))
 	cr.socket.OnConnect(func(*socket.Socket, string) {
 		if cr.shouldEnable {
 			if err := cr.Enable(ctx); err != nil {
@@ -535,7 +541,7 @@ func (cr *Cluster) makeReqWithAuth(ctx context.Context, method string, relpath s
 	if err != nil {
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+token.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	return
 }
 

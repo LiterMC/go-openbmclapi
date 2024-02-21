@@ -219,7 +219,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		cr.handleDownload(rw, req, hash)
 		return
 	case strings.HasPrefix(rawpath, "/measure/"):
-		if req.Header.Get("x-openbmclapi-secret") != cr.password {
+		if req.Header.Get("x-openbmclapi-secret") != cr.clusterSecret {
 			rw.WriteHeader(http.StatusForbidden)
 			return
 		}

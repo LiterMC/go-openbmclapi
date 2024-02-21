@@ -3,7 +3,7 @@ module github.com/LiterMC/go-openbmclapi
 go 1.21.6
 
 require (
-	github.com/LiterMC/socket.io v0.1.3
+	github.com/LiterMC/socket.io v0.1.4
 	github.com/hamba/avro/v2 v2.18.0
 	github.com/klauspost/compress v1.17.4
 	github.com/patrickmn/go-cache v2.1.0+incompatible

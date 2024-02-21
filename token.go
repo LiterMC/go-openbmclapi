@@ -20,29 +20,29 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/hmac"
-	"net/http"
-	"time"
-	"encoding/json"
 	"encoding/hex"
-	"bytes"
+	"encoding/json"
+	"net/http"
 	"net/url"
+	"time"
 )
 
 type ClusterToken struct {
-	Token string
-	ExpireAt   time.Time
+	Token    string
+	ExpireAt time.Time
 }
 
-func (cr *Cluster) GetAuthToken(ctx context.Context) (token *ClusterToken, err error) {
+func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
 	if cr.authToken == nil || cr.authToken.ExpireAt.Before(time.Now()) {
 		if cr.authToken, err = cr.fetchToken(ctx); err != nil {
-			return nil, err
+			return "", err
 		}
 	}
-	return cr.authToken, nil
+	return cr.authToken.Token, nil
 }
 
 func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err error) {
@@ -109,7 +109,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 	}
 
 	return &ClusterToken{
-		Token: res2.Token,
-		ExpireAt: time.Now().Add((time.Duration)(res2.TTL) * time.Millisecond - time.Minute),
+		Token:    res2.Token,
+		ExpireAt: time.Now().Add((time.Duration)(res2.TTL)*time.Millisecond - time.Minute),
 	}, nil
 }

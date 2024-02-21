@@ -37,6 +37,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -479,5 +480,83 @@ func (s *BufSlots) Alloc(ctx context.Context) (slotId int, buf []byte, free func
 		}
 	case <-ctx.Done():
 		return 0, nil, nil
+	}
+}
+
+type Semaphore struct {
+	c chan struct{}
+}
+
+// NewSemaphore create a semaphore
+// zero or negative size means infinity space
+func NewSemaphore(size int) *Semaphore {
+	if size <= 0 {
+		return nil
+	}
+	return &Semaphore{
+		c: make(chan struct{}, size),
+	}
+}
+
+func (s *Semaphore) Len() int {
+	if s == nil {
+		return 0
+	}
+	return len(s.c)
+}
+
+func (s *Semaphore) Cap() int {
+	if s == nil {
+		return 0
+	}
+	return cap(s.c)
+}
+
+func (s *Semaphore) Acquire() {
+	if s == nil {
+		return
+	}
+	s.c <- struct{}{}
+}
+
+func (s *Semaphore) AcquireWithContext(ctx context.Context) bool {
+	if s == nil {
+		return true
+	}
+	select {
+	case s.c <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (s *Semaphore) Release() {
+	if s == nil {
+		return
+	}
+	<-s.c
+}
+
+type spProxyReader struct {
+	io.Reader
+	released atomic.Bool
+	s        *Semaphore
+}
+
+func (r *spProxyReader) Close() error {
+	if !r.released.Swap(true) {
+		r.s.Release()
+	}
+	if c, ok := r.Reader.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
+}
+
+func (s *Semaphore) ProxyReader(r io.Reader) io.ReadCloser {
+	return &spProxyReader{
+		Reader: r,
+		s:      s,
 	}
 }

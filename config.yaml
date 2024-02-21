@@ -33,13 +33,6 @@ storages:
     data:
       cache-path: cache
       compressor: ""
-  - type: webdav
-    id: webdav-storage-1
-    weight: 0
-    data:
-      pre-gen-measures: false
-      follow-redirect: false
-      redirect-link-cache: 0s
 webdav-users:
   example-user:
     endpoint: https://webdav.example.com/path/to/endpoint/

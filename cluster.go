@@ -659,12 +659,19 @@ func (cr *Cluster) checkFileFor(
 		checkingHashMux  sync.Mutex
 		checkingHash     string
 		lastCheckingHash string
+		sema             = NewSemaphore(storage.MaxOpen())
 	)
 
 	bar := pg.AddBar((int64)(len(files)),
 		mpb.BarRemoveOnComplete(),
 		mpb.PrependDecorators(
 			decor.Name("> Checking "+storage.String()),
+			decor.OnCondition(
+				decor.Any(func(decor.Statistics) string {
+					return fmt.Sprintf("(%d / %d) ", sema.Len(), sema.Cap())
+				}),
+				heavy,
+			),
 		),
 		mpb.AppendDecorators(
 			decor.CountersNoUnit("%d / %d", decor.WCSyncSpaceR),
@@ -704,43 +711,45 @@ func (cr *Cluster) checkFileFor(
 		}
 		if f.Size == 0 {
 			logDebugf("Skipped empty file %s", hash)
-			goto CONTINUE
-		}
-		if size, ok := sizeMap[hash]; ok {
+		} else if size, ok := sizeMap[hash]; ok {
 			if size != f.Size {
 				logWarnf("Found modified file: size of %q is %d, expect %d", hash, size, f.Size)
-				goto MISSING
-			}
-			if heavy {
+				addMissing(f)
+			} else if heavy {
 				hashMethod, err := getHashMethod(len(hash))
 				if err != nil {
 					logErrorf("Unknown hash method for %q", hash)
-					goto CONTINUE
-				}
-				hw := hashMethod.New()
-
-				r, err := storage.Open(hash)
-				if err != nil {
-					logErrorf("Could not open %q: %v", hash, err)
-					goto MISSING
-				}
-				_, err = io.CopyBuffer(hw, r, buf[:])
-				r.Close()
-				if err != nil {
-					logErrorf("Could not calculate hash for %q: %v", hash, err)
-					goto CONTINUE
-				}
-				if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
-					logWarnf("Found modified file: hash of %q is %s, expect %s", hash, hs, f.Hash)
-					goto MISSING
+				} else {
+					if !sema.AcquireWithContext(ctx) {
+						return
+					}
+					go func(f FileInfo) {
+						defer sema.Release()
+						r, err := storage.Open(hash)
+						if err != nil {
+							logErrorf("Could not open %q: %v", hash, err)
+						} else {
+							hw := hashMethod.New()
+							_, err = io.CopyBuffer(hw, r, buf[:])
+							r.Close()
+							if err != nil {
+								logErrorf("Could not calculate hash for %s: %v", hash, err)
+							} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != hash {
+								logWarnf("Found modified file: hash of %s became %s", hash, hs)
+							} else {
+								return
+							}
+						}
+						addMissing(f)
+						bar.EwmaIncrement(time.Since(start))
+					}(f)
+					continue
 				}
 			}
-			goto CONTINUE
+		} else {
+			logDebugf("Could not found file %q", hash)
+			addMissing(f)
 		}
-		logDebugf("Could not found file %q", hash)
-	MISSING:
-		addMissing(f)
-	CONTINUE:
 		bar.EwmaIncrement(time.Since(start))
 	}
 

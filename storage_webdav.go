@@ -62,7 +62,7 @@ func (o *WebDavStorageOption) MarshalYAML() (any, error) {
 
 func (o *WebDavStorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	// set default values
-	o.MaxConn = 16
+	o.MaxConn = 24
 	o.PreGenMeasures = false
 	o.FollowRedirect = false
 	o.RedirectLinkCache = 0
@@ -106,6 +106,7 @@ type WebDavStorage struct {
 
 	cache Cache
 	cli   *gowebdav.Client
+	slots *Semaphore
 }
 
 var _ Storage = (*WebDavStorage)(nil)
@@ -168,6 +169,8 @@ func (s *WebDavStorage) Init(ctx context.Context, cluster *Cluster) (err error) 
 	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())
 	s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
 
+	s.slots = NewSemaphore(s.opt.MaxConn)
+
 	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {
 			logWarnf("Could not create measure folder for %s: %v", s.String(), err)
@@ -195,6 +198,10 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 		return err
 	}
 	logDebugf("Putting %q", target)
+
+	s.slots.Acquire()
+	defer s.slots.Release()
+
 	cr := &countReader{r, 0}
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, cr)
 	if err != nil {
@@ -216,12 +223,24 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	}
 }
 
+func (s *WebDavStorage) MaxOpen() int {
+	if s.opt.MaxConn <= 0 {
+		return 0
+	}
+	if s.opt.MaxConn > 4 {
+		return s.opt.MaxConn - 4
+	}
+	return 1
+}
+
 func (s *WebDavStorage) hashToPath(hash string) string {
 	return path.Join("download", hash[0:2], hash)
 }
 
 func (s *WebDavStorage) Size(hash string) (int64, error) {
+	s.slots.Acquire()
 	stat, err := s.cli.Stat(s.hashToPath(hash))
+	s.slots.Release()
 	if err != nil {
 		return 0, err
 	}
@@ -229,7 +248,12 @@ func (s *WebDavStorage) Size(hash string) (int64, error) {
 }
 
 func (s *WebDavStorage) Open(hash string) (r io.ReadCloser, err error) {
-	r, err = s.cli.ReadStream(s.hashToPath(hash))
+	s.slots.Acquire()
+	if r, err = s.cli.ReadStream(s.hashToPath(hash)); err != nil {
+		s.slots.Release()
+		return
+	}
+	r = s.slots.ProxyReader(r)
 	return
 }
 
@@ -238,10 +262,15 @@ func (s *WebDavStorage) Create(hash string, r io.ReadSeeker) error {
 }
 
 func (s *WebDavStorage) Remove(hash string) error {
+	s.slots.Acquire()
+	defer s.slots.Release()
 	return s.cli.Remove(s.hashToPath(hash))
 }
 
 func (s *WebDavStorage) WalkDir(walker func(hash string, size int64) error) error {
+	s.slots.Acquire()
+	defer s.slots.Release()
+
 	for _, dir := range hex256 {
 		files, err := s.cli.ReadDir(path.Join("download", dir))
 		if err != nil {
@@ -318,6 +347,10 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		cli = http.DefaultClient
 	}
 
+	if !s.slots.AcquireWithContext(req.Context()) {
+		return 0, req.Context().Err()
+	}
+	defer s.slots.Release()
 	resp, err := cli.Do(tgReq)
 	if err != nil {
 		return 0, err
@@ -384,6 +417,11 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 	copyHeader("If-None-Match", tgReq.Header, req.Header)
 	copyHeader("If-Match", tgReq.Header, req.Header)
 	copyHeader("If-Range", tgReq.Header, req.Header)
+
+	if !s.slots.AcquireWithContext(req.Context()) {
+		return req.Context().Err()
+	}
+	defer s.slots.Release()
 	resp, err := noRedirectCli.Do(tgReq)
 	if err != nil {
 		return err

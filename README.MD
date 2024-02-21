@@ -199,7 +199,7 @@ storages:
     # 节点附加数据
     data:
       # 最多同时发起的连接数
-      max-conn: 16
+      max-conn: 24
       # 启动之前生成 1-200MB 的测速文件 (默认为动态生成)
       pre-gen-measures: false
       # 设置为 true 后将跟踪 302 请求 (即不会将最终用户重定向到网盘)

@@ -68,7 +68,11 @@ func cmdUploadWebdav(args []string) {
 	logInfof("From: %s", local.String())
 
 	webdavs := make([]*WebDavStorage, len(webdavOpts))
+	maxProc := 0
 	for i, opt := range webdavOpts {
+		if opt.MaxConn > maxProc {
+			maxProc = opt.MaxConn
+		}
 		s := new(WebDavStorage)
 		s.SetOptions(opt)
 		if err := s.Init(ctx, nil); err != nil {
@@ -79,10 +83,11 @@ func cmdUploadWebdav(args []string) {
 		webdavs[i] = s
 	}
 
-	var barUnit decor.SizeB1024
-	maxProc := runtime.GOMAXPROCS(0) * 4
 	if maxProc < 1 {
-		maxProc = 1
+		maxProc = runtime.GOMAXPROCS(0) * 4
+		if maxProc < 1 {
+			maxProc = 1
+		}
 	}
 	slots := make(chan int, maxProc)
 	for i := 0; i < maxProc; i++ {
@@ -109,6 +114,7 @@ func cmdUploadWebdav(args []string) {
 		return nil
 	})
 
+	var barUnit decor.SizeB1024
 	var wg sync.WaitGroup
 	pg := mpb.New(mpb.WithWaitGroup(&wg), mpb.WithAutoRefresh())
 	setLogOutput(pg)
@@ -124,12 +130,15 @@ func cmdUploadWebdav(args []string) {
 			decor.EwmaETA(decor.ET_STYLE_GO, 30),
 		),
 	)
-	webdavBar.SetTotal((int64)(len(localFiles)*len(webdavs)), false)
+	webdavBar.SetTotal((int64)(len(localFiles)*2*len(webdavs)), false)
 	for i, s := range webdavs {
 		start := time.Now()
 		fileSet := make(map[string]int64)
 		err := s.WalkDir(func(hash string, size int64) error {
 			fileSet[hash] = size
+			now := time.Now()
+			webdavBar.EwmaIncrement(now.Sub(start))
+			start = now
 			return nil
 		})
 		if err != nil {
@@ -145,10 +154,12 @@ func cmdUploadWebdav(args []string) {
 				})
 				totalSize += size
 			}
+			now := time.Now()
+			webdavBar.EwmaIncrement(now.Sub(start))
+			start = now
 		}
 		totalFiles += (int64)(len(files))
 		webdavFiles[i] = files
-		webdavBar.EwmaIncrement(time.Since(start))
 	}
 	webdavBar.SetTotal(-1, true)
 	webdavBar.Wait()
@@ -174,7 +185,7 @@ func cmdUploadWebdav(args []string) {
 		),
 	)
 
-	logDebugf("Max Proc: %d", maxProc)
+	logInfof("Max Proc: %d", maxProc)
 
 	for i, files := range webdavFiles {
 		s := webdavs[i]

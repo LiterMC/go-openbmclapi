@@ -80,6 +80,10 @@ func (s *LocalStorage) Init(context.Context, *Cluster) (err error) {
 	return
 }
 
+func (s *LocalStorage) MaxOpen() int {
+	return 1024
+}
+
 func (s *LocalStorage) hashToPath(hash string) string {
 	return filepath.Join(s.opt.CachePath, hash[0:2], hash)
 }

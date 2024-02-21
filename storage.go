@@ -39,7 +39,7 @@ type Storage interface {
 	// SetOptions will be called with the same type of the Options() result
 	SetOptions(any)
 	// Init will be called before start to use a storage
-	Init(context.Context, *Cluster) error
+	Init(context.Context) error
 
 	// The maximum number of reader can be open at a time. zero means unlimited
 	MaxOpen() int

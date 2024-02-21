@@ -1,6 +1,6 @@
 /**
  * OpenBmclAPI (Golang Edition)
- * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
+ * Copyright (C) 2024 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
  *
  *  This program is free software: you can redistribute it and/or modify

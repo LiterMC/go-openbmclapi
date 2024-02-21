@@ -161,9 +161,10 @@ func NewCluster(
 }
 
 func (cr *Cluster) Init(ctx context.Context) error {
-	// Init storaged
+	// Init storages
+	vctx := context.WithValue(ctx, ClusterCacheCtxKey, cr.cache)
 	for _, s := range cr.storages {
-		s.Init(ctx, cr)
+		s.Init(vctx)
 	}
 	// read old stats
 	if err := cr.stats.Load(cr.dataDir); err != nil {
@@ -629,11 +630,11 @@ type syncStats struct {
 	lastInc  atomic.Int64
 }
 
-func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) {
+func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) bool {
 	logInfo("Preparing to sync files...")
 	if !cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
-		return
+		return false
 	}
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Hash < files[j].Hash })
@@ -649,6 +650,8 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	cr.fileMux.Unlock()
 
 	go cr.gc()
+
+	return true
 }
 
 type fileInfoWithTargets struct {

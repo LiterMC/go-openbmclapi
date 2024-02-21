@@ -135,7 +135,9 @@ func webdavIsHTTPError(err error, code int) bool {
 	return strings.Contains(err.Error(), expect)
 }
 
-func (s *WebDavStorage) Init(ctx context.Context, cluster *Cluster) (err error) {
+const ClusterCacheCtxKey = "go-openbmclapi.cluster.cache"
+
+func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 	if alias := s.opt.Alias; alias != "" {
 		user, ok := config.WebdavUsers[alias]
 		if !ok {
@@ -160,10 +162,10 @@ func (s *WebDavStorage) Init(ctx context.Context, cluster *Cluster) (err error) 
 		s.opt.fullEndPoint = s.opt.EndPoint
 	}
 
-	if cluster == nil {
-		s.cache = NoCache
+	if cache, ok := ctx.Value(ClusterCacheCtxKey).(Cache); ok && cache != nil {
+		s.cache = NewCacheWithNamespace(cache, fmt.Sprintf("redirect-cache@%s;%s@", s.opt.GetUsername(), s.opt.GetEndPoint()))
 	} else {
-		s.cache = NewCacheWithNamespace(cluster.cache, fmt.Sprintf("redirect-cache@%s;%s@", s.opt.GetUsername(), s.opt.GetEndPoint()))
+		s.cache = NoCache
 	}
 
 	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())

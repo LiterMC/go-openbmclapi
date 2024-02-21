@@ -83,7 +83,7 @@ var checkerClient = &http.Client{
 	Timeout: time.Minute,
 }
 
-func (s *MountStorage) Init(ctx context.Context, _ *Cluster) (err error) {
+func (s *MountStorage) Init(ctx context.Context) (err error) {
 	logInfof("Initalizing mounted folder %s", s.opt.Path)
 	if err = initCache(s.opt.CachePath()); err != nil {
 		return

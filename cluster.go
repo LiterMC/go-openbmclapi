@@ -645,7 +645,7 @@ func (cr *Cluster) checkFileFor(
 		),
 		mpb.AppendDecorators(
 			decor.CountersNoUnit("%d / %d", decor.WCSyncSpaceR),
-			decor.NewPercentage("%d"),
+			decor.NewPercentage("%d", decor.WCSyncSpaceR),
 			decor.EwmaETA(decor.ET_STYLE_GO, 30),
 		),
 		mpb.BarExtender((mpb.BarFillerFunc)(func(w io.Writer, _ decor.Statistics) (err error) {

@@ -98,7 +98,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 	if err != nil {
 		return
 	}
-	if res.StatusCode / 100 != 2 {
+	if res.StatusCode/100 != 2 {
 		err = NewHTTPStatusErrorFromResponse(res)
 		res.Body.Close()
 		return

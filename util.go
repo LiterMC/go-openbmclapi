@@ -395,12 +395,16 @@ func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, has bool) {
 
 type HTTPStatusError struct {
 	Code    int
+	URL     string
 	Message string
 }
 
 func NewHTTPStatusErrorFromResponse(res *http.Response) (e *HTTPStatusError) {
 	e = &HTTPStatusError{
 		Code: res.StatusCode,
+	}
+	if res.Request != nil {
+		e.URL = res.Request.URL.String()
 	}
 	var buf [512]byte
 	n, _ := res.Body.Read(buf[:])
@@ -410,6 +414,9 @@ func NewHTTPStatusErrorFromResponse(res *http.Response) (e *HTTPStatusError) {
 
 func (e *HTTPStatusError) Error() string {
 	s := fmt.Sprintf("Unexpected http status %d %s", e.Code, http.StatusText(e.Code))
+	if e.URL != "" {
+		s += " for " + e.URL
+	}
 	if e.Message != "" {
 		s += ":\n\t" + e.Message
 	}

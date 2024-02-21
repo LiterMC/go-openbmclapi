@@ -210,7 +210,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		query := req.URL.Query()
-		if !checkQuerySign(hash, cr.password, query) {
+		if !checkQuerySign(hash, cr.clusterSecret, query) {
 			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
 			return
 		}

@@ -427,8 +427,9 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 		return err
 	}
 	defer resp.Body.Close()
-	rwh := rw.Header()
 	logDebugf("Requested %q: status=%d", target, resp.StatusCode)
+
+	rwh := rw.Header()
 	switch resp.StatusCode / 100 {
 	case 3:
 		copyHeader("Location", rwh, resp.Header)

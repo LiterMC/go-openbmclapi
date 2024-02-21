@@ -394,11 +394,26 @@ func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, has bool) {
 }
 
 type HTTPStatusError struct {
-	Code int
+	Code    int
+	Message string
+}
+
+func NewHTTPStatusErrorFromResponse(res *http.Response) (e *HTTPStatusError) {
+	e = &HTTPStatusError{
+		Code: res.StatusCode,
+	}
+	var buf [512]byte
+	n, _ := res.Body.Read(buf[:])
+	e.Message = (string)(buf[:n])
+	return
 }
 
 func (e *HTTPStatusError) Error() string {
-	return fmt.Sprintf("Unexpected http status %d %s", e.Code, http.StatusText(e.Code))
+	s := fmt.Sprintf("Unexpected http status %d %s", e.Code, http.StatusText(e.Code))
+	if e.Message != "" {
+		s += ":\n\t" + e.Message
+	}
+	return s
 }
 
 type RawYAML struct {

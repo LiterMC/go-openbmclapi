@@ -51,12 +51,12 @@ import (
 )
 
 type Cluster struct {
-	host       string
-	publicPort uint16
-	username   string
-	password   string
-	prefix     string
-	byoc       bool
+	host          string
+	publicPort    uint16
+	clusterId     string
+	clusterSecret string
+	prefix        string
+	byoc          bool
 
 	dataDir            string
 	maxConn            int
@@ -84,6 +84,7 @@ type Cluster struct {
 	downloading     map[string]chan error
 	fileMux         sync.RWMutex
 	fileset         map[string]int64
+	authToken       *ClusterToken
 
 	client   *http.Client
 	bufSlots *BufSlots
@@ -97,7 +98,7 @@ func NewCluster(
 	prefix string,
 	baseDir string,
 	host string, publicPort uint16,
-	username string, password string,
+	clusterId string, clusterSecret string,
 	byoc bool, dialer *net.Dialer,
 	storageOpts []StorageOption,
 	cache Cache,
@@ -117,12 +118,12 @@ func NewCluster(
 	}
 
 	cr = &Cluster{
-		host:       host,
-		publicPort: publicPort,
-		username:   username,
-		password:   password,
-		prefix:     prefix,
-		byoc:       byoc,
+		host:          host,
+		publicPort:    publicPort,
+		clusterId:     clusterId,
+		clusterSecret: clusterSecret,
+		prefix:        prefix,
+		byoc:          byoc,
 
 		dataDir:     filepath.Join(baseDir, "data"),
 		maxConn:     config.DownloadMaxConn,
@@ -187,10 +188,6 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	engio, err := engine.NewSocket(engine.Options{
 		Host: cr.prefix,
 		Path: "/socket.io/",
-		ExtraQuery: url.Values{
-			"clusterId":     {cr.username},
-			"clusterSecret": {cr.password},
-		},
 		ExtraHeaders: http.Header{
 			"Origin":     {cr.prefix},
 			"User-Agent": {ClusterUserAgent},
@@ -246,7 +243,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket.OnError(func(_ *socket.Socket, err error) {
 		logErrorf("Socket.IO error: %v", err)
 	})
-	logInfof("Dialing %s", strings.ReplaceAll(engio.URL().String(), cr.password, "<******>"))
+	logInfof("Dialing %s", engio.URL().String())
 	if err := engio.Dial(ctx); err != nil {
 		logErrorf("Dial error: %v", err)
 		return false
@@ -502,7 +499,15 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 	return
 }
 
-func (cr *Cluster) makeReqWithAuth(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
+func (cr *Cluster) makeReq(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
+	return cr.makeReqWithBody(ctx, method, relpath, query, nil)
+}
+
+func (cr *Cluster) makeReqWithBody(
+	ctx context.Context,
+	method string, relpath string,
+	query url.Values, body io.Reader,
+) (req *http.Request, err error) {
 	var u *url.URL
 	if u, err = url.Parse(cr.prefix); err != nil {
 		return
@@ -513,12 +518,24 @@ func (cr *Cluster) makeReqWithAuth(ctx context.Context, method string, relpath s
 	}
 	target := u.String()
 
-	req, err = http.NewRequestWithContext(ctx, method, target, nil)
+	req, err = http.NewRequestWithContext(ctx, method, target, body)
 	if err != nil {
 		return
 	}
-	req.SetBasicAuth(cr.username, cr.password)
 	req.Header.Set("User-Agent", ClusterUserAgent)
+	return
+}
+
+func (cr *Cluster) makeReqWithAuth(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
+	req, err = cr.makeReq(ctx, method, relpath, query)
+	if err != nil {
+		return
+	}
+	token, err := cr.GetAuthToken(ctx)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token.Token)
 	return
 }
 
@@ -672,7 +689,8 @@ func (cr *Cluster) checkFileFor(
 			decor.Name("> Checking "+storage.String()),
 			decor.OnCondition(
 				decor.Any(func(decor.Statistics) string {
-					return fmt.Sprintf(" (%d / %d)", slots.Len(), slots.Cap())
+					c, l := slots.Cap(), slots.Len()
+					return fmt.Sprintf(" (%d / %d)", c-l, c)
 				}),
 				heavy,
 			),

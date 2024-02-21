@@ -672,7 +672,7 @@ func (cr *Cluster) checkFileFor(
 			decor.Name("> Checking "+storage.String()),
 			decor.OnCondition(
 				decor.Any(func(decor.Statistics) string {
-					return fmt.Sprintf("(%d / %d) ", slots.Len(), slots.Cap())
+					return fmt.Sprintf(" (%d / %d)", slots.Len(), slots.Cap())
 				}),
 				heavy,
 			),
@@ -729,6 +729,7 @@ func (cr *Cluster) checkFileFor(
 					}
 					go func(f FileInfo, buf []byte, free func()) {
 						defer free()
+						miss := true
 						r, err := storage.Open(hash)
 						if err != nil {
 							logErrorf("Could not open %q: %v", hash, err)
@@ -741,10 +742,12 @@ func (cr *Cluster) checkFileFor(
 							} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != hash {
 								logWarnf("Found modified file: hash of %s became %s", hash, hs)
 							} else {
-								return
+								miss = false
 							}
 						}
-						addMissing(f)
+						if miss {
+							addMissing(f)
+						}
 						bar.EwmaIncrement(time.Since(start))
 					}(f, buf, free)
 					continue

@@ -1,4 +1,3 @@
-
 /**
  * OpenBmclAPI (Golang Edition)
  * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
@@ -24,8 +23,8 @@ import (
 	"testing"
 )
 
-func TestIsHex(t *testing.T){
-	var data = []struct{
+func TestIsHex(t *testing.T) {
+	var data = []struct {
 		S string
 		B bool
 	}{

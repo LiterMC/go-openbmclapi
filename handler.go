@@ -204,7 +204,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		hash := rawpath[len("/download/"):]
-		if len(hash) < 4 {
+		if !IsHex(hash) {
 			http.Error(rw, "404 Not Found", http.StatusNotFound)
 			return
 		}

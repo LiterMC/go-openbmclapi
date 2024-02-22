@@ -24,7 +24,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -33,7 +32,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -326,20 +324,6 @@ func checkQuerySign(hash string, secret string, query url.Values) bool {
 	return time.Now().UnixMilli() < before
 }
 
-func initCache(base string) (err error) {
-	if err = os.MkdirAll(base, 0755); err != nil && !errors.Is(err, os.ErrExist) {
-		return
-	}
-	var b [1]byte
-	for i := 0; i < 0x100; i++ {
-		b[0] = (byte)(i)
-		if err = os.Mkdir(filepath.Join(base, hex.EncodeToString(b[:])), 0755); err != nil && !errors.Is(err, os.ErrExist) {
-			return
-		}
-	}
-	return nil
-}
-
 type SyncMap[K comparable, V any] struct {
 	l sync.RWMutex
 	m map[K]V
@@ -588,4 +572,36 @@ func (s *Semaphore) ProxyReader(r io.Reader) io.ReadCloser {
 		Reader: r,
 		s:      s,
 	}
+}
+
+const numToHexMap = "0123456789abcdef"
+
+var hex256 = func() (hex256 []string) {
+	hex256 = make([]string, 0x100)
+	for i := 0; i < 0x100; i++ {
+		a, b := i>>4, i&0xf
+		hex256[i] = numToHexMap[a:a+1] + numToHexMap[b:b+1]
+	}
+	return
+}()
+
+var hexToNumMap = [256]int{
+	'0': 0x0, '1': 0x1, '2': 0x2, '3': 0x3, '4': 0x4, '5': 0x5, '6': 0x6, '7': 0x7, '8': 0x8, '9': 0x9,
+	'a': 0xa, 'b': 0xb, 'c': 0xc, 'd': 0xd, 'e': 0xe, 'f': 0xf,
+}
+
+func IsHex(s string) bool {
+	if len(s) < 2 || len(s)%2 != 0 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != '0' && hexToNumMap[s[i]] == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func HexTo256(s string) (n int) {
+	return hexToNumMap[s[0]]*0x10 + hexToNumMap[s[1]]
 }

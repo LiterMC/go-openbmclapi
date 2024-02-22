@@ -708,7 +708,7 @@ func (cr *Cluster) checkFileFor(
 		slots = NewBufSlots(runtime.GOMAXPROCS(0) * 2)
 	}
 
-	bar := pg.AddBar((int64)(len(files)),
+	bar := pg.AddBar((int64)(len(files))+0x100,
 		mpb.BarRemoveOnComplete(),
 		mpb.PrependDecorators(
 			decor.Name("> Checking "+storage.String()),
@@ -740,10 +740,20 @@ func (cr *Cluster) checkFileFor(
 	defer bar.Abort(true)
 
 	sizeMap := make(map[string]int64, len(files))
-	storage.WalkDir(func(hash string, size int64) error {
-		sizeMap[hash] = size
-		return nil
-	})
+	{
+		start := time.Now()
+		var checkedMp [256]bool
+		storage.WalkDir(func(hash string, size int64) error {
+			if n := HexTo256(hash); !checkedMp[n] {
+				checkedMp[n] = true
+				now := time.Now()
+				bar.EwmaIncrement(now.Sub(start))
+				start = now
+			}
+			sizeMap[hash] = size
+			return nil
+		})
+	}
 
 	for _, f := range files {
 		if ctx.Err() != nil {

@@ -80,6 +80,20 @@ func (s *LocalStorage) Init(context.Context) (err error) {
 	return
 }
 
+func initCache(base string) (err error) {
+	if err = os.MkdirAll(base, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		return
+	}
+	var b [1]byte
+	for i := 0; i < 0x100; i++ {
+		b[0] = (byte)(i)
+		if err = os.Mkdir(filepath.Join(base, hex.EncodeToString(b[:])), 0755); err != nil && !errors.Is(err, os.ErrExist) {
+			return
+		}
+	}
+	return nil
+}
+
 func (s *LocalStorage) hashToPath(hash string) string {
 	return filepath.Join(s.opt.CachePath, hash[0:2], hash)
 }
@@ -221,16 +235,6 @@ func (s *LocalStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 	}
 	return nil
 }
-
-var hex256 = func() (hex256 []string) {
-	hex256 = make([]string, 0x100)
-	var b [1]byte
-	for i := 0; i < 0x100; i++ {
-		b[0] = (byte)(i)
-		hex256[i] = hex.EncodeToString(b[:])
-	}
-	return
-}()
 
 func walkCacheDir(cacheDir string, walker func(hash string, size int64) (err error)) (err error) {
 	for _, dir := range hex256 {

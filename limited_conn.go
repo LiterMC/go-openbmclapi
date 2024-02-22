@@ -164,8 +164,8 @@ func (l *RateController) afterRead(n int, less int) time.Duration {
 		l.readCount += n
 	}
 	if n >= avgRate {
-		// TODO: replace the magic number 3
-		return time.Second / 3
+		// TODO: replace the magic number
+		return time.Second
 	}
 	if l.readCount >= readRate {
 		return diff

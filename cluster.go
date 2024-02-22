@@ -77,7 +77,7 @@ type Cluster struct {
 	enabled         atomic.Bool
 	disabled        chan struct{}
 	waitEnable      []chan struct{}
-	shouldEnable    bool
+	shouldEnable    atomic.Bool
 	reconnectCount  int
 	socket          *socket.Socket
 	cancelKeepalive context.CancelFunc
@@ -216,7 +216,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	})
 	engio.OnDisconnect(func(_ *engine.Socket, err error) {
 		if config.Advanced.ExitWhenDisconnected {
-			if cr.shouldEnable {
+			if cr.shouldEnable.Load() {
 				logErrorf("Cluster disconnected from remote; exit.")
 				os.Exit(0x08)
 			}
@@ -231,7 +231,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		cr.reconnectCount++
 		logErrorf("Failed to connect to the center server (%d/%d): %v", cr.reconnectCount, maxReconnectCount, err)
 		if cr.reconnectCount >= maxReconnectCount {
-			if cr.shouldEnable {
+			if cr.shouldEnable.Load() {
 				logErrorf("Cluster failed to connect too much times; exit.")
 				os.Exit(0x08)
 			}
@@ -250,7 +250,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		logInfo("Preparing to connect to center server")
 	})
 	cr.socket.OnConnect(func(*socket.Socket, string) {
-		if cr.shouldEnable {
+		if cr.shouldEnable.Load() {
 			if err := cr.Enable(ctx); err != nil {
 				logErrorf("Cannot enable cluster: %v; exit.", err)
 				os.Exit(0x08)
@@ -304,7 +304,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 
-	cr.shouldEnable = true
+	cr.shouldEnable.Store(true)
 
 	logInfo("Sending enable packet")
 	resCh, err := cr.socket.EmitWithAck("enable", Map{
@@ -415,7 +415,7 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
-	cr.shouldEnable = false
+	cr.shouldEnable.Store(false)
 
 	if !cr.enabled.Load() {
 		logDebug("Extra disable")

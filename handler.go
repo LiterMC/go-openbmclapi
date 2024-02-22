@@ -280,11 +280,20 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		return
 	}
 
+	if !cr.shouldEnable.Load() {
+		// do not serve file if cluster is not enabled yet
+		const hint = "Cluster is not enabled yet"
+		rw.Header().Set("Content-Length", strconv.Itoa(len(hint)))
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		rw.Write(([]byte)(hint))
+		return
+	}
+
 	var err error
 	// check if file was indexed in the fileset
 	size, ok := cr.CachedFileSize(hash)
 	if !ok {
-		logInfof("Downloading %s", hash)
+		logInfof("Downloading %s from handler", hash)
 		if err := cr.DownloadFile(req.Context(), hash); err != nil {
 			logErrorf("Could not download %s: %v", hash, err)
 			rw.WriteHeader(http.StatusNotFound)

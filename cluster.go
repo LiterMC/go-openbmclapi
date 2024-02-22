@@ -167,6 +167,8 @@ func (cr *Cluster) Init(ctx context.Context) error {
 	for _, s := range cr.storages {
 		s.Init(vctx)
 	}
+	// create data folder
+	os.MkdirAll(cr.dataDir, 0755)
 	// read old stats
 	if err := cr.stats.Load(cr.dataDir); err != nil {
 		logErrorf("Could not load stats: %v", err)

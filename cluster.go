@@ -210,6 +210,9 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 			logDebugf("Engine.IO sending: %q", (string)(data))
 		})
 	}
+	engio.OnConnect(func(*engine.Socket) {
+		logInfo("Engine.IO connected")
+	})
 	engio.OnDisconnect(func(_ *engine.Socket, err error) {
 		if config.ExitWhenDisconnected {
 			if cr.shouldEnable {
@@ -217,10 +220,16 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 				os.Exit(0x08)
 			}
 		}
+		if err != nil {
+			logWarnf("Engine.IO disconnected: %v", err)
+		}
 		go cr.disconnected()
 	})
 	engio.OnDialError(func(_ *engine.Socket, err error) {
-		if cr.reconnectCount++; cr.reconnectCount > 8 {
+		const maxReconnectCount = 8
+		cr.reconnectCount++
+		logErrorf("Failed to connect to the center server (%d/%d): %v", cr.reconnectCount, maxReconnectCount, err)
+		if cr.reconnectCount >= maxReconnectCount {
 			if cr.shouldEnable {
 				logErrorf("Cluster failed to connect too much times; exit.")
 				os.Exit(0x08)
@@ -236,6 +245,9 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		}
 		return token
 	}))
+	cr.socket.OnBeforeConnect(func(*socket.Socket) {
+		logInfo("Preparing to connect to center server")
+	})
 	cr.socket.OnConnect(func(*socket.Socket, string) {
 		if cr.shouldEnable {
 			if err := cr.Enable(ctx); err != nil {

@@ -680,7 +680,9 @@ func (cr *Cluster) checkFileFor(
 	missing *SyncMap[string, *fileInfoWithTargets],
 	pg *mpb.Progress,
 ) {
+	var missingCount atomic.Int32
 	addMissing := func(f FileInfo) {
+		missingCount.Add(1)
 		if info, has := missing.GetOrSet(f.Hash, func() *fileInfoWithTargets {
 			return &fileInfoWithTargets{
 				FileInfo: f,
@@ -805,7 +807,7 @@ func (cr *Cluster) checkFileFor(
 	checkingHash = ""
 	checkingHashMux.Unlock()
 
-	logInfof("File check finished for %s", storage.String())
+	logInfof("File check finished for %s, missing %d files", storage.String(), missingCount.Load())
 	return
 }
 
@@ -925,7 +927,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 						}
 						err := target.Create(f.Hash, srcFd)
 						if err != nil {
-							logErrorf("Could not create %s: %v", target.String(), err)
+							logErrorf("Could not create %s/%s: %v", target.String(), f.Hash, err)
 							continue
 						}
 					}

@@ -207,6 +207,10 @@ storages:
     data:
       # 最多同时发起的连接数
       max-conn: 24
+      # 最大上传速率 (KiB/s), 0 表示无限制
+      max-upload-rate: 0
+      # 最大下载速率 (KiB/s), 0 表示无限制
+      max-download-rate: 0
       # 启动之前生成 1-200MB 的测速文件 (默认为动态生成)
       pre-gen-measures: false
       # 设置为 true 后将跟踪 302 请求 (即不会将最终用户重定向到网盘)

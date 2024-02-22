@@ -118,5 +118,8 @@ func (o *StorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	}
 	o.BasicStorageOption = opts.BasicStorageOption
 	o.Data = f.NewConfig()
+	if opts.Data.Node == nil {
+		return nil
+	}
 	return opts.Data.Decode(o.Data)
 }

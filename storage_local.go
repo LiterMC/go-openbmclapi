@@ -167,9 +167,12 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		counter := &countReader{
 			ReadSeeker: fd,
 		}
-		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
+		rw.Header().Set("ETag", `"` + hash + `"`)
+		rw.Header().Set("Cache-Control", "public,max-age=31536000,immutable") // cache for a year
 		rw.Header().Set("Content-Type", "application/octet-stream")
-		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		if name != "" {
+			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		}
 		rw.Header().Set("X-Bmclapi-Hash", hash)
 		http.ServeContent(rw, req, name, time.Time{}, counter)
 		return counter.n, nil
@@ -205,9 +208,12 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 			isGzip = false
 		}
 	}
-	rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
+	rw.Header().Set("ETag", `"` + hash + `"`)
+	rw.Header().Set("Cache-Control", "public,max-age=31536000,immutable") // cache for a year
 	rw.Header().Set("Content-Type", "application/octet-stream")
-	rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	if name != "" {
+		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	}
 	rw.Header().Set("X-Bmclapi-Hash", hash)
 	if size > 0 {
 		rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))

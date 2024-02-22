@@ -267,7 +267,8 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, hash string) {
 	if _, ok := emptyHashes[hash]; ok {
 		name := req.URL.Query().Get("name")
-		rw.Header().Set("Cache-Control", "max-age=2592000") // 30 days
+		rw.Header().Set("ETag", `"` + hash + `"`)
+		rw.Header().Set("Cache-Control", "public,max-age=31536000,immutable") // cache for a year
 		rw.Header().Set("Content-Type", "application/octet-stream")
 		rw.Header().Set("Content-Length", "0")
 		if name != "" {

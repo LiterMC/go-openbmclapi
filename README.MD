@@ -207,7 +207,7 @@ storages:
       redirect-link-cache: 0s
       # 链接到下方 webdav-users 的键值对
       alias: example-user
-      # 相对于 alias 中的 Webdav 入口 URL
+      # 相对于 alias 中的 Webdav 入口 URL **注意⚠️: 不要使用非 ascii (包括中文) 路径**
       endpoint: ../optional/another/endpoint/
       # [可选] 覆盖 alias 中的用户名
       username: optional-another-username
@@ -216,7 +216,7 @@ storages:
 
 webdav-users:
     example-user:
-        # Webdav 入口 URL
+        # Webdav 入口 URL **注意⚠️: 不要使用非 ascii (包括中文) 路径**
         endpoint: https://webdav.example.com/path/to/endpoint/
         # 用户名
         username: example-username

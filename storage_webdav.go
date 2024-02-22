@@ -220,9 +220,6 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	}
 	logDebugf("Putting %q", target)
 
-	s.limitedDialer.Acquire()
-	defer s.limitedDialer.Release()
-
 	cr := &countReader{r, 0}
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, cr)
 	if err != nil {
@@ -231,7 +228,7 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
 	req.ContentLength = size
 
-	res, err := http.DefaultClient.Do(req)
+	res, err := s.httpCli.Do(req)
 	if err != nil {
 		return err
 	}

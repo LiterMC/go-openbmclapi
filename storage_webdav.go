@@ -39,6 +39,8 @@ import (
 
 type WebDavStorageOption struct {
 	MaxConn           int          `yaml:"max-conn"`
+	MaxUploadRate     int          `yaml:"max-upload-rate"`
+	MaxDownloadRate   int          `yaml:"max-download-rate"`
 	PreGenMeasures    bool         `yaml:"pre-gen-measures"`
 	FollowRedirect    bool         `yaml:"follow-redirect"`
 	RedirectLinkCache YAMLDuration `yaml:"redirect-link-cache"`
@@ -63,6 +65,8 @@ func (o *WebDavStorageOption) MarshalYAML() (any, error) {
 func (o *WebDavStorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	// set default values
 	o.MaxConn = 24
+	o.MaxUploadRate = 0
+	o.MaxDownloadRate = 0
 	o.PreGenMeasures = false
 	o.FollowRedirect = false
 	o.RedirectLinkCache = 0
@@ -104,9 +108,11 @@ func (o *WebDavStorageOption) GetPassword() string {
 type WebDavStorage struct {
 	opt WebDavStorageOption
 
-	cache Cache
-	cli   *gowebdav.Client
-	slots *Semaphore
+	cache         Cache
+	cli           *gowebdav.Client
+	limitedDialer *LimitedDialer
+	httpCli       *http.Client
+	noRedCli      *http.Client // no redirect client
 }
 
 var _ Storage = (*WebDavStorage)(nil)
@@ -168,10 +174,23 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		s.cache = NoCache
 	}
 
+	s.limitedDialer = NewLimitedDialer(nil, s.opt.MaxConn, s.opt.MaxDownloadRate*1024, s.opt.MaxUploadRate*1024)
+	s.limitedDialer.SetMinReadRate(1024)
+	s.limitedDialer.SetMinWriteRate(1024)
+
+	s.httpCli = &http.Client{
+		Transport: &http.Transport{
+			DialContext: s.limitedDialer.DialContext,
+		},
+	}
+	s.noRedCli = new(http.Client)
+	*s.noRedCli = *s.httpCli
+	s.noRedCli.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
 	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())
 	s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
-
-	s.slots = NewSemaphore(s.opt.MaxConn)
 
 	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {
@@ -201,8 +220,8 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	}
 	logDebugf("Putting %q", target)
 
-	s.slots.Acquire()
-	defer s.slots.Release()
+	s.limitedDialer.Acquire()
+	defer s.limitedDialer.Release()
 
 	cr := &countReader{r, 0}
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, cr)
@@ -240,9 +259,9 @@ func (s *WebDavStorage) hashToPath(hash string) string {
 }
 
 func (s *WebDavStorage) Size(hash string) (int64, error) {
-	s.slots.Acquire()
+	s.limitedDialer.Acquire()
 	stat, err := s.cli.Stat(s.hashToPath(hash))
-	s.slots.Release()
+	s.limitedDialer.Release()
 	if err != nil {
 		return 0, err
 	}
@@ -250,13 +269,9 @@ func (s *WebDavStorage) Size(hash string) (int64, error) {
 }
 
 func (s *WebDavStorage) Open(hash string) (r io.ReadCloser, err error) {
-	s.slots.Acquire()
-	if r, err = s.cli.ReadStream(s.hashToPath(hash)); err != nil {
-		s.slots.Release()
-		return
-	}
-	r = s.slots.ProxyReader(r)
-	return
+	return s.limitedDialer.DoReader(func() (io.Reader, error) {
+		return s.cli.ReadStream(s.hashToPath(hash))
+	})
 }
 
 func (s *WebDavStorage) Create(hash string, r io.ReadSeeker) error {
@@ -264,14 +279,12 @@ func (s *WebDavStorage) Create(hash string, r io.ReadSeeker) error {
 }
 
 func (s *WebDavStorage) Remove(hash string) error {
-	s.slots.Acquire()
-	defer s.slots.Release()
 	return s.cli.Remove(s.hashToPath(hash))
 }
 
 func (s *WebDavStorage) WalkDir(walker func(hash string, size int64) error) error {
-	s.slots.Acquire()
-	defer s.slots.Release()
+	s.limitedDialer.Acquire()
+	defer s.limitedDialer.Release()
 
 	for _, dir := range hex256 {
 		files, err := s.cli.ReadDir(path.Join("download", dir))
@@ -289,12 +302,6 @@ func (s *WebDavStorage) WalkDir(walker func(hash string, size int64) error) erro
 		}
 	}
 	return nil
-}
-
-var noRedirectCli = &http.Client{
-	CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	},
 }
 
 func copyHeader(key string, dst, src http.Header) {
@@ -344,15 +351,15 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 	copyHeader("If-Match", tgReq.Header, req.Header)
 	copyHeader("If-Range", tgReq.Header, req.Header)
 
-	cli := noRedirectCli
+	cli := s.noRedCli
 	if s.opt.FollowRedirect {
-		cli = http.DefaultClient
+		cli = s.httpCli
 	}
 
-	if !s.slots.AcquireWithContext(req.Context()) {
+	if !s.limitedDialer.AcquireWithContext(req.Context()) {
 		return 0, req.Context().Err()
 	}
-	defer s.slots.Release()
+	defer s.limitedDialer.Release()
 	resp, err := cli.Do(tgReq)
 	if err != nil {
 		return 0, err
@@ -420,11 +427,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 	copyHeader("If-Match", tgReq.Header, req.Header)
 	copyHeader("If-Range", tgReq.Header, req.Header)
 
-	if !s.slots.AcquireWithContext(req.Context()) {
-		return req.Context().Err()
-	}
-	defer s.slots.Release()
-	resp, err := noRedirectCli.Do(tgReq)
+	resp, err := s.noRedCli.Do(tgReq)
 	if err != nil {
 		return err
 	}

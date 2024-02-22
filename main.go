@@ -152,8 +152,7 @@ START:
 			os.Exit(1)
 		}
 		if config.ServeLimit.Enable {
-			limited := NewLimitedListener(listener, config.ServeLimit.MaxConn)
-			limited.SetWriteRate(config.ServeLimit.UploadRate * 1024)
+			limited := NewLimitedListener(listener, config.ServeLimit.MaxConn, 0, config.ServeLimit.UploadRate*1024)
 			limited.SetMinWriteRate(1024)
 			listener = limited
 		}

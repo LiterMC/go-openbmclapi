@@ -81,10 +81,9 @@ func TestLimitedListener(t *testing.T) {
 	}
 
 	imp := newPipeListener()
-	l := NewLimitedListener(imp, 2)
+	l := NewLimitedListener(imp, 2, 0, 16)
 	defer l.Close()
 
-	l.SetWriteRate(16)
 	l.SetMinWriteRate(6)
 
 	const connCount = 5

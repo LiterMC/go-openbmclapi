@@ -545,10 +545,17 @@ func (s *Semaphore) AcquireWithContext(ctx context.Context) bool {
 	if s == nil {
 		return true
 	}
+	return s.AcquireWithNotify(ctx.Done())
+}
+
+func (s *Semaphore) AcquireWithNotify(notifier <-chan struct{}) bool {
+	if s == nil {
+		return true
+	}
 	select {
 	case s.c <- struct{}{}:
 		return true
-	case <-ctx.Done():
+	case <-notifier:
 		return false
 	}
 }

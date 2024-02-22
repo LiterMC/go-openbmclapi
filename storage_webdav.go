@@ -244,16 +244,6 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	}
 }
 
-func (s *WebDavStorage) MaxOpen() int {
-	if s.opt.MaxConn <= 0 {
-		return 0
-	}
-	if s.opt.MaxConn > 4 {
-		return s.opt.MaxConn - 4
-	}
-	return 1
-}
-
 func (s *WebDavStorage) hashToPath(hash string) string {
 	return path.Join("download", hash[0:2], hash)
 }

@@ -117,10 +117,6 @@ func (s *MountStorage) Init(ctx context.Context) (err error) {
 	return
 }
 
-func (s *MountStorage) MaxOpen() int {
-	return 64
-}
-
 func (s *MountStorage) hashToPath(hash string) string {
 	return filepath.Join(s.opt.CachePath(), hash[0:2], hash)
 }

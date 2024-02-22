@@ -41,8 +41,6 @@ type Storage interface {
 	// Init will be called before start to use a storage
 	Init(context.Context) error
 
-	// The maximum number of reader can be open at a time. zero means unlimited
-	MaxOpen() int
 	Size(hash string) (int64, error)
 	Open(hash string) (io.ReadCloser, error)
 	Create(hash string, r io.ReadSeeker) error

@@ -35,6 +35,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -702,7 +703,7 @@ func (cr *Cluster) checkFileFor(
 	)
 
 	if heavy {
-		slots = NewBufSlots(storage.MaxOpen())
+		slots = NewBufSlots(runtime.GOMAXPROCS(0) * 2)
 	}
 
 	bar := pg.AddBar((int64)(len(files)),

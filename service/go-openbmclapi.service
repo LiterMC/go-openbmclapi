@@ -5,7 +5,7 @@ Wants=basic.target
 After=network.target
 
 [Service]
-Type=simple
+Type=idle
 User=openbmclapi
 WorkingDirectory=/opt/openbmclapi
 ExecStart=/opt/openbmclapi/service-linux-go-openbmclapi

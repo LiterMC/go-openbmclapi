@@ -167,7 +167,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		counter := &countReader{
 			ReadSeeker: fd,
 		}
-		rw.Header().Set("ETag", `"` + hash + `"`)
+		rw.Header().Set("ETag", `"`+hash+`"`)
 		rw.Header().Set("Cache-Control", "public,max-age=31536000,immutable") // cache for a year
 		rw.Header().Set("Content-Type", "application/octet-stream")
 		if name != "" {
@@ -208,7 +208,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 			isGzip = false
 		}
 	}
-	rw.Header().Set("ETag", `"` + hash + `"`)
+	rw.Header().Set("ETag", `"`+hash+`"`)
 	rw.Header().Set("Cache-Control", "public,max-age=31536000,immutable") // cache for a year
 	rw.Header().Set("Content-Type", "application/octet-stream")
 	if name != "" {

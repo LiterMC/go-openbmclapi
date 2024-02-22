@@ -710,7 +710,7 @@ func (cr *Cluster) checkFileFor(
 		slots = NewBufSlots(runtime.GOMAXPROCS(0) * 2)
 	}
 
-	bar := pg.AddBar((int64)(len(files))+0x100,
+	bar := pg.AddBar(0,
 		mpb.BarRemoveOnComplete(),
 		mpb.PrependDecorators(
 			decor.Name("> Checking "+storage.String()),
@@ -741,6 +741,8 @@ func (cr *Cluster) checkFileFor(
 	defer bar.Wait()
 	defer bar.Abort(true)
 
+	bar.SetTotal(0x100, false)
+
 	sizeMap := make(map[string]int64, len(files))
 	{
 		start := time.Now()
@@ -757,6 +759,8 @@ func (cr *Cluster) checkFileFor(
 		})
 	}
 
+	bar.SetCurrent(0)
+	bar.SetTotal((int64)(len(files)), false)
 	for _, f := range files {
 		if ctx.Err() != nil {
 			return
@@ -819,6 +823,7 @@ func (cr *Cluster) checkFileFor(
 	checkingHash = ""
 	checkingHashMux.Unlock()
 
+	bar.SetTotal(-1, true)
 	logInfof("File check finished for %s, missing %d files", storage.String(), missingCount.Load())
 	return
 }

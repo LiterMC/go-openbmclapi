@@ -203,7 +203,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 
 	cr.reconnectCount = 0
 
-	if config.Debug {
+	if config.Advanced.DebugLog {
 		engio.OnRecv(func(_ *engine.Socket, data []byte) {
 			logDebugf("Engine.IO recv: %q", (string)(data))
 		})
@@ -215,7 +215,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		logInfo("Engine.IO connected")
 	})
 	engio.OnDisconnect(func(_ *engine.Socket, err error) {
-		if config.ExitWhenDisconnected {
+		if config.Advanced.ExitWhenDisconnected {
 			if cr.shouldEnable {
 				logErrorf("Cluster disconnected from remote; exit.")
 				os.Exit(0x08)
@@ -298,7 +298,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 
-	if !cr.socket.IO().Connected() && config.ExitWhenDisconnected {
+	if !cr.socket.IO().Connected() && config.Advanced.ExitWhenDisconnected {
 		logErrorf("Cluster disconnected from remote; exit.")
 		os.Exit(0x08)
 		return
@@ -430,7 +430,7 @@ func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
 	}
 	logInfo("Disabling cluster")
 	if resCh, err := cr.socket.EmitWithAck("disable"); err == nil {
-		tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.KeepaliveTimeout))
+		tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.Advanced.KeepaliveTimeout))
 		select {
 		case <-tctx.Done():
 			cancel()
@@ -857,7 +857,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 
 	var stats syncStats
 	stats.pg = pg
-	stats.noOpen = config.NoOpen || syncCfg.Source == "center"
+	stats.noOpen = config.Advanced.NoOpen || syncCfg.Source == "center"
 	stats.slots = NewBufSlots(syncCfg.Concurrency)
 	stats.totalFiles = totalFiles
 	for _, f := range missing {

@@ -97,22 +97,12 @@ bash ./start.sh
 配置文件应为**运行目录**下的`config.yaml`文件, 使用`yaml`格式解析  
 例:
 ```yaml
-# 是否打印调试日志, 默认为否
-debug: false
 # 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
 record-serve-info: false
-# 跳过第一次同步, 直接启动节点 (debug用)
-skip-first-sync: false
-# 是否在连接断开后直接退出
-exit-when-disconnected: false
 # 日志最长保存时间 (天). 设置为 0 禁用清理过期日志
 log-slots: 7
 # 是否禁用 bmclapi 分发的证书, 同 CLUSTER_BYOC
 byoc: false
-# 是否仅从主服务器下载文件
-noopen: false
-# 跳过文件哈希值校验
-no-heavy-check: false
 # 是否信任 X-Forwarded-For 标头 (有反代时启用)
 trusted-x-forwarded-for: false
 # 实际开放的公网主机名, 同 CLUSTER_IP
@@ -127,8 +117,6 @@ cluster-id: ${CLUSTER_ID}
 cluster-secret: ${CLUSTER_SECRET}
 # 文件同步间隔 (分钟)
 sync-interval: 10
-# 发送心跳包的超时限制 (秒), 网不好就调高点
-keepalive-timeout: 10
 # 同步文件时最多打开的连接数量. 注意: 该选项目前没用
 download-max-conn: 64
 
@@ -234,6 +222,21 @@ webdav-users:
         username: example-username
         # 密码
         password: example-password
+
+# 以下为高级选项, 通常用于调试. ** 如果不理解其工作原理请不要碰 **
+advanced:
+  # 是否打印调试日志
+  debug-log: false
+  # 跳过第一次同步, 直接启动节点
+  skip-first-sync: false
+  # 是否在连接断开后直接退出
+  exit-when-disconnected: false
+  # 是否仅从主服务器下载文件
+  noopen: false
+  # 跳过文件哈希值校验
+  no-heavy-check: false
+  # 发送心跳包的超时限制 (秒), 网不好就调高点
+  keepalive-timeout: 10
 
 ```
 

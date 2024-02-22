@@ -93,13 +93,13 @@ func logXf(x string, format string, args ...any) {
 }
 
 func logDebug(args ...any) {
-	if config.Debug {
+	if config.Advanced.DebugLog {
 		logX("DBUG", args...)
 	}
 }
 
 func logDebugf(format string, args ...any) {
-	if config.Debug {
+	if config.Advanced.DebugLog {
 		logXf("DBUG", format, args...)
 	}
 }

@@ -1,11 +1,6 @@
-debug: false
-record-serve-info: false
-skip-first-sync: false
-exit-when-disconnected: false
+record-serve-info: true
 log-slots: 7
 byoc: false
-noopen: false
-no-heavy-check: false
 trusted-x-forwarded-for: false
 public-host: ""
 public-port: 0
@@ -13,7 +8,6 @@ port: 4000
 cluster-id: ${CLUSTER_ID}
 cluster-secret: ${CLUSTER_SECRET}
 sync-interval: 10
-keepalive-timeout: 10
 download-max-conn: 16
 cache:
   type: inmem
@@ -38,3 +32,10 @@ webdav-users:
     endpoint: https://webdav.example.com/path/to/endpoint/
     username: example-username
     password: example-password
+advanced:
+  debug-log: false
+  skip-first-sync: true
+  exit-when-disconnected: true
+  noopen: false
+  no-heavy-check: false
+  keepalive-timeout: 10

@@ -203,9 +203,9 @@ START:
 			os.Exit(1)
 		}
 		checkCount := -1
-		heavyCheck := !config.NoHeavyCheck
+		heavyCheck := !config.Advanced.NoHeavyCheck
 
-		if !config.SkipFirstSync {
+		if !config.Advanced.SkipFirstSync {
 			cluster.SyncFiles(ctx, fl, false)
 			if ctx.Err() != nil {
 				return

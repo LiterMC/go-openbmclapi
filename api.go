@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,7 +29,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"crypto/subtle"
 
 	"runtime/pprof"
 
@@ -245,7 +245,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		}
 		user := req.Header.Get("X-Username")
 		pass := req.Header.Get("X-Password")
-		if subtle.ConstantTimeCompare(([]byte)(username), ([]byte)(user)) == 0 || 
+		if subtle.ConstantTimeCompare(([]byte)(username), ([]byte)(user)) == 0 ||
 			subtle.ConstantTimeCompare(([]byte)(password), ([]byte)(pass)) == 0 {
 			writeJson(rw, http.StatusUnauthorized, Map{
 				"error": "The username or password is incorrect",

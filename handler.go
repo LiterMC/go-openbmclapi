@@ -22,6 +22,7 @@ package main
 import (
 	"crypto"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -48,6 +49,7 @@ type statusResponseWriter struct {
 	http.ResponseWriter
 	status int
 	wrote  int64
+	info   map[string]any
 }
 
 func (w *statusResponseWriter) WriteHeader(status int) {
@@ -59,6 +61,63 @@ func (w *statusResponseWriter) Write(buf []byte) (n int, err error) {
 	n, err = w.ResponseWriter.Write(buf)
 	w.wrote += (int64)(n)
 	return
+}
+
+func (w *statusResponseWriter) SetInfo(key string, value any) {
+	if w.info == nil {
+		w.info = make(map[string]any)
+	}
+	w.info[key] = value
+}
+
+func SetAccessInfo(rw http.ResponseWriter, key string, value any) {
+	if srw, ok := rw.(*statusResponseWriter); ok {
+		srw.SetInfo(key, value)
+	}
+}
+
+type preAccessRecord struct {
+	Type   string    `json:"type"`
+	Time   time.Time `json:"time"`
+	Addr   string    `json:"addr"`
+	Method string    `json:"method"`
+	URI    string    `json:"uri"`
+	UA     string    `json:"ua"`
+}
+
+func (r *preAccessRecord) String() string {
+	return fmt.Sprintf("Serving %s | %-4s %s | %q", r.Addr, r.Method, r.URI, r.UA)
+}
+
+type accessRecord struct {
+	Type    string         `json:"type"`
+	Status  int            `json:"status"`
+	Used    time.Duration  `json:"used"`
+	Content int64          `json:"content"`
+	Addr    string         `json:"addr"`
+	Proto   string         `json:"proto"`
+	Method  string         `json:"method"`
+	URI     string         `json:"uri"`
+	UA      string         `json:"ua"`
+	Extra   map[string]any `json:"extra"`
+}
+
+func (r *accessRecord) String() string {
+	used := r.Used
+	if used > time.Minute {
+		used = used.Truncate(time.Second)
+	} else if used > time.Second {
+		used = used.Truncate(time.Microsecond)
+	}
+	s := fmt.Sprintf("Serve %d | %12v | %7s | %-15s | %s | %-4s %s | %q",
+		r.Status, used, bytesToUnit((float64)(r.Content)),
+		r.Addr, r.Proto,
+		r.Method, r.URI, r.UA)
+	if len(r.Extra) > 0 {
+		buf, _ := json.Marshal(r.Extra)
+		s += " | " + (string)(buf)
+	}
+	return s
 }
 
 func (cr *Cluster) GetHandler() (handler http.Handler) {
@@ -86,26 +145,33 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			if addr == "" {
 				addr, _, _ = net.SplitHostPort(req.RemoteAddr)
 			}
-			if config.RecordServeInfo {
-				logDebugf("Serving %s | %-4s %s | %q", addr, req.Method, req.RequestURI, ua)
-			}
 			srw := &statusResponseWriter{ResponseWriter: rw}
 			start := time.Now()
+
+			LogAccess(LogLevelDebug, &preAccessRecord{
+				Type:   "pre-access",
+				Time:   start,
+				Addr:   addr,
+				Method: req.Method,
+				URI:    req.RequestURI,
+				UA:     ua,
+			})
 
 			next.ServeHTTP(srw, req)
 
 			used := time.Since(start)
-			if config.RecordServeInfo {
-				if used > time.Minute {
-					used = used.Truncate(time.Second)
-				} else if used > time.Second {
-					used = used.Truncate(time.Microsecond)
-				}
-				logInfof("Serve %d | %12v | %7s | %-15s | %s | %-4s %s | %q",
-					srw.status, used, bytesToUnit((float64)(srw.wrote)),
-					addr, req.Proto,
-					req.Method, req.RequestURI, ua)
-			}
+			LogAccess(LogLevelInfo, &accessRecord{
+				Type:    "served",
+				Status:  srw.status,
+				Used:    used,
+				Content: srw.wrote,
+				Addr:    addr,
+				Proto:   req.Proto,
+				Method:  req.Method,
+				URI:     req.RequestURI,
+				UA:      ua,
+				Extra:   srw.info,
+			})
 			if srw.status < 200 && 400 <= srw.status {
 				return
 			}
@@ -299,8 +365,9 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			return
 		}
 	}
+	var storage Storage
 	forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
-		storage := cr.storages[i]
+		storage = cr.storages[i]
 		logDebugf("[handler]: Checking file on Storage [%d] %s ...", i, storage.String())
 
 		sz, er := storage.ServeDownload(rw, req, hash, size)
@@ -314,6 +381,9 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		}
 		return true
 	})
+	if storage != nil {
+		SetAccessInfo(rw, "storage", storage.String())
+	}
 	if err != nil {
 		logDebugf("[handler]: failed to serve download: %v", err)
 		if errors.Is(err, os.ErrNotExist) {

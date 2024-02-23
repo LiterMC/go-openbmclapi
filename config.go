@@ -98,8 +98,9 @@ type WebDavUser struct {
 }
 
 type Config struct {
-	RecordServeInfo      bool   `yaml:"record-serve-info"`
 	LogSlots             int    `yaml:"log-slots"`
+	NoAccessLog          bool   `yaml:"no-access-log"`
+	AccessLogSlots       int    `yaml:"access-log-slots"`
 	Byoc                 bool   `yaml:"byoc"`
 	TrustedXForwardedFor bool   `yaml:"trusted-x-forwarded-for"`
 	PublicHost           string `yaml:"public-host"`
@@ -127,8 +128,9 @@ func (cfg *Config) applyWebManifest(manifest map[string]any) {
 }
 
 var defaultConfig = Config{
-	RecordServeInfo:      false,
 	LogSlots:             7,
+	NoAccessLog:          false,
+	AccessLogSlots:       16,
 	Byoc:                 false,
 	TrustedXForwardedFor: false,
 	PublicHost:           "",

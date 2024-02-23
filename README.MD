@@ -227,16 +227,18 @@ webdav-users:
 advanced:
   # 是否打印调试日志
   debug-log: false
-  # 跳过第一次同步, 直接启动节点
-  skip-first-sync: false
-  # 是否在连接断开后直接退出
-  exit-when-disconnected: false
   # 是否仅从主服务器下载文件
   noopen: false
   # 跳过文件哈希值校验
-  no-heavy-check: false
+  no-heavy-check: true
   # 发送心跳包的超时限制 (秒), 网不好就调高点
   keepalive-timeout: 10
+  # 跳过第一次同步, 直接启动节点. **⚠️ 请保持该选项为 false ⚠️**
+  skip-first-sync: false
+  # 不检查请求签名. **⚠️ 请保持该选项为 false ⚠️**
+  skip-signature-check: false
+  # 是否在连接断开后直接退出
+  exit-when-disconnected: false
 
 ```
 

@@ -32,11 +32,12 @@ import (
 
 type AdvancedConfig struct {
 	DebugLog             bool `yaml:"debug-log"`
-	SkipFirstSync        bool `yaml:"skip-first-sync"`
-	ExitWhenDisconnected bool `yaml:"exit-when-disconnected"`
 	NoOpen               bool `yaml:"noopen"`
 	NoHeavyCheck         bool `yaml:"no-heavy-check"`
 	KeepaliveTimeout     int  `yaml:"keepalive-timeout"`
+	SkipFirstSync        bool `yaml:"skip-first-sync"`
+	SkipSignatureCheck   bool `yaml:"skip-signature-check"`
+	ExitWhenDisconnected bool `yaml:"exit-when-disconnected"`
 }
 
 type ServeLimitConfig struct {

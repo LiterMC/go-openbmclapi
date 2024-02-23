@@ -303,6 +303,9 @@ func getFileSize(r io.Reader) (n int64, err error) {
 }
 
 func checkQuerySign(hash string, secret string, query url.Values) bool {
+	if config.Advanced.SkipSignatureCheck {
+		return true
+	}
 	sign, e := query.Get("s"), query.Get("e")
 	if len(sign) == 0 || len(e) == 0 {
 		return false

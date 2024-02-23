@@ -1,5 +1,6 @@
-record-serve-info: true
 log-slots: 7
+no-access-log: false
+access-log-slots: 16
 byoc: false
 trusted-x-forwarded-for: false
 public-host: ""
@@ -17,6 +18,8 @@ serve-limit:
   upload-rate: 10240
 dashboard:
   enable: true
+  username: ""
+  password: ""
   pwa-name: GoOpenBmclApi Dashboard
   pwa-short_name: GOBA Dash
   pwa-description: Go-Openbmclapi Internal Dashboard
@@ -34,8 +37,10 @@ webdav-users:
     password: example-password
 advanced:
   debug-log: false
-  skip-first-sync: true
-  exit-when-disconnected: true
   noopen: false
   no-heavy-check: false
+  heavy-check-interval: 120
   keepalive-timeout: 10
+  skip-first-sync: false
+  skip-signature-check: false
+  exit-when-disconnected: false

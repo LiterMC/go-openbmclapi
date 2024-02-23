@@ -99,7 +99,7 @@ type accessRecord struct {
 	Method  string         `json:"method"`
 	URI     string         `json:"uri"`
 	UA      string         `json:"ua"`
-	Extra   map[string]any `json:"extra"`
+	Extra   map[string]any `json:"extra,omitempty"`
 }
 
 func (r *accessRecord) String() string {

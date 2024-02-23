@@ -97,8 +97,10 @@ bash ./start.sh
 配置文件应为**运行目录**下的`config.yaml`文件, 使用`yaml`格式解析  
 例:
 ```yaml
-# 是否打印访问信息, 默认为否 (这个选项对于压缩日志文件十分有用)
-record-serve-info: false
+# 是否不打印访问信息
+no-access-log: false
+# 最多输出几个 1MB 的访问日志
+access-log-slots: 16
 # 日志最长保存时间 (天). 设置为 0 禁用清理过期日志
 log-slots: 7
 # 是否禁用 bmclapi 分发的证书, 同 CLUSTER_BYOC

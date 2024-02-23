@@ -173,6 +173,10 @@ START:
 		}
 		checkCount := -1
 		heavyCheck := !config.Advanced.NoHeavyCheck
+		heavyCheckInterval := config.Advanced.HeavyCheckInterval
+		if heavyCheckInterval <= 0 {
+			heavyCheck = false
+		}
 
 		if !config.Advanced.SkipFirstSync {
 			cluster.SyncFiles(ctx, fl, false)
@@ -195,7 +199,7 @@ START:
 				logError("Cannot query cluster file list:", err)
 				return
 			}
-			checkCount = (checkCount + 1) % 10
+			checkCount = (checkCount + 1) % heavyCheckInterval
 			cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
 		}, (time.Duration)(config.SyncInterval)*time.Minute)
 	}(ctx)

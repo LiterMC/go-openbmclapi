@@ -198,12 +198,20 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		})
 	})
 	mux.HandleFunc("/ping", func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		writeJson(rw, http.StatusOK, Map{
 			"version": BuildVersion,
 			"time":    time.Now(),
 		})
 	})
 	mux.HandleFunc("/status", func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		writeJson(rw, http.StatusOK, Map{
 			"startAt": startTime,
 			"stats":   &cr.stats,
@@ -211,6 +219,10 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		})
 	})
 	mux.HandleFunc("/login", func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		if !config.Dashboard.Enable {
 			writeJson(rw, http.StatusServiceUnavailable, Map{
 				"error": "dashboard is disabled in the config",

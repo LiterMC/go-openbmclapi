@@ -235,6 +235,8 @@ advanced:
   noopen: false
   # 跳过文件哈希值校验
   no-heavy-check: true
+  # 两次哈希校验之间间隔几次简单检查
+  heavy-check-interval: 120
   # 发送心跳包的超时限制 (秒), 网不好就调高点
   keepalive-timeout: 10
   # 跳过第一次同步, 直接启动节点. **⚠️ 请保持该选项为 false ⚠️**
@@ -279,6 +281,7 @@ Sub commands:
       verbose | v : 显示正在解压缩的文件
       overwrite | o : 覆盖存在的未压缩的目标文件
       keep | k : 不删除解压缩过的文件
+
   upload-webdav
         将本地 cache 文件夹上传到 webdav 存储
         上传之前请确保 config.yaml 下存在至少一个 local 存储和至少一个 webdav 存储

@@ -34,6 +34,7 @@ type AdvancedConfig struct {
 	DebugLog             bool `yaml:"debug-log"`
 	NoOpen               bool `yaml:"noopen"`
 	NoHeavyCheck         bool `yaml:"no-heavy-check"`
+	HeavyCheckInterval   int  `yaml:"heavy-check-interval"`
 	KeepaliveTimeout     int  `yaml:"keepalive-timeout"`
 	SkipFirstSync        bool `yaml:"skip-first-sync"`
 	SkipSignatureCheck   bool `yaml:"skip-signature-check"`
@@ -162,10 +163,11 @@ var defaultConfig = Config{
 
 	Advanced: AdvancedConfig{
 		DebugLog:             false,
-		SkipFirstSync:        false,
-		ExitWhenDisconnected: false,
 		NoOpen:               false,
 		NoHeavyCheck:         false,
+		HeavyCheckInterval:   120,
+		SkipFirstSync:        false,
+		ExitWhenDisconnected: false,
 		KeepaliveTimeout:     10,
 	},
 }

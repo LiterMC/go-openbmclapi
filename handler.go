@@ -205,7 +205,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		hash := rawpath[len("/download/"):]
 		if !IsHex(hash) {
-			http.Error(rw, hash + " is not a valid hash", http.StatusNotFound)
+			http.Error(rw, hash+" is not a valid hash", http.StatusNotFound)
 			return
 		}
 
@@ -226,7 +226,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		query := req.URL.Query()
-		if !checkQuerySign(hash, cr.clusterSecret, query) {
+		if !checkQuerySign(u.Path, cr.clusterSecret, query) {
 			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
 			return
 		}

@@ -713,7 +713,8 @@ func (cr *Cluster) checkFileFor(
 	bar := pg.AddBar(0,
 		mpb.BarRemoveOnComplete(),
 		mpb.PrependDecorators(
-			decor.Name("> Checking "+storage.String()),
+			decor.Name("> Checking "),
+			decor.Name(storage.String()),
 			decor.OnCondition(
 				decor.Any(func(decor.Statistics) string {
 					c, l := slots.Cap(), slots.Len()
@@ -1087,10 +1088,12 @@ var noOpenQuery = url.Values{
 	"noopen": {"1"},
 }
 
-func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo,
+func (cr *Cluster) fetchFileWithBuf(
+	ctx context.Context, f FileInfo,
 	hashMethod crypto.Hash, buf []byte,
 	noOpen bool,
-	wrapper func(io.Reader) io.Reader) (path string, err error) {
+	wrapper func(io.Reader) io.Reader,
+) (path string, err error) {
 	var (
 		query url.Values = nil
 		req   *http.Request
@@ -1113,7 +1116,7 @@ func (cr *Cluster) fetchFileWithBuf(ctx context.Context, f FileInfo,
 		return
 	}
 	if res.StatusCode != http.StatusOK {
-		err = &HTTPStatusError{Code: res.StatusCode}
+		err = NewHTTPStatusErrorFromResponse(res)
 		return
 	}
 	switch ce := strings.ToLower(res.Header.Get("Content-Encoding")); ce {
@@ -1210,6 +1213,13 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		done <- err
 	}()
 
+	logInfof("Downloading %s from handler", hash)
+	defer func() {
+		if err != nil {
+			logErrorf("Could not download %s: %v", hash, err)
+		}
+	}()
+
 	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, true, nil)
 	if err != nil {
 		return
@@ -1228,10 +1238,9 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	for _, target := range cr.storages {
 		if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
 			logErrorf("Could not seek file %q: %v", path, err)
-			continue
+			return
 		}
-		err := target.Create(hash, srcFd)
-		if err != nil {
+		if err := target.Create(hash, srcFd); err != nil {
 			logErrorf("Could not create %q: %v", target.String(), err)
 			continue
 		}

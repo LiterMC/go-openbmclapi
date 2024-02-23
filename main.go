@@ -20,13 +20,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -94,6 +97,15 @@ func main() {
 	bgctx := context.Background()
 
 	signalCh := make(chan os.Signal, 1)
+
+	dumpCmdFile := filepath.Join(os.TempDir(), fmt.Sprintf("go-openbmclapi-dump-command.%d.txt", os.Getpid()))
+	dumpCmdFd, err := os.OpenFile(dumpCmdFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
+	if err != nil {
+		logErrorf("Cannot create %q: %v", dumpCmdFile, err)
+	} else {
+		defer os.Remove(dumpCmdFile)
+		defer dumpCmdFd.Close()
+	}
 
 START:
 	signal.Stop(signalCh)
@@ -240,12 +252,25 @@ SELECT_SIGNAL:
 	select {
 	case s := <-signalCh:
 		if s == syscall.SIGQUIT {
-			name := time.Now().Format("dump-20060102-150405.txt")
+			// avaliable commands see <https://pkg.go.dev/runtime/pprof#Profile>
+			dumpCommand := "heap"
+			if dumpCmdFd != nil {
+				var buf [256]byte
+				if _, err := dumpCmdFd.Seek(0, io.SeekStart); err != nil {
+					logErrorf("Cannot read dump command file: %v", err)
+				} else if n, err := dumpCmdFd.Read(buf[:]); err != nil {
+					logErrorf("Cannot read dump command file: %v", err)
+				} else {
+					dumpCommand = (string)(bytes.TrimSpace(buf[:n]))
+				}
+				dumpCmdFd.Truncate(0)
+			}
+			name := fmt.Sprintf(time.Now().Format("dump-%s-20060102-150405.txt"), dumpCommand)
 			logInfof("Creating goroutine dump file at %s", name)
 			if fd, err := os.Create(name); err != nil {
 				logInfof("Cannot create dump file: %v", err)
 			} else {
-				err := pprof.Lookup("goroutine").WriteTo(fd, 1)
+				err := pprof.Lookup(dumpCommand).WriteTo(fd, 1)
 				fd.Close()
 				if err != nil {
 					logInfof("Cannot write dump file: %v", err)
@@ -255,6 +280,7 @@ SELECT_SIGNAL:
 			}
 			goto SELECT_SIGNAL
 		}
+
 		cancel()
 		shutCtx, cancelShut := context.WithTimeout(context.Background(), 20*time.Second)
 		logWarn("Closing server ...")

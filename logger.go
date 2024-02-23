@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -46,7 +47,10 @@ func setLogOutput(out io.Writer) {
 	}
 }
 
-func logWrite(buf []byte) {
+func logWrite(level LogLevel, buf []byte) {
+	if level <= LogLevelDebug && !config.Advanced.DebugLog {
+		return
+	}
 	{
 		out := logStdout.Load()
 		if out != nil {
@@ -60,72 +64,155 @@ func logWrite(buf []byte) {
 	}
 }
 
-func logX(x string, args ...any) {
+type LogLevel int
+
+const (
+	_ LogLevel = iota
+	LogLevelDebug
+	LogLevelInfo
+	LogLevelWarn
+	LogLevelError
+)
+
+func (l LogLevel) String() string {
+	switch l {
+	case LogLevelDebug:
+		return "DBUG"
+	case LogLevelInfo:
+		return "INFO"
+	case LogLevelWarn:
+		return "WARN"
+	case LogLevelError:
+		return "ERRO"
+	default:
+		return "<Unknown LogLevel>"
+	}
+}
+
+type LogListenerFn = func(ts int64, level LogLevel, log string)
+
+type LogListener struct {
+	level LogLevel
+	cb    LogListenerFn
+}
+
+var logListenMux sync.RWMutex
+var logListeners []*LogListener
+
+func RegisterLogMonitor(level LogLevel, cb LogListenerFn) func() {
+	l := &LogListener{
+		level: level,
+		cb:    cb,
+	}
+
+	logListenMux.Lock()
+	defer logListenMux.Unlock()
+
+	logListeners = append(logListeners, l)
+	var canceled atomic.Bool
+	return func() {
+		if canceled.Swap(true) {
+			return
+		}
+		logListenMux.Lock()
+		defer logListenMux.Unlock()
+
+		for i, ll := range logListeners {
+			if ll == l {
+				end := len(logListeners) - 1
+				logListeners[i] = logListeners[end]
+				logListeners = logListeners[:end]
+				return
+			}
+		}
+	}
+}
+
+func callLogListeners(level LogLevel, ts int64, log string) {
+	logListenMux.RLock()
+	defer logListenMux.RUnlock()
+
+	for _, l := range logListeners {
+		if level >= l.level {
+			l.cb(ts, level, log)
+		}
+	}
+}
+
+const LOG_BUF_SIZE = 1024
+
+var logBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, LOG_BUF_SIZE)
+		return &buf
+	},
+}
+
+func logXStr(level LogLevel, log string) {
+	now := time.Now()
+	lvl := level.String()
+
+	buf0 := logBufPool.Get().(*[]byte)
+	defer logBufPool.Put(buf0)
+	buf := bytes.NewBuffer((*buf0)[:0])
+	buf.Grow(1 + len(lvl) + 2 + len(logTimeFormat) + 3 + len(log) + 1)
+	buf.WriteString("[")
+	buf.WriteString(lvl)
+	buf.WriteString("][")
+	buf.WriteString(now.Format(logTimeFormat))
+	buf.WriteString("]: ")
+	buf.WriteString(log)
+	buf.WriteByte('\n')
+	// write log to console and log file
+	logWrite(level, buf.Bytes())
+	// send log to monitors
+	callLogListeners(level, now.UnixMilli(), log)
+}
+
+func logX(level LogLevel, args ...any) {
 	sa := make([]string, len(args))
 	for i, _ := range args {
 		sa[i] = fmt.Sprint(args[i])
 	}
 	c := strings.Join(sa, " ")
-	buf := bytes.NewBuffer(nil)
-	buf.Grow(6 + len(logTimeFormat) + len(x) + len(c)) // (1 + len(x) + 2 + len(logTimeFormat) + 3)
-	buf.WriteString("[")
-	buf.WriteString(x)
-	buf.WriteString("][")
-	buf.WriteString(time.Now().Format(logTimeFormat))
-	buf.WriteString("]: ")
-	buf.WriteString(c)
-	buf.WriteByte('\n')
-	logWrite(buf.Bytes())
+	logXStr(level, c)
 }
 
-func logXf(x string, format string, args ...any) {
+func logXf(level LogLevel, format string, args ...any) {
 	c := fmt.Sprintf(format, args...)
-	buf := bytes.NewBuffer(nil)
-	buf.Grow(6 + len(logTimeFormat) + len(x) + len(c)) // (1 + len(x) + 2 + len(logTimeFormat) + 3)
-	buf.WriteString("[")
-	buf.WriteString(x)
-	buf.WriteString("][")
-	buf.WriteString(time.Now().Format(logTimeFormat))
-	buf.WriteString("]: ")
-	buf.WriteString(c)
-	buf.WriteByte('\n')
-	logWrite(buf.Bytes())
+	logXStr(level, c)
 }
 
 func logDebug(args ...any) {
-	if config.Advanced.DebugLog {
-		logX("DBUG", args...)
-	}
+	logX(LogLevelDebug, args...)
 }
 
 func logDebugf(format string, args ...any) {
-	if config.Advanced.DebugLog {
-		logXf("DBUG", format, args...)
-	}
+	logXf(LogLevelDebug, format, args...)
 }
 
 func logInfo(args ...any) {
-	logX("INFO", args...)
+	logX(LogLevelInfo, args...)
 }
 
 func logInfof(format string, args ...any) {
-	logXf("INFO", format, args...)
+	logXf(LogLevelInfo, format, args...)
 }
 
 func logWarn(args ...any) {
-	logX("WARN", args...)
+	logX(LogLevelWarn, args...)
 }
 
 func logWarnf(format string, args ...any) {
-	logXf("WARN", format, args...)
+	logXf(LogLevelWarn, format, args...)
 }
 
 func logError(args ...any) {
-	logX("ERRO", args...)
+	logX(LogLevelError, args...)
 }
 
 func logErrorf(format string, args ...any) {
-	logXf("ERRO", format, args...)
+	logXf(LogLevelError, format, args...)
 }
 
 func flushLogfile() {
@@ -135,7 +222,7 @@ func flushLogfile() {
 	lfile, err := os.OpenFile(filepath.Join(logdir, time.Now().Format("20060102-15.log")),
 		os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
-		logError("Create new log file error:", err)
+		logError("Cannot create new log file:", err)
 		return
 	}
 

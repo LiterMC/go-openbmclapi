@@ -20,11 +20,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
+
+func (cr *Cluster) verifyDashBoardToken(token string) bool {
+	return false
+}
 
 func (cr *Cluster) initAPIv0() (mux *http.ServeMux) {
 	mux = http.NewServeMux()
@@ -46,6 +52,48 @@ func (cr *Cluster) initAPIv0() (mux *http.ServeMux) {
 			"stats":   &cr.stats,
 			"enabled": cr.enabled.Load(),
 		})
+	})
+	mux.HandleFunc("/log", func(rw http.ResponseWriter, req *http.Request) {
+		auth := req.Header.Get("Authorization")
+		tk, ok := strings.CutPrefix(auth, "Bearer ")
+		if !ok || cr.verifyDashBoardToken(tk) {
+			writeJson(rw, http.StatusUnauthorized, Map{
+				"error": "invalid authorization token",
+			})
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		e := json.NewEncoder(rw)
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+
+		level := LogLevelInfo
+		if strings.ToLower(req.URL.Query().Get("level")) == "debug" {
+			level = LogLevelDebug
+		}
+
+		unregister := RegisterLogMonitor(level, func(ts int64, level LogLevel, log string) {
+			type logObj struct {
+				Time  int64  `json:"time"`
+				Level string `json:"lvl"`
+				Log   string `json:"log"`
+			}
+			var v = logObj{
+				Time:  ts,
+				Level: level.String(),
+				Log:   log,
+			}
+			if err := e.Encode(v); err != nil {
+				e.Encode(err.Error())
+				cancel()
+				return
+			}
+		})
+		defer unregister()
+
+		select {
+		case <-ctx.Done():
+		}
 	})
 	return
 }

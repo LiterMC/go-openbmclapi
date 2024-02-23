@@ -205,7 +205,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		hash := rawpath[len("/download/"):]
 		if !IsHex(hash) {
-			http.Error(rw, "404 Not Found", http.StatusNotFound)
+			http.Error(rw, hash + " is not a valid hash", http.StatusNotFound)
 			return
 		}
 
@@ -219,15 +219,18 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		cr.handleDownload(rw, req, hash)
 		return
 	case strings.HasPrefix(rawpath, "/measure/"):
-		if req.Header.Get("x-openbmclapi-secret") != cr.clusterSecret {
-			rw.WriteHeader(http.StatusForbidden)
-			return
-		}
 		if method != http.MethodGet && method != http.MethodHead {
 			rw.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
 			http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
+
+		query := req.URL.Query()
+		if !checkQuerySign(hash, cr.clusterSecret, query) {
+			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
+			return
+		}
+
 		size := rawpath[len("/measure/"):]
 		n, e := strconv.Atoi(size)
 		if e != nil {
@@ -283,10 +286,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 
 	if !cr.shouldEnable.Load() {
 		// do not serve file if cluster is not enabled yet
-		const hint = "Cluster is not enabled yet"
-		rw.Header().Set("Content-Length", strconv.Itoa(len(hint)))
-		rw.WriteHeader(http.StatusServiceUnavailable)
-		rw.Write(([]byte)(hint))
+		http.Error(rw, "Cluster is not enabled yet", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -294,10 +294,8 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 	// check if file was indexed in the fileset
 	size, ok := cr.CachedFileSize(hash)
 	if !ok {
-		logInfof("Downloading %s from handler", hash)
 		if err := cr.DownloadFile(req.Context(), hash); err != nil {
-			logErrorf("Could not download %s: %v", hash, err)
-			rw.WriteHeader(http.StatusNotFound)
+			http.Error(rw, "404 not found", http.StatusNotFound)
 			return
 		}
 	}

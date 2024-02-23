@@ -148,6 +148,10 @@ serve-limit:
 dashboard:
   # 是否启用
   enable: true
+  # 登录用的用户名, 留空表示禁止登录
+  username: ""
+  # 登录用的密码, 留空表示禁止登录
+  password: ""
   # PWA 的名称, 在桌面设备上显示
   pwa-name: GoOpenBmclApi Dashboard
   # PWA 短名称, 在移动设备上显示

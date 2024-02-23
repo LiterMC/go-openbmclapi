@@ -28,6 +28,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"crypto/subtle"
 
 	"runtime/pprof"
 
@@ -151,6 +152,12 @@ func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
 
 func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+		if !config.Dashboard.Enable {
+			writeJson(rw, http.StatusServiceUnavailable, Map{
+				"error": "dashboard is disabled in the config",
+			})
+			return
+		}
 		cli := apiGetClientId(req)
 		if cli == "" {
 			writeJson(rw, http.StatusUnauthorized, Map{
@@ -204,6 +211,12 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		})
 	})
 	mux.HandleFunc("/login", func(rw http.ResponseWriter, req *http.Request) {
+		if !config.Dashboard.Enable {
+			writeJson(rw, http.StatusServiceUnavailable, Map{
+				"error": "dashboard is disabled in the config",
+			})
+			return
+		}
 		cli := apiGetClientId(req)
 		if cli == "" {
 			writeJson(rw, http.StatusUnauthorized, Map{
@@ -211,8 +224,32 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			})
 			return
 		}
-		// TODO
-		rw.WriteHeader(http.StatusInternalServerError)
+		username, password := config.Dashboard.Username, config.Dashboard.Password
+		if username == "" || password == "" {
+			writeJson(rw, http.StatusUnauthorized, Map{
+				"error": "The username or password was not set on the server",
+			})
+			return
+		}
+		user := req.Header.Get("X-Username")
+		pass := req.Header.Get("X-Password")
+		if subtle.ConstantTimeCompare(([]byte)(username), ([]byte)(user)) == 0 || 
+			subtle.ConstantTimeCompare(([]byte)(password), ([]byte)(pass)) == 0 {
+			writeJson(rw, http.StatusUnauthorized, Map{
+				"error": "The username or password is incorrect",
+			})
+			return
+		}
+		token, err := cr.generateToken(cli)
+		if err != nil {
+			writeJson(rw, http.StatusInternalServerError, Map{
+				"error": err.Error(),
+			})
+			return
+		}
+		writeJson(rw, http.StatusOK, Map{
+			"token": token,
+		})
 	})
 	mux.Handle("/log", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusOK)

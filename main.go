@@ -158,6 +158,48 @@ START:
 		ErrorLog:    NullLogger, // for ignore TLS handshake error
 	}
 
+	firstSyncDone := make(chan struct{}, 0)
+
+	go func(ctx context.Context) {
+		defer close(firstSyncDone)
+		logInfof("Fetching file list")
+		fl, err := cluster.GetFileList(ctx)
+		if err != nil {
+			logError("Cannot query cluster file list:", err)
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			os.Exit(1)
+		}
+		checkCount := -1
+		heavyCheck := !config.Advanced.NoHeavyCheck
+
+		if !config.Advanced.SkipFirstSync {
+			cluster.SyncFiles(ctx, fl, false)
+			if ctx.Err() != nil {
+				return
+			}
+		} else {
+			fileset := make(map[string]int64, len(fl))
+			for _, f := range fl {
+				fileset[f.Hash] = f.Size
+			}
+			cluster.mux.Lock()
+			cluster.fileset = fileset
+			cluster.mux.Unlock()
+		}
+		createInterval(ctx, func() {
+			logInfof("Fetching file list")
+			fl, err := cluster.GetFileList(ctx)
+			if err != nil {
+				logError("Cannot query cluster file list:", err)
+				return
+			}
+			checkCount = (checkCount + 1) % 10
+			cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
+		}, (time.Duration)(config.SyncInterval)*time.Minute)
+	}(ctx)
+
 	go func(ctx context.Context) {
 		listener, err := net.Listen("tcp", clusterSvr.Addr)
 		if err != nil {
@@ -206,42 +248,12 @@ START:
 			logInfof("Server public at https://%s:%d (%s)", config.PublicHost, publicPort, clusterSvr.Addr)
 		}
 
-		logInfof("Fetching file list")
-		fl, err := cluster.GetFileList(ctx)
-		if err != nil {
-			logError("Cannot query cluster file list:", err)
-			if errors.Is(err, context.Canceled) {
-				return
-			}
-			os.Exit(1)
+		logInfof("Waiting for the first sync ...")
+		select {
+		case <-firstSyncDone:
+		case <-ctx.Done():
+			return
 		}
-		checkCount := -1
-		heavyCheck := !config.Advanced.NoHeavyCheck
-
-		if !config.Advanced.SkipFirstSync {
-			cluster.SyncFiles(ctx, fl, false)
-			if ctx.Err() != nil {
-				return
-			}
-		} else {
-			fileset := make(map[string]int64, len(fl))
-			for _, f := range fl {
-				fileset[f.Hash] = f.Size
-			}
-			cluster.mux.Lock()
-			cluster.fileset = fileset
-			cluster.mux.Unlock()
-		}
-		createInterval(ctx, func() {
-			logInfof("Fetching file list")
-			fl, err := cluster.GetFileList(ctx)
-			if err != nil {
-				logError("Cannot query cluster file list:", err)
-				return
-			}
-			checkCount = (checkCount + 1) % 10
-			cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
-		}, (time.Duration)(config.SyncInterval)*time.Minute)
 
 		if err := cluster.Enable(ctx); err != nil {
 			logError("Cannot enable cluster:", err)

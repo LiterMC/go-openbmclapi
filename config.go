@@ -82,6 +82,8 @@ func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 
 type DashboardConfig struct {
 	Enable       bool   `yaml:"enable"`
+	Username     string `yaml:"username"`
+	Password     string `yaml:"password"`
 	PwaName      string `yaml:"pwa-name"`
 	PwaShortName string `yaml:"pwa-short_name"`
 	PwaDesc      string `yaml:"pwa-description"`

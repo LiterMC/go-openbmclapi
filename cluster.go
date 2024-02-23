@@ -67,6 +67,7 @@ type Cluster struct {
 	storageTotalWeight uint
 	cache              Cache
 	httpCache          Cache
+	apiHmacKey         []byte
 
 	stats  Stats
 	hits   atomic.Int32
@@ -161,7 +162,7 @@ func NewCluster(
 	return
 }
 
-func (cr *Cluster) Init(ctx context.Context) error {
+func (cr *Cluster) Init(ctx context.Context) (err error) {
 	// Init storages
 	vctx := context.WithValue(ctx, ClusterCacheCtxKey, cr.cache)
 	for _, s := range cr.storages {
@@ -173,7 +174,10 @@ func (cr *Cluster) Init(ctx context.Context) error {
 	if err := cr.stats.Load(cr.dataDir); err != nil {
 		logErrorf("Could not load stats: %v", err)
 	}
-	return nil
+	if cr.apiHmacKey, err = loadOrCreateHmacKey(cr.dataDir); err != nil {
+		return fmt.Errorf("Cannot load hmac key: %w", err)
+	}
+	return
 }
 
 func (cr *Cluster) allocBuf(ctx context.Context) (slotId int, buf []byte, free func()) {

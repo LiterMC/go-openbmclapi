@@ -26,25 +26,154 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"runtime/pprof"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
-func (cr *Cluster) verifyDashBoardToken(token string) bool {
-	return false
+const (
+	jwtIssuer = "go-openbmclapi.dashboard.api"
+
+	clientIdCookieName = "_id"
+
+	clientIdKey = "go-openbmclapi.cluster.client.id"
+	tokenIdKey  = "go-openbmclapi.cluster.token.id"
+)
+
+var (
+	tokenIdSet    = make(map[string]struct{})
+	tokenIdSetMux sync.RWMutex
+)
+
+func registerTokenId(id string) {
+	tokenIdSetMux.Lock()
+	defer tokenIdSetMux.Unlock()
+	tokenIdSet[id] = struct{}{}
+}
+
+func unregisterTokenId(id string) {
+	tokenIdSetMux.Lock()
+	defer tokenIdSetMux.Unlock()
+	delete(tokenIdSet, id)
+}
+
+func checkTokenId(id string) (ok bool) {
+	tokenIdSetMux.RLock()
+	defer tokenIdSetMux.RUnlock()
+	_, ok = tokenIdSet[id]
+	return
+}
+
+func apiGetClientId(req *http.Request) (id string) {
+	id, _ = req.Context().Value(clientIdKey).(string)
+	return
+}
+
+func (cr *Cluster) generateToken(cliId string) (string, error) {
+	jti, err := genRandB64(16)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"jti": jti,
+		"sub": "GOBA-tk",
+		"iss": jwtIssuer,
+		"iat": (int64)(now.Second()),
+		"exp": (int64)(now.Add(time.Hour * 12).Second()),
+		"cli": cliId,
+	})
+	tokenStr, err := token.SignedString(cr.apiHmacKey)
+	if err != nil {
+		return "", err
+	}
+	registerTokenId(jti)
+	return tokenStr, nil
+}
+
+func (cr *Cluster) verifyAPIToken(cliId string, token string) (id string) {
+	t, err := jwt.Parse(
+		token,
+		func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+			}
+			return cr.apiHmacKey, nil
+		},
+		jwt.WithSubject("GOBA-tk"),
+		jwt.WithIssuedAt(),
+		jwt.WithIssuer(jwtIssuer),
+	)
+	if err != nil {
+		return ""
+	}
+	c, ok := t.Claims.(jwt.MapClaims)
+	if !ok {
+		return ""
+	}
+	if c["cli"] != cliId {
+		return ""
+	}
+	jti, ok := c["jti"].(string)
+	if !ok || !checkTokenId(jti) {
+		return ""
+	}
+	return jti
+}
+
+func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
+	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+		var id string
+		if cid, _ := req.Cookie(clientIdCookieName); cid != nil {
+			id = cid.Value
+		} else {
+			var err error
+			id, err = genRandB64(16)
+			if err != nil {
+				http.Error(rw, "cannot generate random number", http.StatusInternalServerError)
+				return
+			}
+			http.SetCookie(rw, &http.Cookie{
+				Name:     clientIdCookieName,
+				Value:    id,
+				Expires:  time.Now().Add(time.Hour * 24 * 365 * 16),
+				Secure:   true,
+				HttpOnly: true,
+			})
+		}
+		req = req.WithContext(context.WithValue(req.Context(), clientIdKey, id))
+		next.ServeHTTP(rw, req)
+	})
 }
 
 func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+		cli := apiGetClientId(req)
+		if cli == "" {
+			writeJson(rw, http.StatusUnauthorized, Map{
+				"error": "client id not exists",
+			})
+			return
+		}
 		auth := req.Header.Get("Authorization")
 		tk, ok := strings.CutPrefix(auth, "Bearer ")
-		if !ok || cr.verifyDashBoardToken(tk) {
+		if !ok {
+			writeJson(rw, http.StatusUnauthorized, Map{
+				"error": "invalid type of authorization",
+			})
+			return
+		}
+		id := cr.verifyAPIToken(cli, tk)
+		if id == "" {
 			writeJson(rw, http.StatusUnauthorized, Map{
 				"error": "invalid authorization token",
 			})
 			return
 		}
+		req = req.WithContext(context.WithValue(req.Context(), tokenIdKey, id))
 		next.ServeHTTP(rw, req)
 	})
 }
@@ -53,8 +182,8 @@ func (cr *Cluster) apiAuthHandleFunc(next http.HandlerFunc) http.Handler {
 	return cr.apiAuthHandle(next)
 }
 
-func (cr *Cluster) initAPIv0() (mux *http.ServeMux) {
-	mux = http.NewServeMux()
+func (cr *Cluster) initAPIv0() http.Handler {
+	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
 		writeJson(rw, http.StatusNotFound, Map{
 			"error": "404 not found",
@@ -73,6 +202,17 @@ func (cr *Cluster) initAPIv0() (mux *http.ServeMux) {
 			"stats":   &cr.stats,
 			"enabled": cr.enabled.Load(),
 		})
+	})
+	mux.HandleFunc("/login", func(rw http.ResponseWriter, req *http.Request) {
+		cli := apiGetClientId(req)
+		if cli == "" {
+			writeJson(rw, http.StatusUnauthorized, Map{
+				"error": "client id not exists",
+			})
+			return
+		}
+		// TODO
+		rw.WriteHeader(http.StatusInternalServerError)
 	})
 	mux.Handle("/log", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusOK)
@@ -143,7 +283,7 @@ func (cr *Cluster) initAPIv0() (mux *http.ServeMux) {
 		rw.WriteHeader(http.StatusOK)
 		p.WriteTo(rw, debug)
 	}))
-	return
+	return mux
 }
 
 type Map = map[string]any

@@ -62,7 +62,7 @@ func (w *statusResponseWriter) Write(buf []byte) (n int, err error) {
 }
 
 func (cr *Cluster) GetHandler() (handler http.Handler) {
-	cr.handlerAPIv0 = http.StripPrefix("/api/v0", cr.initAPIv0())
+	cr.handlerAPIv0 = http.StripPrefix("/api/v0", cr.cliIdHandle(cr.initAPIv0()))
 
 	handler = cr
 	{

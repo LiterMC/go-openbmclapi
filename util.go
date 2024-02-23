@@ -22,6 +22,7 @@ package main
 import (
 	"context"
 	"crypto"
+	crand "crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -32,6 +33,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -604,4 +606,36 @@ func IsHex(s string) bool {
 
 func HexTo256(s string) (n int) {
 	return hexToNumMap[s[0]]*0x10 + hexToNumMap[s[1]]
+}
+
+func genRandB64(n int) (s string, err error) {
+	buf := make([]byte, n)
+	if _, err = crand.Read(buf); err != nil {
+		return
+	}
+	s = base64.RawURLEncoding.EncodeToString(buf)
+	return
+}
+
+func loadOrCreateHmacKey(dataDir string) (key []byte, err error) {
+	path := filepath.Join(dataDir, "server.hmac.private_key")
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		var sbuf string
+		if sbuf, err = genRandB64(256); err != nil {
+			return
+		}
+		buf = ([]byte)(sbuf)
+		if err = os.WriteFile(path, buf, 0600); err != nil {
+			return
+		}
+	}
+	key = make([]byte, base64.RawURLEncoding.DecodedLen(len(buf)))
+	if _, err = base64.RawURLEncoding.Decode(key, buf); err != nil {
+		return
+	}
+	return
 }

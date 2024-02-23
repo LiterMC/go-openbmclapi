@@ -382,6 +382,9 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		copyHeader("ETag", rwh, resp.Header)
 		copyHeader("Last-Modified", rwh, resp.Header)
 		copyHeader("Content-Length", rwh, resp.Header)
+		if name := req.URL.Query().Get("name"); name != "" {
+			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		}
 		copyHeader("Content-Range", rwh, resp.Header)
 		rw.WriteHeader(resp.StatusCode)
 		n, _ := io.Copy(rw, resp.Body)

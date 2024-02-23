@@ -66,7 +66,6 @@ type Cluster struct {
 	storageWeights     []uint
 	storageTotalWeight uint
 	cache              Cache
-	httpCache          Cache
 	apiHmacKey         []byte
 
 	stats  Stats
@@ -88,8 +87,9 @@ type Cluster struct {
 	fileset         map[string]int64
 	authToken       *ClusterToken
 
-	client   *http.Client
-	bufSlots *BufSlots
+	client    *http.Client
+	cachedCli *http.Client
+	bufSlots  *BufSlots
 
 	handlerAPIv0 http.Handler
 	handlerAPIv1 http.Handler
@@ -112,8 +112,9 @@ func NewCluster(
 		}
 	}
 
+	cachedTransport := transport
 	if cache != NoCache {
-		transport = &httpcache.Transport{
+		cachedTransport = &httpcache.Transport{
 			Transport: transport,
 			Cache:     WrapToHTTPCache(NewCacheWithNamespace(cache, "http@")),
 		}
@@ -138,6 +139,9 @@ func NewCluster(
 
 		client: &http.Client{
 			Transport: transport,
+		},
+		cachedCli: &http.Client{
+			Transport: cachedTransport,
 		},
 	}
 	close(cr.disabled)
@@ -591,7 +595,7 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 	if err != nil {
 		return
 	}
-	res, err := cr.client.Do(req)
+	res, err := cr.cachedCli.Do(req)
 	if err != nil {
 		return
 	}
@@ -618,7 +622,7 @@ func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, 
 	if err != nil {
 		return
 	}
-	res, err := cr.client.Do(req)
+	res, err := cr.cachedCli.Do(req)
 	if err != nil {
 		return
 	}

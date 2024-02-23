@@ -64,7 +64,7 @@ func (o *WebDavStorageOption) MarshalYAML() (any, error) {
 
 func (o *WebDavStorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	// set default values
-	o.MaxConn = 24
+	o.MaxConn = 64
 	o.MaxUploadRate = 0
 	o.MaxDownloadRate = 0
 	o.PreGenMeasures = false

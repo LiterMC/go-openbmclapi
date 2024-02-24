@@ -362,7 +362,9 @@ func LogAccess(level LogLevel, data any) {
 
 	var buf [512]byte
 	bts := bytes.NewBuffer(buf[:0])
-	json.NewEncoder(bts).Encode(data)
+	e := json.NewEncoder(bts)
+	e.SetEscapeHTML(false)
+	e.Encode(data)
 
 	var s string
 	if fs, ok := data.(fmt.Stringer); ok {

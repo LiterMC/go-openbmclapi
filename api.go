@@ -24,6 +24,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"runtime/pprof"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -190,6 +192,10 @@ func (cr *Cluster) apiAuthHandleFunc(next http.HandlerFunc) http.Handler {
 }
 
 func (cr *Cluster) initAPIv0() http.Handler {
+	wsUpgrader := websocket.Upgrader{
+		HandshakeTimeout: time.Minute,
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
 		writeJson(rw, http.StatusNotFound, Map{
@@ -236,17 +242,54 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			})
 			return
 		}
-		username, password := config.Dashboard.Username, config.Dashboard.Password
-		if username == "" || password == "" {
+
+		var (
+			authUser, authPass string
+		)
+		ct, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
+		if err != nil {
+			writeJson(rw, http.StatusBadRequest, Map{
+				"error":        "Unexpected Content-Type",
+				"content-type": req.Header.Get("Content-Type"),
+				"message":      err.Error(),
+			})
+			return
+		}
+		switch ct {
+		case "application/x-www-form-urlencoded":
+			authUser = req.PostFormValue("username")
+			authPass = req.PostFormValue("password")
+		case "application/json":
+			var data struct {
+				User string `json:"username"`
+				Pass string `json:"password"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+				writeJson(rw, http.StatusBadRequest, Map{
+					"error":   "Cannot decode json body",
+					"message": err.Error(),
+				})
+				return
+			}
+			authUser, authPass = data.User, data.Pass
+		default:
+			writeJson(rw, http.StatusBadRequest, Map{
+				"error":        "Unexpected Content-Type",
+				"content-type": ct,
+			})
+			return
+		}
+
+		expectUsername, expectPassword := config.Dashboard.Username, config.Dashboard.Password
+		if expectUsername == "" || expectPassword == "" {
 			writeJson(rw, http.StatusUnauthorized, Map{
 				"error": "The username or password was not set on the server",
 			})
 			return
 		}
-		user := req.Header.Get("X-Username")
-		pass := req.Header.Get("X-Password")
-		if subtle.ConstantTimeCompare(([]byte)(username), ([]byte)(user)) == 0 ||
-			subtle.ConstantTimeCompare(([]byte)(password), ([]byte)(pass)) == 0 {
+		expectPassword = asSha256Hex(expectPassword)
+		if subtle.ConstantTimeCompare(([]byte)(expectUsername), ([]byte)(authUser)) == 0 ||
+			subtle.ConstantTimeCompare(([]byte)(expectPassword), ([]byte)(authPass)) == 0 {
 			writeJson(rw, http.StatusUnauthorized, Map{
 				"error": "The username or password is incorrect",
 			})
@@ -255,7 +298,8 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		token, err := cr.generateToken(cli)
 		if err != nil {
 			writeJson(rw, http.StatusInternalServerError, Map{
-				"error": err.Error(),
+				"error":   "Cannot generate token",
+				"message": err.Error(),
 			})
 			return
 		}
@@ -264,8 +308,13 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		})
 	})
 	mux.Handle("/log", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.WriteHeader(http.StatusOK)
-		e := json.NewEncoder(rw)
+		conn, err := wsUpgrader.Upgrade(rw, req, nil)
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer conn.Close()
+
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 
@@ -274,27 +323,38 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			level = LogLevelDebug
 		}
 
+		type logObj struct {
+			Time  int64  `json:"time"`
+			Level string `json:"lvl"`
+			Log   string `json:"log"`
+		}
+		c := make(chan *logObj, 64)
 		unregister := RegisterLogMonitor(level, func(ts int64, level LogLevel, log string) {
-			type logObj struct {
-				Time  int64  `json:"time"`
-				Level string `json:"lvl"`
-				Log   string `json:"log"`
-			}
-			var v = logObj{
+			select {
+			case c <- &logObj{
 				Time:  ts,
 				Level: level.String(),
 				Log:   log,
-			}
-			if err := e.Encode(v); err != nil {
-				e.Encode(err.Error())
-				cancel()
-				return
+			}:
+			default:
 			}
 		})
 		defer unregister()
 
-		select {
-		case <-ctx.Done():
+		for {
+			select {
+			case v := <-c:
+				if err := conn.WriteJSON(v); err != nil {
+					return
+				}
+			case <-time.After(time.Minute):
+				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second*15)); err != nil {
+					logErrorf("Error when sending ping message on log socket: %v", err)
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
 		}
 	}))
 	mux.Handle("/pprof", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {

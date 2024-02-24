@@ -23,8 +23,10 @@ import (
 	"context"
 	"crypto"
 	crand "crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -609,6 +611,11 @@ func IsHex(s string) bool {
 
 func HexTo256(s string) (n int) {
 	return hexToNumMap[s[0]]*0x10 + hexToNumMap[s[1]]
+}
+
+func asSha256Hex(s string) string {
+	buf := sha256.Sum256(([]byte)(s))
+	return hex.EncodeToString(buf[:])
 }
 
 func genRandB64(n int) (s string, err error) {

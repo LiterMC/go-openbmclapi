@@ -20,6 +20,7 @@
 package main
 
 import (
+	"context"
 	"crypto"
 	"encoding/hex"
 	"encoding/json"
@@ -49,7 +50,6 @@ type statusResponseWriter struct {
 	http.ResponseWriter
 	status int
 	wrote  int64
-	info   map[string]any
 }
 
 func (w *statusResponseWriter) WriteHeader(status int) {
@@ -63,16 +63,13 @@ func (w *statusResponseWriter) Write(buf []byte) (n int, err error) {
 	return
 }
 
-func (w *statusResponseWriter) SetInfo(key string, value any) {
-	if w.info == nil {
-		w.info = make(map[string]any)
-	}
-	w.info[key] = value
-}
+const (
+	AccessLogExtraCtxKey = "handle.access.extra"
+)
 
-func SetAccessInfo(rw http.ResponseWriter, key string, value any) {
-	if srw, ok := rw.(*statusResponseWriter); ok {
-		srw.SetInfo(key, value)
+func SetAccessInfo(req *http.Request, key string, value any) {
+	if info, ok := req.Context().Value(AccessLogExtraCtxKey).(map[string]any); ok {
+		info[key] = value
 	}
 }
 
@@ -157,11 +154,13 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				UA:     ua,
 			})
 
+			extraInfoMap := make(map[string]any)
+			req = req.WithContext(context.WithValue(req.Context(), AccessLogExtraCtxKey, extraInfoMap))
 			next.ServeHTTP(srw, req)
 
 			used := time.Since(start)
-			LogAccess(LogLevelInfo, &accessRecord{
-				Type:    "served",
+			accRec := &accessRecord{
+				Type:    "access",
 				Status:  srw.status,
 				Used:    used,
 				Content: srw.wrote,
@@ -170,8 +169,13 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				Method:  req.Method,
 				URI:     req.RequestURI,
 				UA:      ua,
-				Extra:   srw.info,
-			})
+				Extra:   extraInfoMap,
+			}
+			if len(extraInfoMap) > 0 {
+				accRec.Extra = extraInfoMap
+			}
+			LogAccess(LogLevelInfo, accRec)
+
 			if srw.status < 200 && 400 <= srw.status {
 				return
 			}
@@ -206,7 +210,8 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				case <-updateTicker.C:
 					cr.stats.mux.Lock()
 
-					logInfof("Served %d requests, %s, used %.2fs, %s/s", total, bytesToUnit(totalBytes), totalUsed, bytesToUnit(totalBytes/60))
+					logInfof("Served %d requests, total responsed body = %s, total used CPU time = %.2fs",
+						total, bytesToUnit(totalBytes), totalUsed)
 					for ua, v := range uas {
 						if ua == "" {
 							ua = "[Unknown]"
@@ -234,7 +239,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 					select {
 					case <-cr.WaitForEnable():
 						disabled = cr.Disabled()
-					case <-time.After(time.Minute * 10):
+					case <-time.After(time.Hour):
 						return
 					}
 				}
@@ -382,7 +387,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		return true
 	})
 	if storage != nil {
-		SetAccessInfo(rw, "storage", storage.String())
+		SetAccessInfo(req, "storage", storage.String())
 	}
 	if err != nil {
 		logDebugf("[handler]: failed to serve download: %v", err)

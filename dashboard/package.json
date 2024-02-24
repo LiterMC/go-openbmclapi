@@ -14,8 +14,9 @@
   "dependencies": {
     "axios": "^1.6.2",
     "chart.js": "^4.4.1",
+    "js-sha256": "^0.11.0",
     "primeicons": "^6.0.1",
-    "primevue": "^3.44.0",
+    "primevue": "^3.49.0",
     "register-service-worker": "^1.7.2",
     "vue": "^3.2.47",
     "vue-request": "^2.0.4",

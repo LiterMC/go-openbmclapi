@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, type Ref } from 'vue'
 import { useRequest } from 'vue-request'
 import axios from 'axios'
 import Button from 'primevue/button'
@@ -9,8 +9,12 @@ import Skeleton from 'primevue/skeleton'
 import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import UAChart from '@/components/UAChart.vue'
+import LoginComp from '@/components/LoginComp.vue'
+import LogBlock from '@/components/LogBlock.vue'
 import type { StatInstData, APIStatus } from '@/api/v0'
 import { tr } from '@/lang'
+
+const logBlk = ref<InstanceType<typeof LogBlock>>()
 
 const now = ref(new Date())
 setInterval(() => {
@@ -20,7 +24,7 @@ setInterval(() => {
 const { data, error, loading } = useRequest(
 	async () => (await axios.get<APIStatus>('/api/v0/status')).data,
 	{
-		pollingInterval: 5000,
+		pollingInterval: 10000,
 		loadingDelay: 500,
 		loadingKeep: 3000,
 	},
@@ -92,6 +96,15 @@ function getDaysInMonth(): number {
 	const days = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
 	return date.getDate() / days
 }
+
+onMounted(() => {
+	logBlk.value?.pushLog({
+		time: Date.now(),
+		lvl: 'INFO',
+		log: 'some test data <div></div>',
+	})
+})
+
 </script>
 
 <template>
@@ -173,9 +186,14 @@ function getDaysInMonth(): number {
 				<Skeleton v-else class="ua-chart"/>
 			</div>
 		</div>
+		<LoginComp/>
+		<LogBlock ref="logBlk" class="log-block"/>
 	</main>
 </template>
 <style scoped>
+* {
+	margin: 0;
+}
 
 .main {
 	display: grid;
@@ -286,6 +304,10 @@ function getDaysInMonth(): number {
 	width: 25rem !important;
 	height: 13rem !important;
 	user-select: none;
+}
+
+.log-block {
+	height: calc(100vh - 8rem);
 }
 
 @media (max-width: 60rem) {

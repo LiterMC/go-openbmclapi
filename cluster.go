@@ -260,6 +260,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		logInfo("Preparing to connect to center server")
 	})
 	cr.socket.OnConnect(func(*socket.Socket, string) {
+		logDebugf("shouldEnable is %v", cr.shouldEnable.Load())
 		if cr.shouldEnable.Load() {
 			if err := cr.Enable(ctx); err != nil {
 				logErrorf("Cannot enable cluster: %v; exit.", err)
@@ -318,10 +319,11 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 	logInfo("Sending enable packet")
 	resCh, err := cr.socket.EmitWithAck("enable", Map{
-		"host":    cr.host,
-		"port":    cr.publicPort,
-		"version": ClusterVersion,
-		"byoc":    cr.byoc,
+		"host":         cr.host,
+		"port":         cr.publicPort,
+		"version":      ClusterVersion,
+		"byoc":         cr.byoc,
+		"noFastEnable": config.Advanced.NoFastEnable,
 	})
 	if err != nil {
 		return

@@ -113,9 +113,9 @@ public-host: example.com
 public-port: 8080
 # 要监听的本地端口, 同 CLUSTER_PORT
 port: 4000
-# CLUSTER_ID
+# openbmclapi 的 CLUSTER_ID
 cluster-id: ${CLUSTER_ID}
-# CLUSTER_SECRET
+# openbmclapi 的 CLUSTER_SECRET
 cluster-secret: ${CLUSTER_SECRET}
 # 文件同步间隔 (分钟)
 sync-interval: 10
@@ -247,6 +247,8 @@ advanced:
   skip-signature-check: false
   # 是否在连接断开后直接退出
   exit-when-disconnected: false
+  # 不执行快速上线
+  no-fast-enable: false
 
 ```
 

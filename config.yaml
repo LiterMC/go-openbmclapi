@@ -44,3 +44,4 @@ advanced:
   skip-first-sync: false
   skip-signature-check: false
   exit-when-disconnected: false
+  no-fast-enable: false

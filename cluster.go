@@ -359,7 +359,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		if !ok {
 			if keepaliveCtx.Err() == nil {
 				logInfo("Reconnecting due to keepalive failed")
-				cr.Disable(ctx)
+				cr.disable(ctx)
 				logInfo("Reconnecting ...")
 				if !cr.Connect(ctx) {
 					logError("Cannot reconnect to server, exit.")
@@ -422,10 +422,13 @@ func (cr *Cluster) disconnected() bool {
 }
 
 func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
+	cr.shouldEnable.Store(false)
+	return cr.disable(ctx)
+}
+
+func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
-
-	cr.shouldEnable.Store(false)
 
 	if !cr.enabled.Load() {
 		logDebug("Extra disable")

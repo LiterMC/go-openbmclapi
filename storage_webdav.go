@@ -402,7 +402,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 	if err != nil {
 		return err
 	}
-	tgReq, err := http.NewRequestWithContext(req.Context(), http.MethodHead, target, nil)
+	tgReq, err := http.NewRequestWithContext(req.Context(), http.MethodGet, target, nil)
 	if err != nil {
 		return err
 	}
@@ -436,6 +436,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 		// Do not read empty file from webdav, it's not helpful
 		fallthrough
 	default:
+		resp.Body.Close()
 		rw.Header().Set("Content-Length", strconv.Itoa(size*mbChunkSize))
 		rw.WriteHeader(http.StatusOK)
 		if req.Method == http.MethodGet {

@@ -870,7 +870,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 
 	totalFiles := len(missingMap.m)
 	if totalFiles == 0 {
-		logInfo("All files was synchronized")
+		logInfo("All files were synchronized")
 		return nil
 	}
 
@@ -978,7 +978,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	use := time.Since(start)
 	pg.Wait()
 
-	logInfof("All files was synchronized, use time: %v, %s/s", use, bytesToUnit((float64)(stats.totalSize)/use.Seconds()))
+	logInfof("All files were synchronized, use time: %v, %s/s", use, bytesToUnit((float64)(stats.totalSize)/use.Seconds()))
 	return nil
 }
 

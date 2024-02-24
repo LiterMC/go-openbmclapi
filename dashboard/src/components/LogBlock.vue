@@ -32,7 +32,6 @@ function onScrollBox(): void {
 	}
 	const scrolled = box.value.scrollTop - boxLastPostion
 	boxLastPostion = box.value.scrollTop
-	console.log('scrolled:', scrolled)
 	if (scrolled < 0) {
 		focusLastLog = false
 	}

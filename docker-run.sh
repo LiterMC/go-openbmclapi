@@ -11,7 +11,7 @@ docker pull craftmine/go-openbmclapi:latest || {
 }
 
 docker run -d --name my-go-openbmclapi \
-	--network=host \ 
+	--net=host \ 
 	-e CLUSTER_ID=${CLUSTER_ID} \
 	-e CLUSTER_SECRET=${CLUSTER_SECRET} \
 	-e CLUSTER_IP=${CLUSTER_IP} \

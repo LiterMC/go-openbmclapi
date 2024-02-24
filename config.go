@@ -39,6 +39,7 @@ type AdvancedConfig struct {
 	SkipFirstSync        bool `yaml:"skip-first-sync"`
 	SkipSignatureCheck   bool `yaml:"skip-signature-check"`
 	ExitWhenDisconnected bool `yaml:"exit-when-disconnected"`
+	NoFastEnable         bool `yaml:"no-fast-enable"`
 }
 
 type ServeLimitConfig struct {

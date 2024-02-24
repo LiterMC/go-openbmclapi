@@ -307,7 +307,17 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			"token": token,
 		})
 	})
-	mux.Handle("/log", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {
+
+	mux.Handle("/logout", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		tid := req.Context().Value(tokenIdKey).(string)
+		unregisterTokenId(tid)
+	}))
+
+	mux.HandleFunc("/log.io", func(rw http.ResponseWriter, req *http.Request) {
 		conn, err := wsUpgrader.Upgrade(rw, req, nil)
 		if err != nil {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -315,8 +325,93 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		}
 		defer conn.Close()
 
+		cli := apiGetClientId(req)
+		if cli == "" {
+			conn.WriteJSON(Map{
+				"type":    "error",
+				"message": "client id not exists",
+			})
+			return
+		}
+
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
+
+		conn.SetReadLimit(1024 * 8)
+		pongCh := make(chan struct{}, 1)
+		conn.SetPongHandler(func(string) error {
+			select {
+			case pongCh <- struct{}{}:
+			default:
+			}
+			return nil
+		})
+		go func() {
+			defer conn.Close()
+			defer cancel()
+			for {
+				select {
+				case <-pongCh:
+				case <-time.After(time.Second * 75):
+					logError("Did not receive websocket PONG from remote for 75s")
+					return
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		go func() {
+			defer conn.Close()
+			defer cancel()
+			timer := time.NewTicker(time.Second * 45)
+			defer timer.Stop()
+			for {
+				select {
+				case <-timer.C:
+					if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second*15)); err != nil {
+						logErrorf("Error when sending ping message on log socket: %v", err)
+						return
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+
+		var authData struct {
+			Token string `json:"string"`
+		}
+		deadline := time.Now().Add(time.Second * 10)
+		conn.SetReadDeadline(deadline)
+		err = conn.ReadJSON(&authData)
+		conn.SetReadDeadline(time.Time{})
+		if err != nil {
+			if time.Now().After(deadline) {
+				conn.WriteJSON(Map{
+					"type":    "error",
+					"message": "auth timeout",
+				})
+			} else {
+				conn.WriteJSON(Map{
+					"type":    "error",
+					"message": "unexpected auth data: " + err.Error(),
+				})
+			}
+			return
+		}
+		tid := cr.verifyAPIToken(cli, authData.Token)
+		if tid == "" {
+			conn.WriteJSON(Map{
+				"type":    "error",
+				"message": "auth failed",
+			})
+			return
+		}
+		if err := conn.WriteJSON(Map{
+			"type": "ready",
+		}); err != nil {
+			return
+		}
 
 		level := LogLevelInfo
 		if strings.ToLower(req.URL.Query().Get("level")) == "debug" {
@@ -324,6 +419,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		}
 
 		type logObj struct {
+			Type  string `json:"type"`
 			Time  int64  `json:"time"`
 			Level string `json:"lvl"`
 			Log   string `json:"log"`
@@ -332,6 +428,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		unregister := RegisterLogMonitor(level, func(ts int64, level LogLevel, log string) {
 			select {
 			case c <- &logObj{
+				Type:  "log",
 				Time:  ts,
 				Level: level.String(),
 				Log:   log,
@@ -347,16 +444,11 @@ func (cr *Cluster) initAPIv0() http.Handler {
 				if err := conn.WriteJSON(v); err != nil {
 					return
 				}
-			case <-time.After(time.Minute):
-				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second*15)); err != nil {
-					logErrorf("Error when sending ping message on log socket: %v", err)
-					return
-				}
 			case <-ctx.Done():
 				return
 			}
 		}
-	}))
+	})
 	mux.Handle("/pprof", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodGet {
 			rw.Header().Set("Allow", http.MethodGet)

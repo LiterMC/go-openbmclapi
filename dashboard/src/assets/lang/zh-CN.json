@@ -8,12 +8,24 @@
 		"total": "全部请求",
 		"hits": "请求数",
 		"bytes": "流量",
-		"user_agents": "常见用户代理"
+		"user_agents": "常见用户代理",
+
+		"login": "登录",
+		"logout": "注销",
+		"username": "用户名",
+		"password": "密码"
 	},
 	"message": {
 		"server": {
 			"run-for": "服务器已运行"
-		}
+		},
+		"login": {
+			"input": {
+				"username": "请输入用户名",
+				"password": "请输入密码"
+			}
+		},
+		"login-to-view-log": "后查看日志"
 	},
 	"badge": {
 		"server": {

@@ -1,18 +1,24 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, type Ref } from 'vue'
+import { onMounted, ref, computed, watch, inject, type Ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useRequest } from 'vue-request'
 import axios from 'axios'
 import Button from 'primevue/button'
 import Chart from 'primevue/chart'
 import ProgressSpinner from 'primevue/progressspinner'
 import Skeleton from 'primevue/skeleton'
+import Message from 'primevue/message'
+import { useToast } from 'primevue/usetoast'
 import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import UAChart from '@/components/UAChart.vue'
-import LoginComp from '@/components/LoginComp.vue'
 import LogBlock from '@/components/LogBlock.vue'
 import type { StatInstData, APIStatus } from '@/api/v0'
+import { LogIO, type LogMsg } from '@/api/log.io'
 import { tr } from '@/lang'
+
+const toast = useToast()
+const token = inject('token') as Ref<string | null>
 
 const logBlk = ref<InstanceType<typeof LogBlock>>()
 
@@ -97,12 +103,37 @@ function getDaysInMonth(): number {
 	return date.getDate() / days
 }
 
+var logIO: LogIO | null = null
+
+async function onTokenChanged(token: string | null): Promise<void> {
+	if(logIO){
+		logIO.close()
+		logIO = null
+	}
+	if(!token){
+		return
+	}
+	logIO = await LogIO.dial(token)
+	logIO.addCloseListener(() => {
+		logBlk.value?.pushLog({
+			time: Date.now(),
+			lvl: 'ERRO',
+			log: '[dashboard]: Disconnected from remote server',
+		})
+	})
+	logIO.addLogListener((msg: LogMsg) => {
+		logBlk.value?.pushLog(msg)
+	})
+}
+
 onMounted(() => {
 	logBlk.value?.pushLog({
 		time: Date.now(),
 		lvl: 'INFO',
-		log: 'some test data <div></div>',
+		log: '[dashboard]: Connecting to remote server ...',
 	})
+	onTokenChanged(token.value)
+	watch(token, onTokenChanged)
 })
 
 </script>
@@ -112,14 +143,16 @@ onMounted(() => {
 		<h1>Go-OpenBmclAPI {{ tr('title.dashboard') }}</h1>
 		<div class="main">
 			<div class="basic-info">
-				<Button
-					class="info-status"
-					:status="status"
-				>
-					{{ tr(`badge.server.status.${status}`) }}
-				</Button>
+				<div>
+					<Button
+						class="info-status"
+						:status="status"
+					>
+						{{ tr(`badge.server.status.${status}`) }}
+					</Button>
 
-				<ProgressSpinner v-if="loading" class="polling" strokeWidth="6"/>
+					<ProgressSpinner v-if="loading" class="polling" strokeWidth="6"/>
+				</div>
 				<div v-if="error">
 					<b>{{ error }}</b>
 				</div>
@@ -143,7 +176,7 @@ onMounted(() => {
 						:current="stat.date.hour + new Date().getMinutes() / 60"
 						:formatXLabel="formatHour"
 					/>
-					<Skeleton v-else class="hits-chart"/>
+					<Skeleton v-else width="" height="" class="hits-chart"/>
 				</div>
 				<div class="chart-card">
 					<h3>{{ tr('title.month') }}</h3>
@@ -157,7 +190,7 @@ onMounted(() => {
 						:current="stat.date.day + new Date().getUTCHours() / 24"
 						:formatXLabel="formatDay"
 					/>
-					<Skeleton v-else class="hits-chart"/>
+					<Skeleton v-else width="" height="" class="hits-chart"/>
 				</div>
 				<div class="chart-card">
 					<h3>{{ tr('title.year') }}</h3>
@@ -171,7 +204,7 @@ onMounted(() => {
 						:current="stat.date.month + getDaysInMonth()"
 						:formatXLabel="formatMonth"
 					/>
-					<Skeleton v-else class="hits-chart"/>
+					<Skeleton v-else width="" height="" class="hits-chart"/>
 				</div>
 				<!-- TODO: show yearly chart -->
 			</div>
@@ -183,11 +216,18 @@ onMounted(() => {
 					:max="5"
 					:data="stat.accesses"
 				/>
-				<Skeleton v-else class="ua-chart"/>
+				<Skeleton v-else width="" height=""  class="ua-chart"/>
 			</div>
 		</div>
-		<LoginComp/>
-		<LogBlock ref="logBlk" class="log-block"/>
+		<div class="log-box">
+			<LogBlock v-if="token" ref="logBlk" class="log-block"/>
+			<Message v-else :closable="false" severity="info">
+				<RouterLink to="/login" style="color: inherit">
+					{{ tr('title.login') }}
+				</RouterLink>
+				<span>{{ tr('message.login-to-view-log') }}</span>
+			</Message>
+		</div>
 	</main>
 </template>
 <style scoped>
@@ -295,15 +335,19 @@ onMounted(() => {
 
 .hits-chart {
 	max-width: 100%;
-	width: 45rem !important;
-	height: 13rem !important;
+	width: 45rem;
+	height: 13rem;
 	user-select: none;
 }
 
 .ua-chart {
-	width: 25rem !important;
-	height: 13rem !important;
+	width: 25rem;
+	height: 13rem;
 	user-select: none;
+}
+
+.log-box {
+	margin-top: 2rem;
 }
 
 .log-block {
@@ -315,8 +359,13 @@ onMounted(() => {
 		display: flex;
 		flex-direction: column;
 	}
-	.hits-chart {
-		width: 100% !important;
+	.basic-info {
+		flex-direction: column;
+		align-items: flex-start;
+		height: unset;
+	}
+	.hits-chart, .ua-chart {
+		width: 100%;
 	}
 }
 </style>

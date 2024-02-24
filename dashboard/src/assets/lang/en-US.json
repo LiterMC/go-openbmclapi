@@ -8,12 +8,24 @@
 		"total": "Total requests",
 		"hits": "Hits",
 		"bytes": "Bytes",
-		"user_agents": "Common User Agents"
+		"user_agents": "Common User Agents",
+
+		"login": "Login",
+		"logout": "Logout",
+		"username": "Username",
+		"password": "Password"
 	},
 	"message": {
 		"server": {
 			"run-for": "Server has been running for"
-		}
+		},
+		"login": {
+			"input": {
+				"username": "Please input the username",
+				"password": "Please input the password"
+			}
+		},
+		"login-to-view-log": " to view logs"
 	},
 	"badge": {
 		"server": {

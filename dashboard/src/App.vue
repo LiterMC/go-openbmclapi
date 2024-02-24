@@ -1,8 +1,29 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { RouterView } from 'vue-router'
+import { computed, inject, type Ref } from 'vue'
+import { RouterLink, RouterView } from 'vue-router'
+import axios from 'axios'
+import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
-import { type Lang, avaliableLangs, getLang, setLang } from '@/lang'
+import Toast from 'primevue/toast'
+import { useToast } from 'primevue/usetoast'
+import { type Lang, avaliableLangs, getLang, setLang, tr } from '@/lang'
+
+const toast = useToast()
+const token = inject('token') as Ref<string | null>
+
+async function logout(): Promise<void> {
+	try {
+		await axios.post(`/api/v0/logout`, null, {
+			headers: {
+				'Authorization': `Bearer ${token.value}`,
+			},
+		})
+		window.location.reload()
+	}catch(err){
+		toast.add({ severity: 'error', summary: 'Cannot logout', detail: String(err), life: 3000 });
+		token.value = null
+	}
+}
 
 const languages = avaliableLangs.map((v) => v.code)
 const selectedLang = computed({
@@ -22,13 +43,25 @@ const langNameMap: { [key: string]: string } = {
 </script>
 
 <template>
-	<header id="header">
-		<img class="header-logo" src="/logo.png" />
+	<header id="header" class="flex-row-center">
+		<RouterLink class="flex-row-center header-logo-box" to="/">
+			<img class="header-logo" src="/logo.png" />
+		</RouterLink>
+
+		<div v-if="token" class="flex-row-center no-select nav-login" @click="logout">
+			<span>{{tr('title.logout')}}&nbsp;</span>
+			<i class="pi pi-sign-out"></i>
+		</div>
+		<RouterLink v-else class="flex-row-center no-select nav-login" to="/login">
+			<span>{{tr('title.login')}}&nbsp;</span>
+			<i class="pi pi-sign-in"></i>
+		</RouterLink>
+
 		<div class="lang-selector-box">
 			<Dropdown v-model="selectedLang" class="lang-selector"
 				:options="languages" placeholder="Language">
 				<template #value="slotProps">
-					<span class="flex-row-center" style="margin-right: -0.75rem;">
+					<span class="flex-row-center lang-selector-label" style="margin-right: -0.75rem;">
 						<i class="pi pi-globe"></i>
 						{{ langNameMap[slotProps.value.toString()] }}
 					</span>
@@ -57,10 +90,11 @@ const langNameMap: { [key: string]: string } = {
 			</span>
 		</address>
 		<p>
-			Copyright &copy; 2023 All rights reserved. <br/>
+			Copyright &copy; 2023-2024 All rights reserved. <br/>
 			This website is under <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0 License</a>
 		</p>
 	</footer>
+	<Toast position="bottom-right"/>
 </template>
 
 <style scoped>
@@ -69,27 +103,41 @@ const langNameMap: { [key: string]: string } = {
 	top: 0;
 	left: 0;
 	z-index: 999999;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
 	justify-content: flex-end;
 	width: 100vw;
 	height: 4rem;
-	padding: 0 2rem;
+	padding-left: 2rem;
+	padding-right: 1rem;
 	background-color: color-mix(in srgb, var(--primary-50), transparent);
 	box-shadow: #0008 0 0 1rem -0.5rem;
 	backdrop-filter: blur(0.4rem);
 }
 
-.header-logo {
-	width: 3rem;
-	height: 3rem;
+#header > * {
+	margin-right: 1rem;
+}
+
+.header-logo-box {
 	position: absolute;
 	left: 2rem;
 }
 
+.header-logo {
+	width: 3rem;
+	height: 3rem;
+}
+
+.nav-login {
+	color: var(--primary-color);
+	text-decoration: none;
+}
+
 .lang-selector .pi-globe {
 	margin-right: 0.3rem;
+}
+
+.lang-selector-label {
+	font-size: 0.9rem;
 }
 
 .nav-github {
@@ -98,7 +146,6 @@ const langNameMap: { [key: string]: string } = {
 	align-items: center;
 	justify-content: space-evenly;
 	height: 100%;
-	margin-left: 1rem;
 	color: #70a3f5;
 	text-decoration: none;
 	cursor: pointer;
@@ -144,4 +191,15 @@ const langNameMap: { [key: string]: string } = {
 	text-decoration: underline;
 }
 
+@media (max-width: 60rem) {
+	#header {
+		padding: 0;
+	}
+	.header-logo-box {
+		left: 1rem;
+	}	
+	.lang-selector-label {
+		font-size: 0.8rem;
+	}
+}
 </style>

@@ -16,7 +16,7 @@ export class Lang {
 		return this.area ? this.name + '-' + this.area.toUpperCase() : this.name
 	}
 
-	equals(code: any): boolean {
+	equals(code: unknown): boolean {
 		if (!code) {
 			return false
 		}
@@ -33,7 +33,7 @@ export class Lang {
 		return false
 	}
 
-	match(code: any): boolean {
+	match(code: unknown): boolean {
 		if (!code) {
 			return false
 		}

@@ -9,6 +9,7 @@ import InputGroupAddon from 'primevue/inputgroupaddon'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
+import { tr } from '@/lang'
 
 const emit = defineEmits<{
 	logged: [token: string]
@@ -16,31 +17,31 @@ const emit = defineEmits<{
 
 const username = ref('')
 const password = ref('')
-const errMsg = ref('')
+const loading = ref(false)
+const errMsg = ref<(() => string) | string | null>(null)
 
 async function login(): Promise<void> {
-	errMsg.value = ''
+	errMsg.value = null
 	await nextTick()
 	const user = username.value
 	const passwd = sha256(password.value)
 	if (!user) {
-		errMsg.value = 'Please input the username'
+		errMsg.value = () => tr('message.login.input.username')
 		return
 	}
-	if (!passwd) {
-		errMsg.value = 'Please input the password'
+	if (!password.value) {
+		errMsg.value = () => tr('message.login.input.password')
 		return
 	}
-	password.value = ''
+	loading.value = true
 	const res = await axios
 		.post(`/api/v0/login`, {
 			username: user,
 			password: passwd
 		})
 		.catch((err) => {
-			console.log('err:', err)
 			const data = err.response.data
-			console.error('LoginError:', data)
+			console.error('LoginError:', err)
 			if (data && data.error) {
 				errMsg.value = 'LoginError: ' + data.error
 				if (data.message) {
@@ -51,6 +52,7 @@ async function login(): Promise<void> {
 			}
 			return null
 		})
+	loading.value = false
 	if (!res) {
 		return
 	}
@@ -61,7 +63,7 @@ async function login(): Promise<void> {
 
 <template>
 	<div class="login">
-		<form @submit.prevent="login">
+		<form v-focustrap @submit.prevent="login">
 			<InputGroup>
 				<InputGroupAddon>
 					<i class="pi pi-user"></i>
@@ -72,7 +74,7 @@ async function login(): Promise<void> {
 						autocomplete="username"
 						v-model="username"
 					/>
-					<label for="username">Username</label>
+					<label for="username">{{tr('title.username')}}</label>
 				</FloatLabel>
 			</InputGroup>
 			<InputGroup>
@@ -80,19 +82,19 @@ async function login(): Promise<void> {
 					<i class="pi pi-lock"></i>
 				</InputGroupAddon>
 				<FloatLabel>
-					<Password
+					<InputText
+						type="password"
 						name="password"
+						autocomplete="username"
 						v-model="password"
-						:feedback="false"
-						:inputProps="{ autocomplete: 'current-password' }"
 					/>
-					<label for="password">Password</label>
+					<label for="password">{{tr('title.password')}}</label>
 				</FloatLabel>
 			</InputGroup>
-			<Button class="login-btn" type="submit" label="Login" icon="pi pi-sign-in"/>
+			<Button class="login-btn" type="submit" :label="tr('title.login')" :loading="loading" icon="pi pi-sign-in"/>
 		</form>
 		<Message v-if="errMsg" :closable="false" severity="error">
-			{{errMsg}}
+			{{typeof errMsg === 'function' ? errMsg() : errMsg}}
 		</Message>
 	</div>
 </template>
@@ -111,4 +113,11 @@ form > div {
 	width: 100%;
 	margin-top: 1rem;
 }
+
+@media (max-width: 60rem) {
+	.login {
+		width: 100%;
+	}
+}
+
 </style>

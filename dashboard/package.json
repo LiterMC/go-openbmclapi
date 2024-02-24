@@ -19,6 +19,7 @@
     "primevue": "^3.49.0",
     "register-service-worker": "^1.7.2",
     "vue": "^3.2.47",
+    "vue-cookies": "^1.8.3",
     "vue-request": "^2.0.4",
     "vue-router": "^4.1.6"
   },

@@ -64,29 +64,35 @@ defineExpose({
 
 </script>
 <template>
-	<div ref="box" class="box" @scroll="onScrollBox">
-		<div
-			v-for="log in logs"
-			:key="`${log.time},${log._inc}`"
-			class="line"
-			:level="log.lvl"
-		>
-			<span class="level">[{{log.lvl}}]</span>
-			<span class="date">[{{formatDate(new Date(log.time))}}]</span>
-			<span>:&nbsp;</span>
-			<span class="log">{{log.log}}</span>
+	<div class="outer">
+		<div ref="box" class="box" @scroll="onScrollBox">
+			<div
+				v-for="log in logs"
+				:key="`${log.time},${log._inc}`"
+				class="line"
+				:level="log.lvl"
+			>
+				<span class="level">[{{log.lvl}}]</span>
+				<span class="date">[{{formatDate(new Date(log.time))}}]</span>
+				<span>:&nbsp;</span>
+				<span class="log">{{log.log}}</span>
+			</div>
 		</div>
-	</div>	
+	</div>
 </template>
 <style scoped>
+.outer {
+	padding: 1rem;
+	border-radius: 1rem;
+	background: #555;
+}
+
 .box {
 	display: flex;
 	flex-direction: column;
-	padding: 1rem;
-	border-radius: 1rem;
+	width: 100%;
   font-size: 1rem;
 	font-family: monospace;
-	background: #555;
 	white-space: pre;
 	overflow: auto;
 }

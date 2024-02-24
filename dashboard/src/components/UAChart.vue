@@ -9,10 +9,12 @@ const props = defineProps<{
 	data: { [ua: string]: number }
 }>()
 
-const data = computed(() => Object.entries(props.data).
-	map(([ua, count]) => ({ ua: ua, count: count })).
-	sort((a, b) => b.count - a.count).
-	slice(0, 7))
+const data = computed(() =>
+	Object.entries(props.data)
+		.map(([ua, count]) => ({ ua: ua, count: count }))
+		.sort((a, b) => b.count - a.count)
+		.slice(0, 7),
+)
 
 const chartObj = ref()
 const chartData = ref()
@@ -21,17 +23,14 @@ const chartOptions = ref()
 const getChartData = () => {
 	const documentStyle = getComputedStyle(document.documentElement)
 
-	const labels = data.value.map(({ua}) => ua)
-	const counts = data.value.map(({count}) => count)
+	const labels = data.value.map(({ ua }) => ua)
+	const counts = data.value.map(({ count }) => count)
 	watch(data, (data) => {
 		const length = data.length
 		labels.length = length
 		counts.length = length
-		for(let i = 0; i < length; i++){
-			({
-				ua: labels[i],
-				count: counts[i],
-			} = data[i])
+		for (let i = 0; i < length; i++) {
+			;({ ua: labels[i], count: counts[i] } = data[i])
 		}
 		chartObj.value.refresh()
 	})
@@ -126,10 +125,5 @@ onMounted(() => {
 </script>
 
 <template>
-	<Chart
-		ref="chartObj"
-		type="bar"
-		:data="chartData"
-		:options="chartOptions"
-	/>
+	<Chart ref="chartObj" type="bar" :data="chartData" :options="chartOptions" />
 </template>

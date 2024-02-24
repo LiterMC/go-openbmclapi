@@ -85,8 +85,8 @@ func (cr *Cluster) generateToken(cliId string) (string, error) {
 		"jti": jti,
 		"sub": "GOBA-tk",
 		"iss": jwtIssuer,
-		"iat": (int64)(now.Second()),
-		"exp": (int64)(now.Add(time.Hour * 12).Second()),
+		"iat": now.Unix(),
+		"exp": now.Add(time.Hour * 12).Unix(),
 		"cli": cliId,
 	})
 	tokenStr, err := token.SignedString(cr.apiHmacKey)
@@ -98,6 +98,7 @@ func (cr *Cluster) generateToken(cliId string) (string, error) {
 }
 
 func (cr *Cluster) verifyAPIToken(cliId string, token string) (id string) {
+	logDebugf("Authorizing %q", token)
 	t, err := jwt.Parse(
 		token,
 		func(t *jwt.Token) (interface{}, error) {
@@ -111,19 +112,24 @@ func (cr *Cluster) verifyAPIToken(cliId string, token string) (id string) {
 		jwt.WithIssuer(jwtIssuer),
 	)
 	if err != nil {
+		logDebugf("Cannot verity api token: %v", err)
 		return ""
 	}
 	c, ok := t.Claims.(jwt.MapClaims)
 	if !ok {
+		logDebugf("Cannot verity api token: claim is not jwt.MapClaims")
 		return ""
 	}
 	if c["cli"] != cliId {
+		logDebugf("Cannot verity api token: client id not match")
 		return ""
 	}
 	jti, ok := c["jti"].(string)
 	if !ok || !checkTokenId(jti) {
+		logDebugf("Cannot verity api token: jti not exists")
 		return ""
 	}
+	logDebugf("JTI is %s", jti)
 	return jti
 }
 
@@ -208,9 +214,20 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			rw.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		authed := false
+		cli := apiGetClientId(req)
+		if cli != "" {
+			auth := req.Header.Get("Authorization")
+			if tk, ok := strings.CutPrefix(auth, "Bearer "); ok {
+				if cr.verifyAPIToken(cli, tk) != "" {
+					authed = true
+				}
+			}
+		}
 		writeJson(rw, http.StatusOK, Map{
 			"version": BuildVersion,
 			"time":    time.Now(),
+			"authed":  authed,
 		})
 	})
 	mux.HandleFunc("/status", func(rw http.ResponseWriter, req *http.Request) {
@@ -320,6 +337,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 	mux.HandleFunc("/log.io", func(rw http.ResponseWriter, req *http.Request) {
 		conn, err := wsUpgrader.Upgrade(rw, req, nil)
 		if err != nil {
+			logDebugf("[log.io]: Websocket upgrade error: %v", err)
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -339,13 +357,6 @@ func (cr *Cluster) initAPIv0() http.Handler {
 
 		conn.SetReadLimit(1024 * 8)
 		pongCh := make(chan struct{}, 1)
-		conn.SetPongHandler(func(string) error {
-			select {
-			case pongCh <- struct{}{}:
-			default:
-			}
-			return nil
-		})
 		go func() {
 			defer conn.Close()
 			defer cancel()
@@ -353,25 +364,8 @@ func (cr *Cluster) initAPIv0() http.Handler {
 				select {
 				case <-pongCh:
 				case <-time.After(time.Second * 75):
-					logError("Did not receive websocket PONG from remote for 75s")
+					logError("[log.io]: Did not receive PONG from remote for 75s")
 					return
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-		go func() {
-			defer conn.Close()
-			defer cancel()
-			timer := time.NewTicker(time.Second * 45)
-			defer timer.Stop()
-			for {
-				select {
-				case <-timer.C:
-					if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second*15)); err != nil {
-						logErrorf("Error when sending ping message on log socket: %v", err)
-						return
-					}
 				case <-ctx.Done():
 					return
 				}
@@ -379,7 +373,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		}()
 
 		var authData struct {
-			Token string `json:"string"`
+			Token string `json:"token"`
 		}
 		deadline := time.Now().Add(time.Second * 10)
 		conn.SetReadDeadline(deadline)
@@ -413,6 +407,29 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			return
 		}
 
+		go func() {
+			defer conn.Close()
+			defer cancel()
+			var data map[string]any
+			for {
+				clear(data)
+				if err := conn.ReadJSON(&data); err != nil {
+					return
+				}
+				typ, ok := data["type"].(string)
+				if !ok {
+					continue
+				}
+				switch typ {
+				case "pong":
+					select {
+					case pongCh <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}()
+
 		level := LogLevelInfo
 		if strings.ToLower(req.URL.Query().Get("level")) == "debug" {
 			level = LogLevelDebug
@@ -438,10 +455,20 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		})
 		defer unregister()
 
+		pingTimer := time.NewTicker(time.Second * 45)
+		defer pingTimer.Stop()
 		for {
 			select {
 			case v := <-c:
 				if err := conn.WriteJSON(v); err != nil {
+					return
+				}
+			case <-pingTimer.C:
+				if err := conn.WriteJSON(Map{
+					"type": "ping",
+					"data": time.Now().UnixMilli(),
+				}); err != nil {
+					logErrorf("[log.io]: Error when sending ping packet: %v", err)
 					return
 				}
 			case <-ctx.Done():

@@ -15,31 +15,30 @@ async function logout(): Promise<void> {
 	try {
 		await axios.post(`/api/v0/logout`, null, {
 			headers: {
-				'Authorization': `Bearer ${token.value}`,
+				Authorization: `Bearer ${token.value}`,
 			},
 		})
 		window.location.reload()
-	}catch(err){
-		toast.add({ severity: 'error', summary: 'Cannot logout', detail: String(err), life: 3000 });
+	} catch (err) {
+		toast.add({ severity: 'error', summary: 'Cannot logout', detail: String(err), life: 3000 })
 		token.value = null
 	}
 }
 
 const languages = avaliableLangs.map((v) => v.code)
 const selectedLang = computed({
-	get(){
+	get() {
 		return getLang()
 	},
-	set(value){
+	set(value) {
 		setLang(value)
-	}
+	},
 })
 
 const langNameMap: { [key: string]: string } = {
 	'en-US': 'English',
 	'zh-CN': '简体中文',
 }
-
 </script>
 
 <template>
@@ -48,20 +47,24 @@ const langNameMap: { [key: string]: string } = {
 			<img class="header-logo" src="/logo.png" />
 		</RouterLink>
 
-		<div v-if="token" class="flex-row-center no-select nav-login" @click="logout">
-			<span>{{tr('title.logout')}}&nbsp;</span>
+		<div v-if="token" class="flex-row-center no-select nav-login pointer" @click="logout">
+			<span>{{ tr('title.logout') }}&nbsp;</span>
 			<i class="pi pi-sign-out"></i>
 		</div>
 		<RouterLink v-else class="flex-row-center no-select nav-login" to="/login">
-			<span>{{tr('title.login')}}&nbsp;</span>
+			<span>{{ tr('title.login') }}&nbsp;</span>
 			<i class="pi pi-sign-in"></i>
 		</RouterLink>
 
 		<div class="lang-selector-box">
-			<Dropdown v-model="selectedLang" class="lang-selector"
-				:options="languages" placeholder="Language">
+			<Dropdown
+				v-model="selectedLang"
+				class="lang-selector"
+				:options="languages"
+				placeholder="Language"
+			>
 				<template #value="slotProps">
-					<span class="flex-row-center lang-selector-label" style="margin-right: -0.75rem;">
+					<span class="flex-row-center lang-selector-label" style="margin-right: -0.75rem">
 						<i class="pi pi-globe"></i>
 						{{ langNameMap[slotProps.value.toString()] }}
 					</span>
@@ -71,7 +74,12 @@ const langNameMap: { [key: string]: string } = {
 				</template>
 			</Dropdown>
 		</div>
-		<a class="nav-github" target="_blank" tabindex="-1" href="https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#go-openbmclapi">
+		<a
+			class="nav-github"
+			target="_blank"
+			tabindex="-1"
+			href="https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#go-openbmclapi"
+		>
 			<i class="pi pi-github"></i>
 			<span>Github</span>
 			<i class="pi pi-external-link"></i>
@@ -81,20 +89,17 @@ const langNameMap: { [key: string]: string } = {
 		<RouterView />
 	</div>
 	<footer id="footer">
-		<p>
-			Powered by <a href="https://vuejs.org/">Vue.js</a>
-		</p>
+		<p>Powered by <a href="https://vuejs.org/">Vue.js</a></p>
 		<address>
-			<span>
-				Author: <a href="mailto:zyxkad@gmail.com">Kevin Z &lt;zyxkad@gmail.com&gt;</a>
-			</span>
+			<span> Author: <a href="mailto:zyxkad@gmail.com">Kevin Z &lt;zyxkad@gmail.com&gt;</a> </span>
 		</address>
 		<p>
-			Copyright &copy; 2023-2024 All rights reserved. <br/>
-			This website is under <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0 License</a>
+			Copyright &copy; 2023-2024 All rights reserved. <br />
+			This website is under
+			<a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0 License</a>
 		</p>
 	</footer>
-	<Toast position="bottom-right"/>
+	<Toast position="bottom-right" />
 </template>
 
 <style scoped>
@@ -197,7 +202,7 @@ const langNameMap: { [key: string]: string } = {
 	}
 	.header-logo-box {
 		left: 1rem;
-	}	
+	}
 	.lang-selector-label {
 		font-size: 0.8rem;
 	}

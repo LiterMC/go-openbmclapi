@@ -18,5 +18,9 @@
 }
 
 .p-toast {
-  max-width: calc(100vw - 40px);
+	max-width: calc(100vw - 40px);
+}
+
+.pointer {
+	cursor: pointer;
 }

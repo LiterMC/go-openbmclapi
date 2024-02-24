@@ -20,6 +20,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto"
 	"encoding/hex"
@@ -52,6 +53,8 @@ type statusResponseWriter struct {
 	wrote  int64
 }
 
+var _ http.Hijacker = (*statusResponseWriter)(nil)
+
 func (w *statusResponseWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
@@ -61,6 +64,14 @@ func (w *statusResponseWriter) Write(buf []byte) (n int, err error) {
 	n, err = w.ResponseWriter.Write(buf)
 	w.wrote += (int64)(n)
 	return
+}
+
+func (w *statusResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := w.ResponseWriter.(http.Hijacker)
+	if ok {
+		return h.Hijack()
+	}
+	return nil, nil, errors.New("ResponseWriter is not http.Hijacker")
 }
 
 const (
@@ -106,7 +117,7 @@ func (r *accessRecord) String() string {
 	} else if used > time.Second {
 		used = used.Truncate(time.Microsecond)
 	}
-	s := fmt.Sprintf("Serve %d | %12v | %7s | %-15s | %s | %-4s %s | %q",
+	s := fmt.Sprintf("Serve %3d | %12v | %7s | %-15s | %s | %-4s %s | %q",
 		r.Status, used, bytesToUnit((float64)(r.Content)),
 		r.Addr, r.Proto,
 		r.Method, r.URI, r.UA)

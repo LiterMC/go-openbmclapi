@@ -1,20 +1,21 @@
-
-export {
-	type LogMsg,
-	LogIO,
-}
+export { type LogMsg, LogIO }
 
 interface BasicMsg {
 	type: string
 }
 
+interface PingMsg {
+	type: 'ping'
+	data?: any
+}
+
 interface ErrorMsg {
-	type: "error"
+	type: 'error'
 	message: string
 }
 
 interface LogMsg {
-	type: "log"
+	type: 'log'
 	time: number
 	lvl: string
 	log: string
@@ -23,14 +24,14 @@ interface LogMsg {
 class LogIO {
 	private ws: WebSocket | null = null
 	private logListener: ((msg: LogMsg) => void)[] = []
-	private closeListener: (() => void)[] = []
+	private closeListener: ((err?: unknown) => void)[] = []
 
-	constructor(ws: WebSocket){
+	constructor(ws: WebSocket) {
 		this.setWs(ws)
 	}
 
 	private setWs(ws: WebSocket): void {
-		ws.addEventListener('close', this.onClose)
+		ws.addEventListener('close', () => this.onClose())
 		ws.addEventListener('message', (msg) => {
 			const res = JSON.parse(msg.data) as BasicMsg
 			this.onMessage(res)
@@ -39,30 +40,56 @@ class LogIO {
 	}
 
 	close(): void {
-		if(this.ws){
+		if (this.ws) {
+			this.onClose()
 			this.ws.close()
 			this.ws = null
 		}
 	}
 
-	private onClose(event: CloseEvent): void {
-		for(const l of this.closeListener){
+	private onError(err: unknown): void {
+		if (!this.ws) {
+			return
+		}
+		for (const l of this.closeListener) {
+			l(err)
+		}
+	}
+
+	private onClose(): void {
+		if (!this.ws) {
+			return
+		}
+		for (const l of this.closeListener) {
 			l()
 		}
 	}
 
 	private onMessage(msg: BasicMsg): void {
-		switch(msg.type){
-		case 'error':
-			break
-		case 'log':
-			this.onLog(msg as LogMsg)
-			break
+		switch (msg.type) {
+			case 'ping':
+				this.ws?.send(
+					JSON.stringify({
+						type: 'pong',
+						data: (msg as PingMsg).data,
+					}),
+				)
+				break
+			case 'error':
+				if (this.ws) {
+					this.onError(msg)
+					this.ws.close()
+					this.ws = null
+				}
+				break
+			case 'log':
+				this.onLog(msg as LogMsg)
+				break
 		}
 	}
 
 	private onLog(msg: LogMsg): void {
-		for(const l of this.logListener){
+		for (const l of this.logListener) {
 			l(msg)
 		}
 	}
@@ -73,6 +100,7 @@ class LogIO {
 
 	addCloseListener(l: () => void): void {
 		this.closeListener.push(l)
+		console.debug('putted close listener', this.closeListener)
 	}
 
 	static async dial(token: string): Promise<LogIO> {
@@ -92,25 +120,28 @@ class LogIO {
 			})
 		}).finally(() => clearTimeout(connTimeout))
 
-		var after: (() => void)
+		var after: () => void
 		await new Promise<void>((resolve, reject) => {
 			const listener = (msg: MessageEvent) => {
-				try{
+				console.debug('log.io auth result:', msg.data)
+				try {
 					const res = JSON.parse(msg.data) as BasicMsg
-					if(res.type === 'error'){
+					if (res.type === 'error') {
 						reject((res as ErrorMsg).message)
-					}else if(res.type === 'ready'){
+					} else if (res.type === 'ready') {
 						resolve()
 					}
-				}catch(err){
+				} catch (err) {
 					reject(err)
 				}
 			}
 			ws.addEventListener('message', listener)
 			after = () => ws.removeEventListener('message', listener)
-			ws.send(JSON.stringify({
-				token: token,
-			}))
+			ws.send(
+				JSON.stringify({
+					token: token,
+				}),
+			)
 		}).finally(() => after())
 
 		return new LogIO(ws)

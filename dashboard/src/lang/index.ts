@@ -26,7 +26,7 @@ const currentTr: Ref<LangMap | null> = ref(null)
 
 ;(async function () {
 	const langCache = localStorage.getItem(TR_LANG_CACHE_KEY)
-	if(langCache){
+	if (langCache) {
 		for (let a of avaliableLangs) {
 			if (a.code.match(langCache)) {
 				currentLang.value = a

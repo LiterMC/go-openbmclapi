@@ -170,10 +170,5 @@ onMounted(() => {
 </script>
 
 <template>
-	<Chart
-		ref="chartObj"
-		type="line"
-		:data="chartData"
-		:options="chartOptions"
-	/>
+	<Chart ref="chartObj" type="line" :data="chartData" :options="chartOptions" />
 </template>

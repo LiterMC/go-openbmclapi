@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch, nextTick } from 'vue'
+import { ref, reactive, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 
 interface Log {
 	_inc?: number
@@ -16,7 +16,7 @@ var logInc = 0
 var focusLastLog = true
 
 function pushLog(log: Log) {
-	log._inc = (logInc = (logInc + 1) % 65536)
+	log._inc = logInc = (logInc + 1) % 65536
 	logs.push(log)
 	const minI = logs.length - MAX_LOG_LENGTH
 	if (minI > 0) {
@@ -26,25 +26,35 @@ function pushLog(log: Log) {
 
 var boxLastPostion = 0
 
-function onScrollBox() {
-	if(!box.value){
+function onScrollBox(): void {
+	if (!box.value) {
 		return
 	}
 	const scrolled = box.value.scrollTop - boxLastPostion
 	boxLastPostion = box.value.scrollTop
-	if(scrolled < 0){
+	console.log('scrolled:', scrolled)
+	if (scrolled < 0) {
 		focusLastLog = false
 	}
 }
 
-watch(logs, async (logs) => {
-	if(document.hidden || !box.value){
+function onVisibilityChange(): void {
+	if (document.hidden || !box.value || !focusLastLog) {
 		return
 	}
-	console.log('logs:', logs.length)
-	const diff = box.value.scrollHeight - box.value.scrollTop + box.value.clientHeight
+	box.value.scroll({
+		top: box.value.scrollHeight,
+		behavior: 'smooth',
+	})
+}
+
+watch(logs, async (logs: Log[]) => {
+	if (document.hidden || !box.value) {
+		return
+	}
+	const diff = box.value.scrollHeight - (box.value.scrollTop + box.value.clientHeight)
 	focusLastLog ||= diff < 5
-	if(focusLastLog){
+	if (focusLastLog) {
 		await nextTick()
 		box.value.scroll({
 			top: box.value.scrollHeight,
@@ -62,59 +72,81 @@ defineExpose({
 	pushLog,
 })
 
+onMounted(() => {
+	document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+	document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
 <template>
 	<div class="outer">
-		<div ref="box" class="box" @scroll="onScrollBox">
-			<div
-				v-for="log in logs"
-				:key="`${log.time},${log._inc}`"
-				class="line"
-				:level="log.lvl"
-			>
-				<span class="level">[{{log.lvl}}]</span>
-				<span class="date">[{{formatDate(new Date(log.time))}}]</span>
-				<span>:&nbsp;</span>
-				<span class="log">{{log.log}}</span>
+		<div class="inner" ref="box" @scroll="onScrollBox">
+			<div class="box">
+				<div v-for="log in logs" :key="`${log.time},${log._inc}`" class="line" :level="log.lvl">
+					<span class="level">[{{ log.lvl }}]</span>
+					<span class="date">[{{ formatDate(new Date(log.time)) }}]</span>
+					<span>:&nbsp;</span>
+					<span class="log">{{ log.log }}</span>
+				</div>
 			</div>
 		</div>
+		<div class="shadow"></div>
 	</div>
 </template>
 <style scoped>
 .outer {
-	padding: 1rem;
+	position: relative;
 	border-radius: 1rem;
 	background: #555;
+	overflow: auto;
+}
+
+.inner {
+	width: 100%;
+	height: 100%;
+	padding: 1rem;
+	overflow: auto;
+}
+
+.shadow {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	border-radius: 1rem;
+	box-shadow: 3px 3px 20px -3px #000 inset;
+	pointer-events: none;
 }
 
 .box {
 	display: flex;
 	flex-direction: column;
-	width: 100%;
-  font-size: 1rem;
+	font-size: 1rem;
 	font-family: monospace;
 	white-space: pre;
-	overflow: auto;
 }
 
 .line {
-  line-height: 120%;
-  color: #fff;
+	line-height: 120%;
+	color: #fff;
 }
 
-.line[level=DBUG] {
+.line[level='DBUG'] {
 	color: #009b00;
 }
 
-.line[level=INFO] {
+.line[level='INFO'] {
 	color: #eee;
 }
 
-.line[level=WARN] {
+.line[level='WARN'] {
 	color: #ffd500;
 }
 
-.line[level=ERRO] {
+.line[level='ERRO'] {
 	color: #ff1010;
 }
 

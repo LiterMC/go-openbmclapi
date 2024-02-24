@@ -36,7 +36,9 @@ const { data, error, loading } = useRequest(
 	},
 )
 
-const status = computed(() => error.value ? 'error' : data.value && data.value.enabled ? 'enabled' : 'disabled')
+const status = computed(() =>
+	error.value ? 'error' : data.value && data.value.enabled ? 'enabled' : 'disabled',
+)
 
 const stat = computed(() => {
 	if (!data.value) {
@@ -106,15 +108,37 @@ function getDaysInMonth(): number {
 var logIO: LogIO | null = null
 
 async function onTokenChanged(token: string | null): Promise<void> {
-	if(logIO){
+	if (logIO) {
 		logIO.close()
 		logIO = null
 	}
-	if(!token){
+	if (!token) {
 		return
 	}
-	logIO = await LogIO.dial(token)
+	logBlk.value?.pushLog({
+		time: Date.now(),
+		lvl: 'INFO',
+		log: '[dashboard]: Connecting to remote server ...',
+	})
+	logIO = await LogIO.dial(token).catch((err) => {
+		console.error('Cannot connect to log.io:', err)
+		logBlk.value?.pushLog({
+			time: Date.now(),
+			lvl: 'ERRO',
+			log: '[dashboard]: Cannot connect to remote server: ' + String(err),
+		})
+		return null
+	})
+	if (!logIO) {
+		return
+	}
+	logBlk.value?.pushLog({
+		time: Date.now(),
+		lvl: 'INFO',
+		log: '[dashboard]: Connected to remote server',
+	})
 	logIO.addCloseListener(() => {
+		console.warn('log.io closed')
 		logBlk.value?.pushLog({
 			time: Date.now(),
 			lvl: 'ERRO',
@@ -127,15 +151,9 @@ async function onTokenChanged(token: string | null): Promise<void> {
 }
 
 onMounted(() => {
-	logBlk.value?.pushLog({
-		time: Date.now(),
-		lvl: 'INFO',
-		log: '[dashboard]: Connecting to remote server ...',
-	})
 	onTokenChanged(token.value)
 	watch(token, onTokenChanged)
 })
-
 </script>
 
 <template>
@@ -144,14 +162,11 @@ onMounted(() => {
 		<div class="main">
 			<div class="basic-info">
 				<div>
-					<Button
-						class="info-status"
-						:status="status"
-					>
+					<Button class="info-status" :status="status">
 						{{ tr(`badge.server.status.${status}`) }}
 					</Button>
 
-					<ProgressSpinner v-if="loading" class="polling" strokeWidth="6"/>
+					<ProgressSpinner v-if="loading" class="polling" strokeWidth="6" />
 				</div>
 				<div v-if="error">
 					<b>{{ error }}</b>
@@ -176,7 +191,7 @@ onMounted(() => {
 						:current="stat.date.hour + new Date().getMinutes() / 60"
 						:formatXLabel="formatHour"
 					/>
-					<Skeleton v-else width="" height="" class="hits-chart"/>
+					<Skeleton v-else width="" height="" class="hits-chart" />
 				</div>
 				<div class="chart-card">
 					<h3>{{ tr('title.month') }}</h3>
@@ -190,7 +205,7 @@ onMounted(() => {
 						:current="stat.date.day + new Date().getUTCHours() / 24"
 						:formatXLabel="formatDay"
 					/>
-					<Skeleton v-else width="" height="" class="hits-chart"/>
+					<Skeleton v-else width="" height="" class="hits-chart" />
 				</div>
 				<div class="chart-card">
 					<h3>{{ tr('title.year') }}</h3>
@@ -204,23 +219,18 @@ onMounted(() => {
 						:current="stat.date.month + getDaysInMonth()"
 						:formatXLabel="formatMonth"
 					/>
-					<Skeleton v-else width="" height="" class="hits-chart"/>
+					<Skeleton v-else width="" height="" class="hits-chart" />
 				</div>
 				<!-- TODO: show yearly chart -->
 			</div>
 			<div class="info-chart-box">
 				<h3>{{ tr('title.user_agents') }}</h3>
-				<UAChart
-					v-if="stat"
-					class="ua-chart"
-					:max="5"
-					:data="stat.accesses"
-				/>
-				<Skeleton v-else width="" height=""  class="ua-chart"/>
+				<UAChart v-if="stat" class="ua-chart" :max="5" :data="stat.accesses" />
+				<Skeleton v-else width="" height="" class="ua-chart" />
 			</div>
 		</div>
 		<div class="log-box">
-			<LogBlock v-if="token" ref="logBlk" class="log-block"/>
+			<LogBlock v-if="token" ref="logBlk" class="log-block" />
 			<Message v-else :closable="false" severity="info">
 				<RouterLink to="/login" style="color: inherit">
 					{{ tr('title.login') }}
@@ -238,10 +248,9 @@ onMounted(() => {
 .main {
 	display: grid;
 	grid-template:
-		"a a" 4rem
-		"b c" auto
-		/ 46rem auto
-	;
+		'a a' 4rem
+		'b c' auto
+		/ 46rem auto;
 	grid-gap: 1rem;
 }
 
@@ -364,7 +373,8 @@ onMounted(() => {
 		align-items: flex-start;
 		height: unset;
 	}
-	.hits-chart, .ua-chart {
+	.hits-chart,
+	.ua-chart {
 		width: 100%;
 	}
 }

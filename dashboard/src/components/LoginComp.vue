@@ -37,7 +37,7 @@ async function login(): Promise<void> {
 	const res = await axios
 		.post(`/api/v0/login`, {
 			username: user,
-			password: passwd
+			password: passwd,
 		})
 		.catch((err) => {
 			const data = err.response.data
@@ -69,12 +69,8 @@ async function login(): Promise<void> {
 					<i class="pi pi-user"></i>
 				</InputGroupAddon>
 				<FloatLabel>
-					<InputText
-						name="username"
-						autocomplete="username"
-						v-model="username"
-					/>
-					<label for="username">{{tr('title.username')}}</label>
+					<InputText name="username" autocomplete="username" v-model="username" />
+					<label for="username">{{ tr('title.username') }}</label>
 				</FloatLabel>
 			</InputGroup>
 			<InputGroup>
@@ -82,25 +78,25 @@ async function login(): Promise<void> {
 					<i class="pi pi-lock"></i>
 				</InputGroupAddon>
 				<FloatLabel>
-					<InputText
-						type="password"
-						name="password"
-						autocomplete="username"
-						v-model="password"
-					/>
-					<label for="password">{{tr('title.password')}}</label>
+					<InputText type="password" name="password" autocomplete="username" v-model="password" />
+					<label for="password">{{ tr('title.password') }}</label>
 				</FloatLabel>
 			</InputGroup>
-			<Button class="login-btn" type="submit" :label="tr('title.login')" :loading="loading" icon="pi pi-sign-in"/>
+			<Button
+				class="login-btn"
+				type="submit"
+				:label="tr('title.login')"
+				:loading="loading"
+				icon="pi pi-sign-in"
+			/>
 		</form>
 		<Message v-if="errMsg" :closable="false" severity="error">
-			{{typeof errMsg === 'function' ? errMsg() : errMsg}}
+			{{ typeof errMsg === 'function' ? errMsg() : errMsg }}
 		</Message>
 	</div>
 </template>
 
 <style scoped>
-
 .login {
 	width: 25rem;
 }
@@ -119,5 +115,4 @@ form > div {
 		width: 100%;
 	}
 }
-
 </style>

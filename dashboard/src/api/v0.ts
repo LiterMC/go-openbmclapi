@@ -24,6 +24,12 @@ export type Stats = StatHistoryData & {
 	accesses: { [ua: string]: number }
 }
 
+export interface PingRes {
+	version: string
+	time: string
+	authed: boolean
+}
+
 export interface APIStatus {
 	startAt: string
 	stats: Stats

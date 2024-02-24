@@ -40,6 +40,7 @@ type AdvancedConfig struct {
 	SkipSignatureCheck   bool `yaml:"skip-signature-check"`
 	ExitWhenDisconnected bool `yaml:"exit-when-disconnected"`
 	NoFastEnable         bool `yaml:"no-fast-enable"`
+	WaitBeforeEnable     int  `yaml:"wait-before-enable"`
 }
 
 type ServeLimitConfig struct {
@@ -169,9 +170,11 @@ var defaultConfig = Config{
 		NoOpen:               false,
 		NoHeavyCheck:         false,
 		HeavyCheckInterval:   120,
+		KeepaliveTimeout:     10,
 		SkipFirstSync:        false,
 		ExitWhenDisconnected: false,
-		KeepaliveTimeout:     10,
+		NoFastEnable:         false,
+		WaitBeforeEnable:     0,
 	},
 }
 

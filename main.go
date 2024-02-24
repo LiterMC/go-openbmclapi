@@ -259,6 +259,14 @@ START:
 			return
 		}
 
+		if config.Advanced.WaitBeforeEnable > 0 {
+			select {
+			case <-time.After(time.Second * (time.Duration)(config.Advanced.WaitBeforeEnable)):
+			case <-ctx.Done():
+				return
+			}
+		}
+
 		if err := cluster.Enable(ctx); err != nil {
 			logError("Cannot enable cluster:", err)
 			os.Exit(1)

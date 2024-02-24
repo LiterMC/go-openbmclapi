@@ -37,12 +37,23 @@ type ClusterToken struct {
 }
 
 func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
-	if cr.authToken == nil || cr.authToken.ExpireAt.Before(time.Now()) {
-		if cr.authToken, err = cr.fetchToken(ctx); err != nil {
-			return "", err
-		}
+	cr.authTokenMux.RLock()
+	expired := cr.authToken == nil || cr.authToken.ExpireAt.Before(time.Now())
+	if !expired {
+		token = cr.authToken.Token
 	}
-	return cr.authToken.Token, nil
+	cr.authTokenMux.RUnlock()
+	if expired {
+		cr.authTokenMux.Lock()
+		defer cr.authTokenMux.Unlock()
+		if cr.authToken == nil || cr.authToken.ExpireAt.Before(time.Now()) {
+			if cr.authToken, err = cr.fetchToken(ctx); err != nil {
+				return "", err
+			}
+		}
+		token = cr.authToken.Token
+	}
+	return
 }
 
 func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err error) {

@@ -85,6 +85,7 @@ type Cluster struct {
 	downloading     map[string]chan error
 	fileMux         sync.RWMutex
 	fileset         map[string]int64
+	authTokenMux    sync.RWMutex
 	authToken       *ClusterToken
 
 	client    *http.Client

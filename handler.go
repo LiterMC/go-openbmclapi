@@ -123,15 +123,18 @@ func (r *accessRecord) String() string {
 	} else if used > time.Second {
 		used = used.Truncate(time.Microsecond)
 	}
-	s := fmt.Sprintf("Serve %3d | %12v | %7s | %-15s | %s | %-4s %s | %q",
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "Serve %3d | %12v | %7s | %-15s | %s | %-4s %s | %q",
 		r.Status, used, bytesToUnit((float64)(r.Content)),
 		r.Addr, r.Proto,
 		r.Method, r.URI, r.UA)
 	if len(r.Extra) > 0 {
-		buf, _ := json.Marshal(r.Extra)
-		s += " | " + (string)(buf)
+		buf.WriteString(" | ")
+		e := json.NewEncoder(&noLastNewLineWriter{&buf})
+		e.SetEscapeHTML(false)
+		e.Encode(r.Extra)
 	}
-	return s
+	return buf.String()
 }
 
 func (cr *Cluster) GetHandler() (handler http.Handler) {

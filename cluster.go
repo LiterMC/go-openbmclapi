@@ -91,6 +91,7 @@ type Cluster struct {
 	client    *http.Client
 	cachedCli *http.Client
 	bufSlots  *BufSlots
+	tokens    *TokenStorage
 
 	handlerAPIv0 http.Handler
 	handlerAPIv1 http.Handler
@@ -144,6 +145,7 @@ func NewCluster(
 		cachedCli: &http.Client{
 			Transport: cachedTransport,
 		},
+		tokens: NewTokenStorage(),
 	}
 	close(cr.disabled)
 
@@ -683,7 +685,9 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	cr.issync.Store(false)
 	cr.fileMux.Unlock()
 
-	go cr.gc()
+	if !config.Advanced.NoGC {
+		go cr.gc()
+	}
 
 	return true
 }

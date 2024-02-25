@@ -53,28 +53,83 @@ const (
 	tokenTypeAPI  = "token.api"
 )
 
-var (
-	tokenIdSet    = make(map[string]struct{})
-	tokenIdSetMux sync.RWMutex
-)
-
-func registerTokenId(id string) {
-	tokenIdSetMux.Lock()
-	defer tokenIdSetMux.Unlock()
-	tokenIdSet[id] = struct{}{}
+type TokenStorage struct {
+	mux       sync.RWMutex
+	tokens    map[string]time.Time
+	nextCheck time.Time
+	checking  bool
 }
 
-func unregisterTokenId(id string) {
-	tokenIdSetMux.Lock()
-	defer tokenIdSetMux.Unlock()
-	delete(tokenIdSet, id)
+func NewTokenStorage() *TokenStorage {
+	return &TokenStorage{
+		tokens:    make(map[string]time.Time),
+		nextCheck: time.Now().Add(time.Minute * 5),
+	}
 }
 
-func checkTokenId(id string) (ok bool) {
-	tokenIdSetMux.RLock()
-	defer tokenIdSetMux.RUnlock()
-	_, ok = tokenIdSet[id]
-	return
+func (s *TokenStorage) checker() {
+	s.mux.RLock()
+	var expired []string
+	now := time.Now()
+	for k, v := range s.tokens {
+		if now.After(v) {
+			expired = append(expired, k)
+		}
+	}
+	s.mux.RUnlock()
+	s.mux.Lock()
+	for _, k := range expired {
+		delete(s.tokens, k)
+	}
+	s.checking = false
+	s.nextCheck = time.Now().Add(time.Minute * 5)
+	s.mux.Unlock()
+}
+
+func (s *TokenStorage) tryCheckLocked() {
+	if !s.checking && time.Now().After(s.nextCheck) {
+		s.checking = true
+		go s.checker()
+	}
+}
+
+func (s *TokenStorage) tryCheck() {
+	s.mux.RLock()
+	ok := !s.checking && time.Now().After(s.nextCheck)
+	s.mux.RUnlock()
+	if ok {
+		s.mux.Lock()
+		s.tryCheckLocked()
+		s.mux.Unlock()
+	}
+}
+
+func (s *TokenStorage) Register(id string, expire time.Time) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	s.tokens[id] = expire
+	if len(s.tokens) > 256 {
+		s.tryCheckLocked()
+	}
+}
+
+func (s *TokenStorage) Unregister(id string) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	delete(s.tokens, id)
+}
+
+func (s *TokenStorage) Check(id string) bool {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	expire, ok := s.tokens[id]
+	if !ok {
+		return false
+	}
+	if time.Now().After(expire) {
+		return false
+	}
+	return true
 }
 
 func apiGetClientId(req *http.Request) (id string) {
@@ -143,19 +198,20 @@ func (cr *Cluster) generateAPIToken(cliId string, path string) (string, error) {
 		return "", err
 	}
 	now := time.Now()
+	exp := now.Add(time.Minute * 10)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"jti": jti,
 		"sub": "GOBA-" + path,
 		"iss": jwtIssuer,
 		"iat": now.Unix(),
-		"exp": now.Add(time.Minute * 10).Unix(),
+		"exp": exp.Unix(),
 		"cli": cliId,
 	})
 	tokenStr, err := token.SignedString(cr.apiHmacKey)
 	if err != nil {
 		return "", err
 	}
-	registerTokenId(jti)
+	cr.tokens.Register(jti, exp)
 	return tokenStr, nil
 }
 
@@ -186,7 +242,7 @@ func (cr *Cluster) verifyAPIToken(cliId string, token string, path string) (id s
 		return ""
 	}
 	jti, ok := c["jti"].(string)
-	if !ok || !checkTokenId(jti) {
+	if !ok || !cr.tokens.Check(jti) {
 		logDebugf("Cannot verity api token: jti not exists")
 		return ""
 	}
@@ -420,7 +476,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			return
 		}
 		tid := req.Context().Value(tokenIdKey).(string)
-		unregisterTokenId(tid)
+		cr.tokens.Unregister(tid)
 	}))
 
 	mux.HandleFunc("/log.io", func(rw http.ResponseWriter, req *http.Request) {

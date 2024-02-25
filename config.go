@@ -35,6 +35,7 @@ type AdvancedConfig struct {
 	SocketIOLog          bool `yaml:"socket-io-log"`
 	NoOpen               bool `yaml:"noopen"`
 	NoHeavyCheck         bool `yaml:"no-heavy-check"`
+	NoGC                 bool `yaml:"no-gc"`
 	HeavyCheckInterval   int  `yaml:"heavy-check-interval"`
 	KeepaliveTimeout     int  `yaml:"keepalive-timeout"`
 	SkipFirstSync        bool `yaml:"skip-first-sync"`
@@ -170,6 +171,7 @@ var defaultConfig = Config{
 		DebugLog:             false,
 		NoOpen:               false,
 		NoHeavyCheck:         false,
+		NoGC:                 false,
 		HeavyCheckInterval:   120,
 		KeepaliveTimeout:     10,
 		SkipFirstSync:        false,

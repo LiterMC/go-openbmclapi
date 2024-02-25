@@ -289,6 +289,19 @@ var (
 
 func (emptyReader) ReadAt(buf []byte, _ int64) (int, error) { return len(buf), nil }
 
+type noLastNewLineWriter struct {
+	io.Writer
+}
+
+var _ io.Writer = (*noLastNewLineWriter)(nil)
+
+func (w *noLastNewLineWriter) Write(buf []byte) (int, error) {
+	if l := len(buf) - 1; l >= 0 && buf[l] == '\n' {
+		buf = buf[:l]
+	}
+	return w.Writer.Write(buf)
+}
+
 var errNotSeeker = errors.New("r is not an io.Seeker")
 
 func getFileSize(r io.Reader) (n int64, err error) {

@@ -70,6 +70,7 @@ const (
 
 const (
 	LogConsoleOnly = 1 << (8 + iota)
+	LogNotToFile
 )
 
 func (l LogLevel) String() string {
@@ -99,7 +100,7 @@ func logWrite(level LogLevel, buf []byte) {
 			os.Stdout.Write(buf)
 		}
 	}
-	if level&LogConsoleOnly == 0 {
+	if level&LogConsoleOnly == 0 && level&LogNotToFile == 0 {
 		if fd := logfile.Load(); fd != nil {
 			fd.Write(buf)
 		}
@@ -377,7 +378,7 @@ func LogAccess(level LogLevel, data any) {
 	} else {
 		s = (string)(bts.Bytes()[:bts.Len()-1]) // we don't want the newline character
 	}
-	logX(level|LogConsoleOnly, s)
+	logX(level|LogNotToFile, s)
 	fd := accessLogFile.Load()
 	fd.Write(bts.Bytes())
 }

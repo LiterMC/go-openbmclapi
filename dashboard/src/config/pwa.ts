@@ -2,7 +2,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default VitePWA({
 	registerType: 'autoUpdate',
-	injectRegister: 'inline',
+	injectRegister: 'auto',
 	includeAssets: ['favicon.ico'],
 	manifest: {
 		name: 'GoOpenBmclApi Dashboard',

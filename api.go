@@ -500,7 +500,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 
 		type logObj struct {
 			Type  string `json:"type"`
-			Time  int64  `json:"time"`
+			Time  int64  `json:"time"` // UnixMilli
 			Level string `json:"lvl"`
 			Log   string `json:"log"`
 		}
@@ -553,6 +553,17 @@ func (cr *Cluster) initAPIv0() http.Handler {
 							level.Store((int32)(LogLevelWarn))
 						case "ERRO":
 							level.Store((int32)(LogLevelError))
+						default:
+							continue
+						}
+						select {
+						case c <- &logObj{
+							Type:  "log",
+							Time:  time.Now().UnixMilli(),
+							Level: LogLevelInfo.String(),
+							Log:   "[dashboard]: Set log level of this log.io to " + l,
+						}:
+						default:
 						}
 					}
 				}

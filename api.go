@@ -613,6 +613,9 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 		}
 		rw.WriteHeader(http.StatusOK)
+		if debug == 1 {
+			fmt.Fprintf(rw, "version: %s (%s)\n", BuildVersion, ClusterVersion)
+		}
 		p.WriteTo(rw, debug)
 	}))
 	return mux

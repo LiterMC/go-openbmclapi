@@ -36,6 +36,9 @@ Q: 面板在哪里访问?
 A: 服务端启动时会输出 `https://<public-host>:<public-port>`, 访问这个地址就可以了
    > 注: 面板与 openbmclapi 下载服务共用一个端口, 并非单独配置
 
+Q: 检查文件的时候过慢怎么办?  
+A: 如果您确定你的存储稳定, 可以去编辑 `config.yaml`. 将 `no-heavy-check` 选项设为 `true` 即可
+
 ## 安装
 
 ### 无依赖直接运行

@@ -156,6 +156,10 @@ onBeforeUnmount(() => {
 	font-weight: bold;
 }
 
+.log {
+	margin-right: 1rem;
+}
+
 @media (max-width: 60rem) {
 	.box {
 		font-size: 0.85rem;

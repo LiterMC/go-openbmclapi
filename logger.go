@@ -56,7 +56,7 @@ func setLogOutput(out io.Writer) {
 	}
 }
 
-type LogLevel int
+type LogLevel int32
 
 const (
 	_ LogLevel = iota

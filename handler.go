@@ -75,9 +75,14 @@ func (w *statusResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 const (
-	RealAddrCtxKey = "handle.real.addr"
+	RealAddrCtxKey       = "handle.real.addr"
+	RealPathCtxKey       = "handle.real.path"
 	AccessLogExtraCtxKey = "handle.access.extra"
 )
+
+func GetRequestRealPath(req *http.Request) string {
+	return req.Context().Value(RealPathCtxKey).(string)
+}
 
 func SetAccessInfo(req *http.Request, key string, value any) {
 	if info, ok := req.Context().Value(AccessLogExtraCtxKey).(map[string]any); ok {
@@ -169,6 +174,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			extraInfoMap := make(map[string]any)
 			ctx := req.Context()
 			ctx = context.WithValue(ctx, RealAddrCtxKey, addr)
+			ctx = context.WithValue(ctx, RealPathCtxKey, req.URL.Path)
 			ctx = context.WithValue(ctx, AccessLogExtraCtxKey, extraInfoMap)
 			req = req.WithContext(ctx)
 			next.ServeHTTP(srw, req)

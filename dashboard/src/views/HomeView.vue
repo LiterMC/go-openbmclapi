@@ -15,6 +15,7 @@ import UAChart from '@/components/UAChart.vue'
 import LogBlock from '@/components/LogBlock.vue'
 import { getStatus, getPprofURL, type StatInstData, type PprofLookups } from '@/api/v0'
 import { LogIO, type LogMsg } from '@/api/log.io'
+import { bindRefToLocalStorage } from '@/cookies'
 import { tr } from '@/lang'
 
 const toast = useToast()
@@ -23,7 +24,7 @@ const token = inject('token') as Ref<string | null>
 const logBlk = ref<InstanceType<typeof LogBlock>>()
 
 const requestingPprof = ref(false)
-const logDebugLevel = ref(false)
+const logDebugLevel = bindRefToLocalStorage(ref(false), 'dashboard.log.debug.bool')
 
 const now = ref(new Date())
 setInterval(() => {
@@ -35,6 +36,18 @@ const { data, error, loading } = useRequest(getStatus, {
 	loadingDelay: 500,
 	loadingKeep: 2000,
 })
+
+var requestingLogIO = false
+var logIO: LogIO | null = null
+
+watch(
+	() => [data.value, error.value],
+	() => {
+		if (!error.value && !(requestingLogIO || logIO)) {
+			onTokenChanged(token.value)
+		}
+	},
+)
 
 const status = computed(() =>
 	error.value ? 'error' : data.value && data.value.enabled ? 'enabled' : 'disabled',
@@ -132,9 +145,6 @@ async function requestPprof(lookup: PprofLookups, view?: boolean): Promise<void>
 	window.open(target)
 }
 
-var logIO: LogIO | null = null
-var reDialTimeout = 0
-
 async function onTokenChanged(tk: string | null): Promise<void> {
 	if (logIO) {
 		logIO.close()
@@ -148,6 +158,7 @@ async function onTokenChanged(tk: string | null): Promise<void> {
 		lvl: 'INFO',
 		log: '[dashboard]: Connecting to remote server ...',
 	})
+	requestingLogIO = true
 	logIO = await LogIO.dial(tk).catch((err) => {
 		console.error('Cannot connect to log.io:', err)
 		logBlk.value?.pushLog({
@@ -157,9 +168,15 @@ async function onTokenChanged(tk: string | null): Promise<void> {
 		})
 		return null
 	})
+	requestingLogIO = false
 	if (!logIO) {
 		return
 	}
+	logIO.setLevel(logDebugLevel.value ? 'DBUG' : 'INFO')
+	const unwatchDebugLevel = watch(logDebugLevel, (debug) => {
+		logIO?.setLevel(debug ? 'DBUG' : 'INFO')
+	})
+
 	logBlk.value?.pushLog({
 		time: Date.now(),
 		lvl: 'INFO',
@@ -167,12 +184,18 @@ async function onTokenChanged(tk: string | null): Promise<void> {
 	})
 	logIO.addCloseListener(() => {
 		console.warn('log.io closed')
+		unwatchDebugLevel()
 		logBlk.value?.pushLog({
 			time: Date.now(),
 			lvl: 'ERRO',
 			log: '[dashboard]: Disconnected from remote server',
 		})
-		window.requestAnimationFrame(() => onTokenChanged(token.value))
+		logIO = null
+		window.requestAnimationFrame(() => {
+			if (!logIO) {
+				onTokenChanged(token.value)
+			}
+		})
 	})
 	logIO.addLogListener((msg: LogMsg) => {
 		if (logDebugLevel.value || msg.lvl !== 'DBUG') {
@@ -267,31 +290,31 @@ onMounted(() => {
 						severity="warning"
 						:label="tr('title.pprof.heap')"
 						:loading="requestingPprof"
-						@click="requestPprof('heap')"
+						@click="requestPprof('heap', false)"
 					/>
 					<Button
 						severity="primary"
 						:label="tr('title.pprof.goroutine')"
 						:loading="requestingPprof"
-						@click="requestPprof('goroutine')"
+						@click="requestPprof('goroutine', false)"
 					/>
 					<Button
 						severity="contrast"
 						:label="tr('title.pprof.allocs')"
 						:loading="requestingPprof"
-						@click="requestPprof('allocs')"
+						@click="requestPprof('allocs', false)"
 					/>
 					<Button
 						severity="info"
 						:label="tr('title.pprof.block')"
 						:loading="requestingPprof"
-						@click="requestPprof('block')"
+						@click="requestPprof('block', false)"
 					/>
 					<Button
 						severity="help"
 						:label="tr('title.pprof.mutex')"
 						:loading="requestingPprof"
-						@click="requestPprof('mutex')"
+						@click="requestPprof('mutex', false)"
 					/>
 				</nav>
 				<div class="flex-row-center log-options">

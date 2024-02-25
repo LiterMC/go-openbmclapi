@@ -99,6 +99,7 @@ export async function getPprofURL(token: string, opts: PprofOptions): Promise<st
 	const tk = await requestToken(token, pprofURL)
 	const u = new URL(window.location.toString())
 	u.pathname = pprofURL
+	u.searchParams.set('lookup', opts.lookup)
 	u.searchParams.set('_t', tk)
 	if (opts.debug === false) {
 		u.searchParams.set('debug', '0')

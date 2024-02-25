@@ -276,7 +276,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket.OnError(func(_ *socket.Socket, err error) {
 		logErrorf("Socket.IO error: %v", err)
 	})
-	cr.socket.OnMessage(func(event string, data []any){
+	cr.socket.OnMessage(func(event string, data []any) {
 		if event == "message" {
 			logInfof("[remote]: %v", data[0])
 		}

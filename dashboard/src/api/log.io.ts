@@ -1,5 +1,3 @@
-export { type LogMsg, LogIO }
-
 interface BasicMsg {
 	type: string
 }
@@ -14,14 +12,16 @@ interface ErrorMsg {
 	message: string
 }
 
-interface LogMsg {
+type LogLevel = 'DBUG' | 'INFO' | 'WARN' | 'ERRO'
+
+export interface LogMsg {
 	type: 'log'
 	time: number
-	lvl: 'DBUG' | 'INFO' | 'WARN' | 'ERRO'
+	lvl: LogLevel
 	log: string
 }
 
-class LogIO {
+export class LogIO {
 	private ws: WebSocket | null = null
 	private logListener: ((msg: LogMsg) => void)[] = []
 	private closeListener: ((err?: unknown) => void)[] = []
@@ -92,6 +92,15 @@ class LogIO {
 		for (const l of this.logListener) {
 			l(msg)
 		}
+	}
+
+	setLevel(lvl: LogLevel): void {
+		this.ws?.send(
+			JSON.stringify({
+				type: 'set-level',
+				level: lvl,
+			}),
+		)
 	}
 
 	addLogListener(l: (msg: LogMsg) => void): void {

@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"runtime/pprof"
@@ -42,14 +43,14 @@ const (
 
 	clientIdCookieName = "_id"
 
-	clientIdKey = "go-openbmclapi.cluster.client.id"
-	tokenTypeKey  = "go-openbmclapi.cluster.token.typ"
-	tokenIdKey  = "go-openbmclapi.cluster.token.id"
+	clientIdKey  = "go-openbmclapi.cluster.client.id"
+	tokenTypeKey = "go-openbmclapi.cluster.token.typ"
+	tokenIdKey   = "go-openbmclapi.cluster.token.id"
 )
 
 const (
 	tokenTypeFull = "token.full"
-	tokenTypeAPI = "token.api"
+	tokenTypeAPI  = "token.api"
 )
 
 var (
@@ -130,7 +131,7 @@ func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string) {
 		return ""
 	}
 	jti, ok := c["jti"].(string)
-	if !ok || !checkTokenId(jti) { // ignore JTI here; TODO
+	if !ok /*|| !checkTokenId(jti)*/ { // ignore JTI here; TODO
 		logDebugf("Cannot verity auth token: jti not exists")
 		return ""
 	}
@@ -170,7 +171,7 @@ func (cr *Cluster) verifyAPIToken(cliId string, token string, path string) (id s
 			}
 			return cr.apiHmacKey, nil
 		},
-		jwt.WithSubject("GOBA-" + path),
+		jwt.WithSubject("GOBA-"+path),
 		jwt.WithIssuedAt(),
 		jwt.WithIssuer(jwtIssuer),
 	)
@@ -235,9 +236,11 @@ func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 
 		var id string
 		if req.Method == http.MethodGet {
-			tk := req.Header.Get("_t")
+			tk := req.URL.Query().Get("_t")
 			if tk != "" {
-				id = cr.verifyAPIToken(cli, tk, req.URL.Path)
+				path := GetRequestRealPath(req)
+				logDebugf("Verifying API token at %s", path)
+				id = cr.verifyAPIToken(cli, tk, path)
 			}
 		}
 		if id == "" {
@@ -396,7 +399,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		path := query.Get("path")
 		if path == "" || path[0] != '/' {
 			writeJson(rw, http.StatusBadRequest, Map{
-				"error": "'path' query is invalid",
+				"error":   "'path' query is invalid",
 				"message": "'path' must be a non empty path which starts with '/'",
 			})
 			return
@@ -492,6 +495,32 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			return
 		}
 
+		var level atomic.Int32
+		level.Store((int32)(LogLevelInfo))
+
+		type logObj struct {
+			Type  string `json:"type"`
+			Time  int64  `json:"time"`
+			Level string `json:"lvl"`
+			Log   string `json:"log"`
+		}
+		c := make(chan *logObj, 64)
+		unregister := RegisterLogMonitor(LogLevelDebug, func(ts int64, l LogLevel, log string) {
+			if (LogLevel)(level.Load()) > l {
+				return
+			}
+			select {
+			case c <- &logObj{
+				Type:  "log",
+				Time:  ts,
+				Level: l.String(),
+				Log:   log,
+			}:
+			default:
+			}
+		})
+		defer unregister()
+
 		go func() {
 			defer conn.Close()
 			defer cancel()
@@ -512,34 +541,23 @@ func (cr *Cluster) initAPIv0() http.Handler {
 					case pongCh <- struct{}{}:
 					default:
 					}
+				case "set-level":
+					l, ok := data["level"].(string)
+					if ok {
+						switch l {
+						case "DBUG":
+							level.Store((int32)(LogLevelDebug))
+						case "INFO":
+							level.Store((int32)(LogLevelInfo))
+						case "WARN":
+							level.Store((int32)(LogLevelWarn))
+						case "ERRO":
+							level.Store((int32)(LogLevelError))
+						}
+					}
 				}
 			}
 		}()
-
-		level := LogLevelInfo
-		if strings.ToLower(req.URL.Query().Get("level")) == "debug" {
-			level = LogLevelDebug
-		}
-
-		type logObj struct {
-			Type  string `json:"type"`
-			Time  int64  `json:"time"`
-			Level string `json:"lvl"`
-			Log   string `json:"log"`
-		}
-		c := make(chan *logObj, 64)
-		unregister := RegisterLogMonitor(level, func(ts int64, level LogLevel, log string) {
-			select {
-			case c <- &logObj{
-				Type:  "log",
-				Time:  ts,
-				Level: level.String(),
-				Log:   log,
-			}:
-			default:
-			}
-		})
-		defer unregister()
 
 		pingTimer := time.NewTicker(time.Second * 45)
 		defer pingTimer.Stop()

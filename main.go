@@ -22,6 +22,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -123,6 +124,11 @@ START:
 
 	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
 
+	if config.ClusterId == defaultConfig.ClusterId || config.ClusterSecret == defaultConfig.ClusterSecret {
+		logError("Please set cluster-id and cluster-secret in config.yaml before start!")
+		os.Exit(1)
+	}
+
 	cache := config.Cache.newCache()
 
 	publicPort := config.PublicPort
@@ -216,41 +222,62 @@ START:
 			listener = limited
 		}
 
+		var tlsConfig *tls.Config
+		var publicHost string
+		if config.UseCert {
+			if len(config.Certificates) == 0 {
+				logError("No certificates was set in the config")
+				os.Exit(1)
+			}
+			tlsConfig = new(tls.Config)
+			tlsConfig.Certificates = make([]tls.Certificate, len(config.Certificates))
+			for i, c := range config.Certificates {
+				var err error
+				tlsConfig.Certificates[i], err = tls.LoadX509KeyPair(c.Cert, c.Key)
+				if err != nil {
+					logErrorf("Cannot parse certificate key pair[%d]: %v", i, err)
+					os.Exit(1)
+				}
+			}
+		}
 		if !config.Byoc {
 			tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
 			pair, err := cluster.RequestCert(tctx)
 			cancel()
 			if err != nil {
-				logError("Error when requesting cert key pair:", err)
+				logError("Error when requesting certificate key pair:", err)
 				os.Exit(1)
 			}
-			publicHost, _ := parseCertCommonName(([]byte)(pair.Cert))
-			certFile, keyFile, err := pair.SaveAsFile()
+			if tlsConfig == nil {
+				tlsConfig = new(tls.Config)
+			}
+			var cert tls.Certificate
+			cert, err = tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
 			if err != nil {
-				logError("Error when saving cert key pair:", err)
+				logError("Cannot parse requested certificate key pair:", err)
 				os.Exit(1)
 			}
-			go func() {
-				defer listener.Close()
-				if err = clusterSvr.ServeTLS(listener, certFile, keyFile); !errors.Is(err, http.ErrServerClosed) {
-					logError("Error on server:", err)
-					os.Exit(1)
-				}
-			}()
-			if publicHost == "" {
-				publicHost = config.PublicHost
-			}
-			logInfof("Server public at https://%s:%d (%s)", publicHost, publicPort, clusterSvr.Addr)
-		} else {
-			go func() {
-				defer listener.Close()
-				if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-					logError("Error on server:", err)
-					os.Exit(1)
-				}
-			}()
-			logInfof("Server public at https://%s:%d (%s)", config.PublicHost, publicPort, clusterSvr.Addr)
+			tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
+			certHost, _ := parseCertCommonName(cert.Certificate[0])
+			logInfof("Requested certificate for %s", certHost)
 		}
+		certCount := 0
+		if tlsConfig != nil {
+			certCount = len(tlsConfig.Certificates)
+			publicHost, _ = parseCertCommonName(tlsConfig.Certificates[0].Certificate[0])
+			listener = tls.NewListener(listener, tlsConfig)
+		}
+		go func(listener net.Listener) {
+			defer listener.Close()
+			if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+				logError("Error on server:", err)
+				os.Exit(1)
+			}
+		}(listener)
+		if publicHost == "" {
+			publicHost = config.PublicHost
+		}
+		logInfof("Server public at https://%s:%d (%s) with %d certificated", publicHost, publicPort, clusterSvr.Addr, certCount)
 
 		logInfof("Waiting for the first sync ...")
 		select {

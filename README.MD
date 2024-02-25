@@ -17,7 +17,8 @@ Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 - 不依赖大量的三方包, 体积小巧
 - 静态文件, 无需配置任何依赖
 - 得益于 Golang 强大的跨平台编译器, 支持大部分主流平台/处理器
-- 内置一个实时更新的状态面板
+- 内置一个统计面板
+- 支持在面板内实时查看日志 (需登录)
 - 支持一些小众的~~奇怪~~需求
 - ~~更好的压榨节点~~
 
@@ -106,8 +107,10 @@ no-access-log: false
 access-log-slots: 16
 # 日志最长保存时间 (天). 设置为 0 禁用清理过期日志
 log-slots: 7
-# 是否禁用 bmclapi 分发的证书, 同 CLUSTER_BYOC
+# 是否不使用 bmclapi 分发的证书, 同 CLUSTER_BYOC
 byoc: false
+# 是否提供自己的证书. 启用后同时需要设置下面的 certificates 字段
+use-cert: false
 # 是否信任 X-Forwarded-For 标头 (有反代时启用)
 trusted-x-forwarded-for: false
 # 实际开放的公网主机名, 同 CLUSTER_IP
@@ -125,17 +128,22 @@ sync-interval: 10
 # 同步文件时最多打开的连接数量. 注意: 该选项目前没用
 download-max-conn: 64
 
+# 证书列表. 仅当 use-cert 为 true 时才会加载. 不受 byoc 影响
+certificates:
+  - cert: /path/to/cert.pem # 证书路径
+    key: /path/to/key.pem   # 私钥路径
+
 # 缓存
 cache:
   # 缓存类型:
   #   nocache: 不缓存
   #   inmem: 程序内内存缓存
   #   redis: Redis 缓存
-  type: inmem
+  type: redis
   # 如果使用 Redis 缓存则还需要配置用户名密码等:
   data:
     network: tcp
-    addr: "redis.server.hostname:6379"
+    addr: "redis.server.hostname.example.com:6379"
     client-name: "go-openbmclapi"
     username: redis-username
     password: redis-password

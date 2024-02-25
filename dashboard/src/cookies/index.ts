@@ -34,10 +34,10 @@ export function bindRefToLocalStorage<T>(
 		} catch (_) {}
 	}
 	watch(ref, (value: T | undefined) => {
-		if (value) {
-			localStorage.setItem(name, JSON.stringify(value))
-		} else {
+		if (value === undefined) {
 			localStorage.removeItem(name)
+		} else {
+			localStorage.setItem(name, JSON.stringify(value))
 		}
 	})
 	return ref

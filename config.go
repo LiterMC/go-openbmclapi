@@ -45,6 +45,11 @@ type AdvancedConfig struct {
 	WaitBeforeEnable     int  `yaml:"wait-before-enable"`
 }
 
+type CertificateConfig struct {
+	Cert string `yaml:"cert"`
+	Key  string `yaml:"key"`
+}
+
 type ServeLimitConfig struct {
 	Enable     bool `yaml:"enable"`
 	MaxConn    int  `yaml:"max-conn"`
@@ -106,6 +111,7 @@ type Config struct {
 	NoAccessLog          bool   `yaml:"no-access-log"`
 	AccessLogSlots       int    `yaml:"access-log-slots"`
 	Byoc                 bool   `yaml:"byoc"`
+	UseCert              bool   `yaml:"use-cert"`
 	TrustedXForwardedFor bool   `yaml:"trusted-x-forwarded-for"`
 	PublicHost           string `yaml:"public-host"`
 	PublicPort           uint16 `yaml:"public-port"`
@@ -115,12 +121,13 @@ type Config struct {
 	SyncInterval         int    `yaml:"sync-interval"`
 	DownloadMaxConn      int    `yaml:"download-max-conn"`
 
-	Cache       CacheConfig            `yaml:"cache"`
-	ServeLimit  ServeLimitConfig       `yaml:"serve-limit"`
-	Dashboard   DashboardConfig        `yaml:"dashboard"`
-	Storages    []StorageOption        `yaml:"storages"`
-	WebdavUsers map[string]*WebDavUser `yaml:"webdav-users"`
-	Advanced    AdvancedConfig         `yaml:"advanced"`
+	Certificates []CertificateConfig    `yaml:"certificates"`
+	Cache        CacheConfig            `yaml:"cache"`
+	ServeLimit   ServeLimitConfig       `yaml:"serve-limit"`
+	Dashboard    DashboardConfig        `yaml:"dashboard"`
+	Storages     []StorageOption        `yaml:"storages"`
+	WebdavUsers  map[string]*WebDavUser `yaml:"webdav-users"`
+	Advanced     AdvancedConfig         `yaml:"advanced"`
 }
 
 func (cfg *Config) applyWebManifest(manifest map[string]any) {
@@ -144,6 +151,13 @@ var defaultConfig = Config{
 	ClusterSecret:        "${CLUSTER_SECRET}",
 	SyncInterval:         10,
 	DownloadMaxConn:      16,
+
+	Certificates: []CertificateConfig{
+		{
+			Cert: "/path/to/cert.pem",
+			Key:  "/path/to/key.pem",
+		},
+	},
 
 	Cache: CacheConfig{
 		Type:     "inmem",

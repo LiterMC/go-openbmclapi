@@ -296,16 +296,19 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 }
 
 func (cr *Cluster) WaitForEnable() <-chan struct{} {
+	if cr.enabled.Load() {
+		return closedCh
+	}
+
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
 	if cr.enabled.Load() {
 		return closedCh
-	} else {
-		ch := make(chan struct{}, 0)
-		cr.waitEnable = append(cr.waitEnable, ch)
-		return ch
 	}
+	ch := make(chan struct{}, 0)
+	cr.waitEnable = append(cr.waitEnable, ch)
+	return ch
 }
 
 func (cr *Cluster) Enable(ctx context.Context) (err error) {
@@ -496,26 +499,6 @@ func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
 type CertKeyPair struct {
 	Cert string `json:"cert"`
 	Key  string `json:"key"`
-}
-
-func (pair *CertKeyPair) SaveAsFile() (cert, key string, err error) {
-	const pemBase = "pems"
-	if _, err = os.Stat(pemBase); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return
-		}
-		if err = os.Mkdir(pemBase, 0700); err != nil {
-			return
-		}
-	}
-	cert, key = filepath.Join(pemBase, "cert.pem"), filepath.Join(pemBase, "key.pem")
-	if err = os.WriteFile(cert, ([]byte)(pair.Cert), 0600); err != nil {
-		return
-	}
-	if err = os.WriteFile(key, ([]byte)(pair.Key), 0600); err != nil {
-		return
-	}
-	return
 }
 
 func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {

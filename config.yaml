@@ -2,6 +2,7 @@ log-slots: 7
 no-access-log: false
 access-log-slots: 16
 byoc: false
+use-cert: false
 trusted-x-forwarded-for: false
 public-host: ""
 public-port: 0
@@ -10,6 +11,9 @@ cluster-id: ${CLUSTER_ID}
 cluster-secret: ${CLUSTER_SECRET}
 sync-interval: 10
 download-max-conn: 16
+certificates:
+  - cert: /path/to/cert.pem
+    key: /path/to/key.pem
 cache:
   type: inmem
 serve-limit:
@@ -40,6 +44,7 @@ advanced:
   socket-io-log: false
   noopen: false
   no-heavy-check: false
+  no-gc: false
   heavy-check-interval: 120
   keepalive-timeout: 10
   skip-first-sync: false

@@ -27,7 +27,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -167,23 +166,12 @@ func getHashMethod(l int) (hashMethod crypto.Hash, err error) {
 	return
 }
 
-func parseCertCommonName(cert []byte) (string, error) {
-	rest := cert
-	for {
-		var block *pem.Block
-		block, rest = pem.Decode(rest)
-		if block == nil {
-			return "", nil
-		}
-		if block.Type != "CERTIFICATE" {
-			continue
-		}
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			return "", err
-		}
-		return cert.Subject.CommonName, nil
+func parseCertCommonName(body []byte) (string, error) {
+	cert, err := x509.ParseCertificate(body)
+	if err != nil {
+		return "", err
 	}
+	return cert.Subject.CommonName, nil
 }
 
 var rd = func() chan int {

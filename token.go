@@ -81,8 +81,6 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		return
 	}
 
-	logDebugf("Token Challenge: %s", res1.Challenge)
-
 	var buf [32]byte
 	hs := hmac.New(crypto.SHA256.New, ([]byte)(cr.clusterSecret))
 	hs.Write(([]byte)(res1.Challenge))
@@ -97,8 +95,6 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		Challenge: res1.Challenge,
 		Signature: signature,
 	})
-
-	logDebugf("Payload: %s", (string)(payload))
 
 	req, err = cr.makeReqWithBody(ctx, http.MethodPost, "/openbmclapi-agent/token", nil, bytes.NewReader(payload))
 	if err != nil {

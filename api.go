@@ -104,7 +104,6 @@ func (cr *Cluster) generateAuthToken(cliId string) (string, error) {
 }
 
 func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string) {
-	logDebugf("Authorizing %q", token)
 	t, err := jwt.Parse(
 		token,
 		func(t *jwt.Token) (interface{}, error) {
@@ -135,7 +134,6 @@ func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string) {
 		logDebugf("Cannot verity auth token: jti not exists")
 		return ""
 	}
-	logDebugf("JTI is %s", jti)
 	return jti
 }
 
@@ -162,7 +160,6 @@ func (cr *Cluster) generateAPIToken(cliId string, path string) (string, error) {
 }
 
 func (cr *Cluster) verifyAPIToken(cliId string, token string, path string) (id string) {
-	logDebugf("Authorizing %q for %q", token, path)
 	t, err := jwt.Parse(
 		token,
 		func(t *jwt.Token) (interface{}, error) {
@@ -193,7 +190,6 @@ func (cr *Cluster) verifyAPIToken(cliId string, token string, path string) (id s
 		logDebugf("Cannot verity api token: jti not exists")
 		return ""
 	}
-	logDebugf("JTI is %s", jti)
 	return jti
 }
 

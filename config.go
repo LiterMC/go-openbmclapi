@@ -32,6 +32,7 @@ import (
 
 type AdvancedConfig struct {
 	DebugLog             bool `yaml:"debug-log"`
+	SocketIOLog          bool `yaml:"socket-io-log"`
 	NoOpen               bool `yaml:"noopen"`
 	NoHeavyCheck         bool `yaml:"no-heavy-check"`
 	HeavyCheckInterval   int  `yaml:"heavy-check-interval"`

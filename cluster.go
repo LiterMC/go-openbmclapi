@@ -214,7 +214,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 
 	cr.reconnectCount = 0
 
-	if config.Advanced.DebugLog {
+	if config.Advanced.SocketIOLog {
 		engio.OnRecv(func(_ *engine.Socket, data []byte) {
 			logDebugf("Engine.IO recv: %q", (string)(data))
 		})

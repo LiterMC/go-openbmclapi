@@ -37,6 +37,7 @@ webdav-users:
     password: example-password
 advanced:
   debug-log: false
+  socket-io-log: false
   noopen: false
   no-heavy-check: false
   heavy-check-interval: 120
@@ -45,3 +46,4 @@ advanced:
   skip-signature-check: false
   exit-when-disconnected: false
   no-fast-enable: false
+  wait-before-enable: 0

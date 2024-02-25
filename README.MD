@@ -232,10 +232,12 @@ webdav-users:
         # 密码
         password: example-password
 
-# 以下为高级选项, 通常用于调试. ** 如果不理解其工作原理请不要碰 **
+# 以下为高级选项, 通常用于调试. **❌ 如果不理解其工作原理请不要碰 ❌**
 advanced:
   # 是否打印调试日志
   debug-log: false
+  # 是否记录 socket.io 流的日志 (仅在打开 debug-log 后才会输出到标准输出)
+  socket-io-log: false
   # 是否仅从主服务器下载文件
   noopen: false
   # 跳过文件哈希值校验
@@ -252,6 +254,8 @@ advanced:
   exit-when-disconnected: false
   # 不执行快速上线
   no-fast-enable: false
+  # 上线前等待几秒
+  wait-before-enable: 0
 
 ```
 

@@ -214,8 +214,8 @@ onMounted(() => {
 	<main>
 		<h1>Go-OpenBmclAPI {{ tr('title.dashboard') }}</h1>
 		<div class="main">
-			<div class="basic-info">
-				<div>
+			<div class="flex-row-center basic-info">
+				<div class="flex-row-center">
 					<Button class="info-status" :status="status">
 						{{ tr(`badge.server.status.${status}`) }}
 					</Button>
@@ -350,9 +350,6 @@ onMounted(() => {
 
 .basic-info {
 	grid-area: a;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
 	height: 4rem;
 	font-weight: 200;
 }
@@ -363,10 +360,6 @@ onMounted(() => {
 
 .info-chart-box {
 	grid-area: c;
-}
-
-.basic-info > div {
-	display: inline-block;
 }
 
 .info-status {

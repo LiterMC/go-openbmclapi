@@ -52,12 +52,18 @@ var (
 )
 
 func registerTokenId(id string) {
+	if true {
+		return
+	}
 	tokenIdSetMux.Lock()
 	defer tokenIdSetMux.Unlock()
 	tokenIdSet[id] = struct{}{}
 }
 
 func unregisterTokenId(id string) {
+	if true {
+		return
+	}
 	tokenIdSetMux.Lock()
 	defer tokenIdSetMux.Unlock()
 	delete(tokenIdSet, id)

@@ -13,7 +13,15 @@
 		"login": "Login",
 		"logout": "Logout",
 		"username": "Username",
-		"password": "Password"
+		"password": "Password",
+
+		"pprof": {
+			"heap": "Heap Dump",
+			"goroutine": "Goroutine Dump",
+			"allocs": "Allocs Dump",
+			"block": "Block Trace",
+			"mutex": "Mutex Trace"
+		}
 	},
 	"message": {
 		"server": {
@@ -25,7 +33,12 @@
 				"password": "Please input the password"
 			}
 		},
-		"login-to-view-log": " to view logs"
+		"log": {
+			"option": {
+				"debug": "Debug Log"
+			},
+			"login-to-view": " to view logs"
+		}
 	},
 	"badge": {
 		"server": {

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { inject, ref, nextTick, type Ref } from 'vue'
 import axios from 'axios'
-import { sha256 } from 'js-sha256'
 import Message from 'primevue/message'
 import FloatLabel from 'primevue/floatlabel'
 import InputGroup from 'primevue/inputgroup'
@@ -9,6 +8,7 @@ import InputGroupAddon from 'primevue/inputgroupaddon'
 import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
+import { login as apiLogin } from '@/api/v0'
 import { tr } from '@/lang'
 
 const emit = defineEmits<{
@@ -24,7 +24,7 @@ async function login(): Promise<void> {
 	errMsg.value = null
 	await nextTick()
 	const user = username.value
-	const passwd = sha256(password.value)
+	const passwd = password.value
 	if (!user) {
 		errMsg.value = () => tr('message.login.input.username')
 		return
@@ -34,30 +34,24 @@ async function login(): Promise<void> {
 		return
 	}
 	loading.value = true
-	const res = await axios
-		.post(`/api/v0/login`, {
-			username: user,
-			password: passwd,
-		})
-		.catch((err) => {
-			const data = err.response.data
-			console.error('LoginError:', err)
-			if (data && data.error) {
-				errMsg.value = 'LoginError: ' + data.error
-				if (data.message) {
-					errMsg.value += ': ' + data.message
-				}
-			} else {
-				errMsg.value = err.toString()
+	const token = await apiLogin(user, passwd).catch((err) => {
+		const data = err.response.data
+		console.error('LoginError:', err)
+		if (data && data.error) {
+			errMsg.value = 'LoginError: ' + data.error
+			if (data.message) {
+				errMsg.value += ': ' + data.message
 			}
-			return null
-		})
+		} else {
+			errMsg.value = String(err)
+		}
+		return null
+	})
 	loading.value = false
-	if (!res) {
+	if (!token) {
 		return
 	}
-	const { token: tk } = res.data as { token: string }
-	emit('logged', tk)
+	emit('logged', token)
 }
 </script>
 

@@ -17,7 +17,7 @@ interface ErrorMsg {
 interface LogMsg {
 	type: 'log'
 	time: number
-	lvl: string
+	lvl: 'DBUG' | 'INFO' | 'WARN' | 'ERRO'
 	log: string
 }
 
@@ -104,7 +104,9 @@ class LogIO {
 	}
 
 	static async dial(token: string): Promise<LogIO> {
-		const wsTarget = `${httpToWs(window.location.protocol)}//${window.location.host}/api/v0/log.io`
+		const wsTarget = `${httpToWs(window.location.protocol)}//${
+			window.location.host
+		}/api/v0/log.io?level=debug`
 		const ws = new WebSocket(wsTarget)
 
 		var connTimeout: ReturnType<typeof setTimeout>

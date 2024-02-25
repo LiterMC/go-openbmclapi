@@ -666,7 +666,7 @@ type syncStats struct {
 
 func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) bool {
 	logInfo("Preparing to sync files...")
-	if !cr.issync.CompareAndSwap(false, true) {
+	if cr.issync.Swap(true) {
 		logWarn("Another sync task is running!")
 		return false
 	}
@@ -850,6 +850,7 @@ func (cr *Cluster) checkFileFor(
 
 func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
 	pg := mpb.New(mpb.WithAutoRefresh(), mpb.WithWidth(140))
+	defer pg.Shutdown()
 	setLogOutput(pg)
 	defer setLogOutput(nil)
 

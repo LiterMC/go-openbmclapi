@@ -75,6 +75,7 @@ func (w *statusResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 const (
+	RealAddrCtxKey = "handle.real.addr"
 	AccessLogExtraCtxKey = "handle.access.extra"
 )
 
@@ -94,7 +95,7 @@ type preAccessRecord struct {
 }
 
 func (r *preAccessRecord) String() string {
-	return fmt.Sprintf("Serving %s | %-4s %s | %q", r.Addr, r.Method, r.URI, r.UA)
+	return fmt.Sprintf("Serving %-15s | %-4s %s | %q", r.Addr, r.Method, r.URI, r.UA)
 }
 
 type accessRecord struct {
@@ -166,7 +167,10 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			})
 
 			extraInfoMap := make(map[string]any)
-			req = req.WithContext(context.WithValue(req.Context(), AccessLogExtraCtxKey, extraInfoMap))
+			ctx := req.Context()
+			ctx = context.WithValue(ctx, RealAddrCtxKey, addr)
+			ctx = context.WithValue(ctx, AccessLogExtraCtxKey, extraInfoMap)
+			req = req.WithContext(ctx)
 			next.ServeHTTP(srw, req)
 
 			used := time.Since(start)

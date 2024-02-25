@@ -24,15 +24,15 @@ function pushLog(log: Log) {
 	}
 }
 
-var boxLastPostion = 0
+var boxLastPosTop = 0
 
 function onScrollBox(): void {
 	if (!box.value) {
 		return
 	}
-	const scrolled = box.value.scrollTop - boxLastPostion
-	boxLastPostion = box.value.scrollTop
-	if (scrolled < 0) {
+	const scrolledY = box.value.scrollTop - boxLastPosTop
+	boxLastPosTop = box.value.scrollTop
+	if (scrolledY < 0) {
 		focusLastLog = false
 	}
 }
@@ -72,6 +72,9 @@ defineExpose({
 })
 
 onMounted(() => {
+	if (box.value) {
+		boxLastPosTop = box.value.scrollTop
+	}
 	document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
@@ -151,5 +154,11 @@ onBeforeUnmount(() => {
 
 .level {
 	font-weight: bold;
+}
+
+@media (max-width: 60rem) {
+	.box {
+		font-size: 0.85rem;
+	}
 }
 </style>

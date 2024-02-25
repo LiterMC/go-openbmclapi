@@ -13,7 +13,15 @@
 		"login": "登录",
 		"logout": "注销",
 		"username": "用户名",
-		"password": "密码"
+		"password": "密码",
+
+		"pprof": {
+			"heap": "内存转储",
+			"goroutine": "Go协程转储",
+			"allocs": "分配转储",
+			"block": "阻塞跟踪",
+			"mutex": "互斥锁跟踪"
+		}
 	},
 	"message": {
 		"server": {
@@ -25,7 +33,12 @@
 				"password": "请输入密码"
 			}
 		},
-		"login-to-view-log": "后查看日志"
+		"log": {
+			"option": {
+				"debug": "调试日志"
+			},
+			"login-to-view": "后查看日志"
+		}
 	},
 	"badge": {
 		"server": {

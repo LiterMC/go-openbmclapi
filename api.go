@@ -43,7 +43,13 @@ const (
 	clientIdCookieName = "_id"
 
 	clientIdKey = "go-openbmclapi.cluster.client.id"
+	tokenTypeKey  = "go-openbmclapi.cluster.token.typ"
 	tokenIdKey  = "go-openbmclapi.cluster.token.id"
+)
+
+const (
+	tokenTypeFull = "token.full"
+	tokenTypeAPI = "token.api"
 )
 
 var (
@@ -52,27 +58,18 @@ var (
 )
 
 func registerTokenId(id string) {
-	if true {
-		return
-	}
 	tokenIdSetMux.Lock()
 	defer tokenIdSetMux.Unlock()
 	tokenIdSet[id] = struct{}{}
 }
 
 func unregisterTokenId(id string) {
-	if true {
-		return
-	}
 	tokenIdSetMux.Lock()
 	defer tokenIdSetMux.Unlock()
 	delete(tokenIdSet, id)
 }
 
 func checkTokenId(id string) (ok bool) {
-	if true {
-		return true
-	}
 	tokenIdSetMux.RLock()
 	defer tokenIdSetMux.RUnlock()
 	_, ok = tokenIdSet[id]
@@ -80,11 +77,10 @@ func checkTokenId(id string) (ok bool) {
 }
 
 func apiGetClientId(req *http.Request) (id string) {
-	id, _ = req.Context().Value(clientIdKey).(string)
-	return
+	return req.Context().Value(clientIdKey).(string)
 }
 
-func (cr *Cluster) generateToken(cliId string) (string, error) {
+func (cr *Cluster) generateAuthToken(cliId string) (string, error) {
 	jti, err := genRandB64(16)
 	if err != nil {
 		return "", err
@@ -92,10 +88,68 @@ func (cr *Cluster) generateToken(cliId string) (string, error) {
 	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"jti": jti,
-		"sub": "GOBA-tk",
+		"sub": "GOBA-auth",
 		"iss": jwtIssuer,
 		"iat": now.Unix(),
-		"exp": now.Add(time.Hour * 12).Unix(),
+		"exp": now.Add(time.Hour * 24).Unix(),
+		"cli": cliId,
+	})
+	tokenStr, err := token.SignedString(cr.apiHmacKey)
+	if err != nil {
+		return "", err
+	}
+	// registerTokenId(jti) // ignore JTI for auth token; TODO
+	return tokenStr, nil
+}
+
+func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string) {
+	logDebugf("Authorizing %q", token)
+	t, err := jwt.Parse(
+		token,
+		func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+			}
+			return cr.apiHmacKey, nil
+		},
+		jwt.WithSubject("GOBA-auth"),
+		jwt.WithIssuedAt(),
+		jwt.WithIssuer(jwtIssuer),
+	)
+	if err != nil {
+		logDebugf("Cannot verity auth token: %v", err)
+		return ""
+	}
+	c, ok := t.Claims.(jwt.MapClaims)
+	if !ok {
+		logDebugf("Cannot verity auth token: claim is not jwt.MapClaims")
+		return ""
+	}
+	if c["cli"] != cliId {
+		logDebugf("Cannot verity auth token: client id not match")
+		return ""
+	}
+	jti, ok := c["jti"].(string)
+	if !ok || !checkTokenId(jti) { // ignore JTI here; TODO
+		logDebugf("Cannot verity auth token: jti not exists")
+		return ""
+	}
+	logDebugf("JTI is %s", jti)
+	return jti
+}
+
+func (cr *Cluster) generateAPIToken(cliId string, path string) (string, error) {
+	jti, err := genRandB64(16)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"jti": jti,
+		"sub": "GOBA-" + path,
+		"iss": jwtIssuer,
+		"iat": now.Unix(),
+		"exp": now.Add(time.Minute * 10).Unix(),
 		"cli": cliId,
 	})
 	tokenStr, err := token.SignedString(cr.apiHmacKey)
@@ -106,8 +160,8 @@ func (cr *Cluster) generateToken(cliId string) (string, error) {
 	return tokenStr, nil
 }
 
-func (cr *Cluster) verifyAPIToken(cliId string, token string) (id string) {
-	logDebugf("Authorizing %q", token)
+func (cr *Cluster) verifyAPIToken(cliId string, token string, path string) (id string) {
+	logDebugf("Authorizing %q for %q", token, path)
 	t, err := jwt.Parse(
 		token,
 		func(t *jwt.Token) (interface{}, error) {
@@ -116,7 +170,7 @@ func (cr *Cluster) verifyAPIToken(cliId string, token string) (id string) {
 			}
 			return cr.apiHmacKey, nil
 		},
-		jwt.WithSubject("GOBA-tk"),
+		jwt.WithSubject("GOBA-" + path),
 		jwt.WithIssuedAt(),
 		jwt.WithIssuer(jwtIssuer),
 	)
@@ -162,7 +216,7 @@ func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
 				HttpOnly: true,
 			})
 		}
-		req = req.WithContext(context.WithValue(req.Context(), clientIdKey, id))
+		req = req.WithContext(context.WithValue(req.Context(), clientIdKey, asSha256Hex(id)))
 		next.ServeHTTP(rw, req)
 	})
 }
@@ -176,28 +230,35 @@ func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 			return
 		}
 		cli := apiGetClientId(req)
-		if cli == "" {
-			writeJson(rw, http.StatusUnauthorized, Map{
-				"error": "client id not exists",
-			})
-			return
+
+		ctx := req.Context()
+
+		var id string
+		if req.Method == http.MethodGet {
+			tk := req.Header.Get("_t")
+			if tk != "" {
+				id = cr.verifyAPIToken(cli, tk, req.URL.Path)
+			}
 		}
-		auth := req.Header.Get("Authorization")
-		tk, ok := strings.CutPrefix(auth, "Bearer ")
-		if !ok {
-			writeJson(rw, http.StatusUnauthorized, Map{
-				"error": "invalid type of authorization",
-			})
-			return
-		}
-		id := cr.verifyAPIToken(cli, tk)
 		if id == "" {
-			writeJson(rw, http.StatusUnauthorized, Map{
-				"error": "invalid authorization token",
-			})
-			return
+			auth := req.Header.Get("Authorization")
+			tk, ok := strings.CutPrefix(auth, "Bearer ")
+			if !ok {
+				writeJson(rw, http.StatusUnauthorized, Map{
+					"error": "invalid type of authorization",
+				})
+				return
+			}
+			id = cr.verifyAuthToken(cli, tk)
+			if id == "" {
+				writeJson(rw, http.StatusUnauthorized, Map{
+					"error": "invalid authorization token",
+				})
+				return
+			}
 		}
-		req = req.WithContext(context.WithValue(req.Context(), tokenIdKey, id))
+		ctx = context.WithValue(ctx, tokenIdKey, id)
+		req = req.WithContext(ctx)
 		next.ServeHTTP(rw, req)
 	})
 }
@@ -225,12 +286,10 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		}
 		authed := false
 		cli := apiGetClientId(req)
-		if cli != "" {
-			auth := req.Header.Get("Authorization")
-			if tk, ok := strings.CutPrefix(auth, "Bearer "); ok {
-				if cr.verifyAPIToken(cli, tk) != "" {
-					authed = true
-				}
+		auth := req.Header.Get("Authorization")
+		if tk, ok := strings.CutPrefix(auth, "Bearer "); ok {
+			if cr.verifyAuthToken(cli, tk) != "" {
+				authed = true
 			}
 		}
 		writeJson(rw, http.StatusOK, Map{
@@ -262,12 +321,6 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			return
 		}
 		cli := apiGetClientId(req)
-		if cli == "" {
-			writeJson(rw, http.StatusUnauthorized, Map{
-				"error": "client id not exists",
-			})
-			return
-		}
 
 		var (
 			authUser, authPass string
@@ -321,7 +374,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			})
 			return
 		}
-		token, err := cr.generateToken(cli)
+		token, err := cr.generateAuthToken(cli)
 		if err != nil {
 			writeJson(rw, http.StatusInternalServerError, Map{
 				"error":   "Cannot generate token",
@@ -334,6 +387,34 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		})
 	})
 
+	mux.Handle("/requestToken", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			rw.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		query := req.URL.Query()
+		path := query.Get("path")
+		if path == "" || path[0] != '/' {
+			writeJson(rw, http.StatusBadRequest, Map{
+				"error": "'path' query is invalid",
+				"message": "'path' must be a non empty path which starts with '/'",
+			})
+			return
+		}
+		cli := apiGetClientId(req)
+		token, err := cr.generateAPIToken(cli, path)
+		if err != nil {
+			writeJson(rw, http.StatusInternalServerError, Map{
+				"error":   "Cannot generate token",
+				"message": err.Error(),
+			})
+			return
+		}
+		writeJson(rw, http.StatusOK, Map{
+			"token": token,
+		})
+	}))
+
 	mux.Handle("/logout", cr.apiAuthHandleFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			rw.WriteHeader(http.StatusMethodNotAllowed)
@@ -344,6 +425,8 @@ func (cr *Cluster) initAPIv0() http.Handler {
 	}))
 
 	mux.HandleFunc("/log.io", func(rw http.ResponseWriter, req *http.Request) {
+		addr, _ := req.Context().Value(RealAddrCtxKey).(string)
+
 		conn, err := wsUpgrader.Upgrade(rw, req, nil)
 		if err != nil {
 			logDebugf("[log.io]: Websocket upgrade error: %v", err)
@@ -353,13 +436,6 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		defer conn.Close()
 
 		cli := apiGetClientId(req)
-		if cli == "" {
-			conn.WriteJSON(Map{
-				"type":    "error",
-				"message": "client id not exists",
-			})
-			return
-		}
 
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -402,7 +478,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 			}
 			return
 		}
-		tid := cr.verifyAPIToken(cli, authData.Token)
+		tid := cr.verifyAuthToken(cli, authData.Token)
 		if tid == "" {
 			conn.WriteJSON(Map{
 				"type":    "error",
@@ -431,6 +507,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 				}
 				switch typ {
 				case "pong":
+					logDebugf("[log.io]: received PONG from %s: %v", addr, data["data"])
 					select {
 					case pongCh <- struct{}{}:
 					default:

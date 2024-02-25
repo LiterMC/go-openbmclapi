@@ -3,13 +3,12 @@ import vueCookies, { type VueCookies } from 'vue-cookies'
 import PrimeVue from 'primevue/config'
 import FocusTrap from 'primevue/focustrap'
 import ToastService from 'primevue/toastservice'
-import axios, { type AxiosResponse } from 'axios'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.vue'
 import router from './router'
 import { useCookies } from './cookies'
 import './utils/chart'
-import type { PingRes } from '@/api/v0'
+import { ping } from '@/api/v0'
 
 import 'primevue/resources/themes/lara-light-green/theme.css'
 import 'primeicons/primeicons.css'
@@ -38,18 +37,12 @@ watch(token, (value: string | null) => {
 	}
 })
 if (token.value) {
-	axios
-		.get<PingRes>(`/api/v0/ping`, {
-			headers: {
-				Authorization: `Bearer ${token.value}`,
-			},
-		})
-		.then((res: AxiosResponse<PingRes, any>) => {
-			if (!res.data.authed) {
-				console.warn('Token expired')
-				token.value = null
-			}
-		})
+	ping(token.value).then((pong) => {
+		if (!pong.authed) {
+			console.warn('Token expired')
+			token.value = null
+		}
+	})
 }
 app.provide('token', token)
 

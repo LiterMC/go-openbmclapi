@@ -2,18 +2,18 @@
 import { onMounted, ref, computed, watch, inject, type Ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRequest } from 'vue-request'
-import axios from 'axios'
 import Button from 'primevue/button'
 import Chart from 'primevue/chart'
 import ProgressSpinner from 'primevue/progressspinner'
 import Skeleton from 'primevue/skeleton'
 import Message from 'primevue/message'
+import InputSwitch from 'primevue/inputswitch'
 import { useToast } from 'primevue/usetoast'
 import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import UAChart from '@/components/UAChart.vue'
 import LogBlock from '@/components/LogBlock.vue'
-import type { StatInstData, APIStatus } from '@/api/v0'
+import { getStatus, getPprofURL, type StatInstData, type PprofLookups } from '@/api/v0'
 import { LogIO, type LogMsg } from '@/api/log.io'
 import { tr } from '@/lang'
 
@@ -22,19 +22,19 @@ const token = inject('token') as Ref<string | null>
 
 const logBlk = ref<InstanceType<typeof LogBlock>>()
 
+const requestingPprof = ref(false)
+const logDebugLevel = ref(false)
+
 const now = ref(new Date())
 setInterval(() => {
 	now.value = new Date()
 }, 1000)
 
-const { data, error, loading } = useRequest(
-	async () => (await axios.get<APIStatus>('/api/v0/status')).data,
-	{
-		pollingInterval: 10000,
-		loadingDelay: 500,
-		loadingKeep: 3000,
-	},
-)
+const { data, error, loading } = useRequest(getStatus, {
+	pollingInterval: 10000,
+	loadingDelay: 500,
+	loadingKeep: 2000,
+})
 
 const status = computed(() =>
 	error.value ? 'error' : data.value && data.value.enabled ? 'enabled' : 'disabled',
@@ -105,14 +105,42 @@ function getDaysInMonth(): number {
 	return date.getDate() / days
 }
 
-var logIO: LogIO | null = null
+async function requestPprof(lookup: PprofLookups, view?: boolean): Promise<void> {
+	if (!token.value || requestingPprof.value) {
+		return
+	}
+	requestingPprof.value = true
+	const target = await getPprofURL(token.value, {
+		lookup: lookup,
+		view: view,
+		debug: true,
+	})
+		.catch((err) => {
+			console.error('Request pprof error:', err)
+			toast.add({
+				severity: 'error',
+				summary: `Request pprof (${lookup}) error`,
+				detail: String(err),
+				life: 5000,
+			})
+			return null
+		})
+		.finally(() => (requestingPprof.value = false))
+	if (!target) {
+		return
+	}
+	window.open(target)
+}
 
-async function onTokenChanged(token: string | null): Promise<void> {
+var logIO: LogIO | null = null
+var reDialTimeout = 0
+
+async function onTokenChanged(tk: string | null): Promise<void> {
 	if (logIO) {
 		logIO.close()
 		logIO = null
 	}
-	if (!token) {
+	if (!tk) {
 		return
 	}
 	logBlk.value?.pushLog({
@@ -120,7 +148,7 @@ async function onTokenChanged(token: string | null): Promise<void> {
 		lvl: 'INFO',
 		log: '[dashboard]: Connecting to remote server ...',
 	})
-	logIO = await LogIO.dial(token).catch((err) => {
+	logIO = await LogIO.dial(tk).catch((err) => {
 		console.error('Cannot connect to log.io:', err)
 		logBlk.value?.pushLog({
 			time: Date.now(),
@@ -144,9 +172,12 @@ async function onTokenChanged(token: string | null): Promise<void> {
 			lvl: 'ERRO',
 			log: '[dashboard]: Disconnected from remote server',
 		})
+		window.requestAnimationFrame(() => onTokenChanged(token.value))
 	})
 	logIO.addLogListener((msg: LogMsg) => {
-		logBlk.value?.pushLog(msg)
+		if (logDebugLevel.value || msg.lvl !== 'DBUG') {
+			logBlk.value?.pushLog(msg)
+		}
 	})
 }
 
@@ -230,12 +261,52 @@ onMounted(() => {
 			</div>
 		</div>
 		<div class="log-box">
-			<LogBlock v-if="token" ref="logBlk" class="log-block" />
+			<template v-if="token">
+				<nav class="pprof-nav">
+					<Button
+						severity="warning"
+						:label="tr('title.pprof.heap')"
+						:loading="requestingPprof"
+						@click="requestPprof('heap')"
+					/>
+					<Button
+						severity="primary"
+						:label="tr('title.pprof.goroutine')"
+						:loading="requestingPprof"
+						@click="requestPprof('goroutine')"
+					/>
+					<Button
+						severity="contrast"
+						:label="tr('title.pprof.allocs')"
+						:loading="requestingPprof"
+						@click="requestPprof('allocs')"
+					/>
+					<Button
+						severity="info"
+						:label="tr('title.pprof.block')"
+						:loading="requestingPprof"
+						@click="requestPprof('block')"
+					/>
+					<Button
+						severity="help"
+						:label="tr('title.pprof.mutex')"
+						:loading="requestingPprof"
+						@click="requestPprof('mutex')"
+					/>
+				</nav>
+				<div class="flex-row-center log-options">
+					<div class="flex-row-center">
+						<span class="no-select">{{ tr('message.log.option.debug') }}&nbsp;</span>
+						<InputSwitch v-model="logDebugLevel" />
+					</div>
+				</div>
+				<LogBlock ref="logBlk" class="log-block" />
+			</template>
 			<Message v-else :closable="false" severity="info">
 				<RouterLink to="/login" style="color: inherit">
 					{{ tr('title.login') }}
 				</RouterLink>
-				<span>{{ tr('message.login-to-view-log') }}</span>
+				<span>{{ tr('message.log.login-to-view') }}</span>
 			</Message>
 		</div>
 	</main>
@@ -359,7 +430,23 @@ onMounted(() => {
 	margin-top: 2rem;
 }
 
+.pprof-nav {
+	display: inline-flex;
+	flex-direction: row;
+}
+
+.log-options {
+	display: inline-flex;
+	margin-top: 1rem;
+}
+
+.pprof-nav > *,
+.log-options > div {
+	margin-right: 1rem;
+}
+
 .log-block {
+	margin-top: 1rem;
 	height: calc(100vh - 12rem);
 }
 
@@ -368,14 +455,41 @@ onMounted(() => {
 		display: flex;
 		flex-direction: column;
 	}
+
 	.basic-info {
 		flex-direction: column;
 		align-items: flex-start;
 		height: unset;
 	}
+
 	.hits-chart,
 	.ua-chart {
 		width: 100%;
+	}
+
+	.pprof-nav {
+		display: grid;
+		grid-template:
+			'a a' 2.5rem
+			'b c' 2.5rem
+			'd e' 2.5rem
+			/ calc(50%) calc(50%);
+		grid-gap: 0.5rem;
+	}
+
+	.pprof-nav > *:first-child {
+		grid-area: a;
+	}
+
+	.pprof-nav > * {
+		height: 2.5rem;
+		margin: 0;
+		font-size: 0.85rem;
+		white-space: pre;
+	}
+
+	.log-block {
+		height: calc(100vh - 18rem);
 	}
 }
 </style>

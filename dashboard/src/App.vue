@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, type Ref } from 'vue'
+import { computed, inject, nextTick, type Ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import axios from 'axios'
 import Button from 'primevue/button'
@@ -18,6 +18,8 @@ async function logout(): Promise<void> {
 				Authorization: `Bearer ${token.value}`,
 			},
 		})
+		token.value = null
+		await nextTick() // wait for token to be cleared
 		window.location.reload()
 	} catch (err) {
 		toast.add({ severity: 'error', summary: 'Cannot logout', detail: String(err), life: 3000 })
@@ -182,6 +184,10 @@ const langNameMap: { [key: string]: string } = {
 	font-family: var(--font-family);
 	color: var(--primary-color-text);
 	background-color: var(--primary-color);
+}
+
+#footer > * {
+	margin: 0;
 }
 
 #footer a {

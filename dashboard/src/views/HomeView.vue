@@ -360,7 +360,7 @@ onMounted(() => {
 }
 
 .log-block {
-	height: calc(100vh - 8rem);
+	height: calc(100vh - 12rem);
 }
 
 @media (max-width: 60rem) {

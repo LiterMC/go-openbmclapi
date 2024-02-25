@@ -88,7 +88,7 @@ func (l LogLevel) String() string {
 }
 
 func logWrite(level LogLevel, buf []byte) {
-	if level <= LogLevelDebug && !config.Advanced.DebugLog {
+	if level&LogLevelMask <= LogLevelDebug && !config.Advanced.DebugLog {
 		return
 	}
 	{
@@ -146,6 +146,11 @@ func RegisterLogMonitor(level LogLevel, cb LogListenerFn) func() {
 }
 
 func callLogListeners(level LogLevel, ts int64, log string) {
+	if level&LogConsoleOnly != 0 {
+		return
+	}
+	level &= LogLevelMask
+
 	logListenMux.RLock()
 	defer logListenMux.RUnlock()
 

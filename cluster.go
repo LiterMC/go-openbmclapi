@@ -276,6 +276,11 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket.OnError(func(_ *socket.Socket, err error) {
 		logErrorf("Socket.IO error: %v", err)
 	})
+	cr.socket.OnMessage(func(event string, data []any){
+		if event == "message" {
+			logInfof("[remote]: %v", data[0])
+		}
+	})
 	logInfof("Dialing %s", engio.URL().String())
 	if err := engio.Dial(ctx); err != nil {
 		logErrorf("Dial error: %v", err)

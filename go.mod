@@ -3,7 +3,7 @@ module github.com/LiterMC/go-openbmclapi
 go 1.21.6
 
 require (
-	github.com/LiterMC/socket.io v0.1.7
+	github.com/LiterMC/socket.io v0.2.0
 	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
 	github.com/hamba/avro/v2 v2.18.0
@@ -27,6 +27,6 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
-	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/sys v0.17.0 // indirect
 )

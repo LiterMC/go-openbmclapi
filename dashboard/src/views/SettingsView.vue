@@ -40,7 +40,7 @@ watch(
 		<Card class="settings-group">
 			<template #title>
 				<div class="flex-row-center settings-group-title">
-					<lable>Notification</lable>
+					<lable>{{ tr('title.notification') }}</lable>
 					<InputSwitch v-model="settings.enableNotify" />
 				</div>
 			</template>

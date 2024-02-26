@@ -24,3 +24,13 @@
 .pointer {
 	cursor: pointer;
 }
+
+@media(max-width: 60rem) {
+	.p-dropdown .p-dropdown-label.p-inputtext {
+		padding-left: 0.6rem;
+	}
+
+	.p-dropdown .p-dropdown-trigger {
+		width: 2.1rem;
+	}
+}

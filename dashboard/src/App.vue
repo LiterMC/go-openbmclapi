@@ -206,9 +206,15 @@ const langNameMap: { [key: string]: string } = {
 	#header {
 		padding: 0;
 	}
+
+	#header > * {
+		margin-right: 0.6rem;
+	}
+
 	.header-logo-box {
 		left: 1rem;
 	}
+
 	.lang-selector-label {
 		font-size: 0.8rem;
 	}

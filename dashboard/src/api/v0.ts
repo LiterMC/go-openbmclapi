@@ -41,17 +41,30 @@ export interface StatusRes {
 	startAt: string
 	stats: Stats
 	enabled: boolean
+	isSync: boolean
+	sync?: {
+		prog: number
+		total: number
+	}
 }
 
-async function requestToken(token: string, path: string, query?: { [key: string]: string }): Promise<string> {
-	const res = await axios.post<TokenRes>(`/api/v0/requestToken`, JSON.stringify({
-		path: path,
-		query: query,
-	}), {
-		headers: {
-			Authorization: `Bearer ${token}`,
+async function requestToken(
+	token: string,
+	path: string,
+	query?: { [key: string]: string },
+): Promise<string> {
+	const res = await axios.post<TokenRes>(
+		`/api/v0/requestToken`,
+		JSON.stringify({
+			path: path,
+			query: query,
+		}),
+		{
+			headers: {
+				Authorization: `Bearer ${token}`,
+			},
 		},
-	})
+	)
 	return res.data.token
 }
 

@@ -70,10 +70,12 @@ type Cluster struct {
 	cache              Cache
 	apiHmacKey         []byte
 
-	stats  Stats
-	hits   atomic.Int32
-	hbts   atomic.Int64
-	issync atomic.Bool
+	stats     Stats
+	hits      atomic.Int32
+	hbts      atomic.Int64
+	issync    atomic.Bool
+	syncProg  atomic.Int64
+	syncTotal atomic.Int64
 
 	mux             sync.RWMutex
 	enabled         atomic.Bool
@@ -665,16 +667,16 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	}
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Hash < files[j].Hash })
-	cr.syncFiles(ctx, files, heavyCheck)
-
-	fileset := make(map[string]int64, len(files))
-	for _, f := range files {
-		fileset[f.Hash] = f.Size
+	if cr.syncFiles(ctx, files, heavyCheck) == nil {
+		fileset := make(map[string]int64, len(files))
+		for _, f := range files {
+			fileset[f.Hash] = f.Size
+		}
+		cr.fileMux.Lock()
+		cr.fileset = fileset
+		cr.fileMux.Unlock()
 	}
-	cr.fileMux.Lock()
-	cr.fileset = fileset
 	cr.issync.Store(false)
-	cr.fileMux.Unlock()
 
 	if !config.Advanced.NoGC {
 		go cr.gc()
@@ -849,6 +851,9 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	setLogOutput(pg)
 	defer setLogOutput(nil)
 
+	cr.syncProg.Store(0)
+	cr.syncTotal.Store(-1)
+
 	missingMap := NewSyncMap[string, *fileInfoWithTargets]()
 	done := make(chan struct{}, 0)
 
@@ -877,6 +882,8 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		logInfo("All files were synchronized")
 		return nil
 	}
+
+	cr.syncTotal.Store((int64)(totalFiles))
 
 	ccfg, err := cr.GetConfig(ctx)
 	if err != nil {
@@ -930,7 +937,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 			logWarn("File sync interrupted")
 			return err
 		}
-		go func(f *fileInfoWithTargets) {
+		go func(f *fileInfoWithTargets, pathRes <-chan string) {
 			defer func() {
 				select {
 				case done <- struct{}{}:
@@ -939,6 +946,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 			}()
 			select {
 			case path := <-pathRes:
+				cr.syncProg.Add(1)
 				if path != "" {
 					defer os.Remove(path)
 					// acquire slot here
@@ -968,7 +976,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 			case <-ctx.Done():
 				return
 			}
-		}(f)
+		}(f, pathRes)
 	}
 	for i := len(missing); i > 0; i-- {
 		select {

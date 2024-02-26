@@ -169,11 +169,30 @@ func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
-	writeJson(rw, http.StatusOK, Map{
-		"startAt": startTime,
-		"stats":   &cr.stats,
-		"enabled": cr.enabled.Load(),
-	})
+	type syncData struct {
+		Prog  int64 `json:"prog"`
+		Total int64 `json:"total"`
+	}
+	type statusData struct {
+		StartAt time.Time `json:"startAt"`
+		Stats   *Stats    `json:"stats"`
+		Enabled bool      `json:"enabled"`
+		IsSync  bool      `json:"isSync"`
+		Sync    *syncData `json:"sync,omitempty"`
+	}
+	status := statusData{
+		StartAt: startTime,
+		Stats:   &cr.stats,
+		Enabled: cr.enabled.Load(),
+		IsSync:  cr.issync.Load(),
+	}
+	if status.IsSync {
+		status.Sync = &syncData{
+			Prog:  cr.syncProg.Load(),
+			Total: cr.syncTotal.Load(),
+		}
+	}
+	writeJson(rw, http.StatusOK, &status)
 }
 
 func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {

@@ -27,7 +27,8 @@
 	},
 	"message": {
 		"server": {
-			"run-for": "Server has been running for"
+			"run-for": "Server has been running for",
+			"synchronizing": "Server is synchronizing ..."
 		},
 		"login": {
 			"input": {

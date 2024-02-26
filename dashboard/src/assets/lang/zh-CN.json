@@ -27,7 +27,8 @@
 	},
 	"message": {
 		"server": {
-			"run-for": "服务器已运行"
+			"run-for": "服务器已运行",
+			"synchronizing": "服务器同步中 ..."
 		},
 		"login": {
 			"input": {

@@ -222,15 +222,28 @@ onMounted(() => {
 
 					<ProgressSpinner v-if="loading" class="polling" strokeWidth="6" />
 				</div>
-				<div v-if="error">
+				<div v-if="!error">
 					<b>{{ error }}</b>
 				</div>
-				<div v-else-if="data">
-					{{ tr('message.server.run-for') }}
-					<span class="info-uptime">
-						{{ formatTime(now.getTime() - new Date(data.startAt).getTime()) }}
-					</span>
-				</div>
+				<template v-else-if="data">
+					<div class="no-select">
+						<span>{{ tr('message.server.run-for') }}</span>
+						<span class="info-uptime">
+							{{ formatTime(now.getTime() - new Date(data.startAt).getTime()) }}
+						</span>
+					</div>
+					<div v-if="data.isSync" class="no-select">
+						&nbsp; |
+						{{ tr('message.server.synchronizing') }}
+						<i>
+							(
+							<b>{{ data.sync?.prog }}</b>
+							/
+							<b>{{ data.sync?.total }}</b>
+							)
+						</i>
+					</div>
+				</template>
 			</div>
 			<div class="hits-chart-box">
 				<div class="chart-card">

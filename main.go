@@ -175,8 +175,9 @@ START:
 			if errors.Is(err, context.Canceled) {
 				return
 			}
-			return
-			os.Exit(1)
+			if !config.Advanced.SkipFirstSync {
+				os.Exit(1)
+			}
 		}
 		checkCount := -1
 		heavyCheck := !config.Advanced.NoHeavyCheck

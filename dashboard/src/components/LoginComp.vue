@@ -35,9 +35,9 @@ async function login(): Promise<void> {
 	}
 	loading.value = true
 	const token = await apiLogin(user, passwd).catch((err) => {
-		const data = err.response.data
 		console.error('LoginError:', err)
-		if (data && data.error) {
+		const data = err.response?.data
+		if (data?.error) {
 			errMsg.value = 'LoginError: ' + data.error
 			if (data.message) {
 				errMsg.value += ': ' + data.message

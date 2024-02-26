@@ -150,7 +150,7 @@ START:
 	}
 
 	if !cluster.Connect(ctx) {
-		os.Exit(1)
+		// os.Exit(1)
 	}
 
 	logDebugf("Receiving signals")
@@ -175,6 +175,7 @@ START:
 			if errors.Is(err, context.Canceled) {
 				return
 			}
+			return
 			os.Exit(1)
 		}
 		checkCount := -1

@@ -614,6 +614,12 @@ func HexTo256(s string) (n int) {
 	return hexToNumMap[s[0]]*0x10 + hexToNumMap[s[1]]
 }
 
+// return a URL encoded base64 string
+func asSha256(s string) string {
+	buf := sha256.Sum256(([]byte)(s))
+	return base64.RawURLEncoding.EncodeToString(buf[:])
+}
+
 func asSha256Hex(s string) string {
 	buf := sha256.Sum256(([]byte)(s))
 	return hex.EncodeToString(buf[:])

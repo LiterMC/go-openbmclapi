@@ -28,229 +28,21 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"runtime/pprof"
-
-	"github.com/golang-jwt/jwt/v5"
 	// "github.com/gorilla/websocket"
 )
 
 const (
-	jwtIssuer = "go-openbmclapi.dashboard.api"
-
 	clientIdCookieName = "_id"
 
-	clientIdKey  = "go-openbmclapi.cluster.client.id"
-	tokenTypeKey = "go-openbmclapi.cluster.token.typ"
-	tokenIdKey   = "go-openbmclapi.cluster.token.id"
+	clientIdKey = "go-openbmclapi.cluster.client.id"
 )
-
-const (
-	tokenTypeAuth = "token.auth"
-	tokenTypeAPI  = "token.api"
-)
-
-func getRequestTokenType(req *http.Request) string {
-	return req.Context().Value(tokenTypeAPI).(string)
-}
-
-type TokenStorage struct {
-	mux       sync.RWMutex
-	tokens    map[string]time.Time
-	nextCheck time.Time
-	checking  bool
-}
-
-func NewTokenStorage() *TokenStorage {
-	return &TokenStorage{
-		tokens:    make(map[string]time.Time),
-		nextCheck: time.Now().Add(time.Minute * 5),
-	}
-}
-
-func (s *TokenStorage) checker() {
-	s.mux.RLock()
-	var expired []string
-	now := time.Now()
-	for k, v := range s.tokens {
-		if now.After(v) {
-			expired = append(expired, k)
-		}
-	}
-	s.mux.RUnlock()
-	s.mux.Lock()
-	for _, k := range expired {
-		delete(s.tokens, k)
-	}
-	s.checking = false
-	s.nextCheck = time.Now().Add(time.Minute * 5)
-	s.mux.Unlock()
-}
-
-func (s *TokenStorage) tryCheckLocked() {
-	if !s.checking && time.Now().After(s.nextCheck) {
-		s.checking = true
-		go s.checker()
-	}
-}
-
-func (s *TokenStorage) tryCheck() {
-	s.mux.RLock()
-	ok := !s.checking && time.Now().After(s.nextCheck)
-	s.mux.RUnlock()
-	if ok {
-		s.mux.Lock()
-		s.tryCheckLocked()
-		s.mux.Unlock()
-	}
-}
-
-func (s *TokenStorage) Register(id string, expire time.Time) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	s.tokens[id] = expire
-	if len(s.tokens) > 256 {
-		s.tryCheckLocked()
-	}
-}
-
-func (s *TokenStorage) Unregister(id string) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	delete(s.tokens, id)
-}
-
-func (s *TokenStorage) Check(id string) bool {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-	expire, ok := s.tokens[id]
-	if !ok {
-		return false
-	}
-	if time.Now().After(expire) {
-		return false
-	}
-	return true
-}
 
 func apiGetClientId(req *http.Request) (id string) {
 	return req.Context().Value(clientIdKey).(string)
-}
-
-func (cr *Cluster) generateAuthToken(cliId string) (string, error) {
-	jti, err := genRandB64(16)
-	if err != nil {
-		return "", err
-	}
-	now := time.Now()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"jti": jti,
-		"sub": "GOBA-auth",
-		"iss": jwtIssuer,
-		"iat": now.Unix(),
-		"exp": now.Add(time.Hour * 24).Unix(),
-		"cli": cliId,
-	})
-	tokenStr, err := token.SignedString(cr.apiHmacKey)
-	if err != nil {
-		return "", err
-	}
-	// registerTokenId(jti) // ignore JTI for auth token; TODO
-	return tokenStr, nil
-}
-
-func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string) {
-	t, err := jwt.Parse(
-		token,
-		func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
-			}
-			return cr.apiHmacKey, nil
-		},
-		jwt.WithSubject("GOBA-auth"),
-		jwt.WithIssuedAt(),
-		jwt.WithIssuer(jwtIssuer),
-	)
-	if err != nil {
-		logDebugf("Cannot verity auth token: %v", err)
-		return ""
-	}
-	c, ok := t.Claims.(jwt.MapClaims)
-	if !ok {
-		logDebugf("Cannot verity auth token: claim is not jwt.MapClaims")
-		return ""
-	}
-	if c["cli"] != cliId {
-		logDebugf("Cannot verity auth token: client id not match")
-		return ""
-	}
-	jti, ok := c["jti"].(string)
-	if !ok /*|| !checkTokenId(jti)*/ { // ignore JTI here; TODO
-		logDebugf("Cannot verity auth token: jti not exists")
-		return ""
-	}
-	return jti
-}
-
-func (cr *Cluster) generateAPIToken(cliId string, path string) (string, error) {
-	jti, err := genRandB64(16)
-	if err != nil {
-		return "", err
-	}
-	now := time.Now()
-	exp := now.Add(time.Minute * 10)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"jti": jti,
-		"sub": "GOBA-" + path,
-		"iss": jwtIssuer,
-		"iat": now.Unix(),
-		"exp": exp.Unix(),
-		"cli": cliId,
-	})
-	tokenStr, err := token.SignedString(cr.apiHmacKey)
-	if err != nil {
-		return "", err
-	}
-	cr.tokens.Register(jti, exp)
-	return tokenStr, nil
-}
-
-func (cr *Cluster) verifyAPIToken(cliId string, token string, path string) (id string) {
-	t, err := jwt.Parse(
-		token,
-		func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
-			}
-			return cr.apiHmacKey, nil
-		},
-		jwt.WithSubject("GOBA-"+path),
-		jwt.WithIssuedAt(),
-		jwt.WithIssuer(jwtIssuer),
-	)
-	if err != nil {
-		logDebugf("Cannot verity api token: %v", err)
-		return ""
-	}
-	c, ok := t.Claims.(jwt.MapClaims)
-	if !ok {
-		logDebugf("Cannot verity api token: claim is not jwt.MapClaims")
-		return ""
-	}
-	if c["cli"] != cliId {
-		logDebugf("Cannot verity api token: client id not match")
-		return ""
-	}
-	jti, ok := c["jti"].(string)
-	if !ok || !cr.tokens.Check(jti) {
-		logDebugf("Cannot verity api token: jti not exists")
-		return ""
-	}
-	return jti
 }
 
 func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
@@ -273,7 +65,7 @@ func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
 				HttpOnly: true,
 			})
 		}
-		req = req.WithContext(context.WithValue(req.Context(), clientIdKey, asSha256Hex(id)))
+		req = req.WithContext(context.WithValue(req.Context(), clientIdKey, asSha256(id)))
 		next.ServeHTTP(rw, req)
 	})
 }
@@ -290,12 +82,15 @@ func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 
 		ctx := req.Context()
 
-		var id string
+		var (
+			id  string
+			err error
+		)
 		if req.Method == http.MethodGet {
 			if tk := req.URL.Query().Get("_t"); tk != "" {
 				path := GetRequestRealPath(req)
 				logDebugf("Verifying API token at %s", path)
-				if id = cr.verifyAPIToken(cli, tk, path); id != "" {
+				if id, err = cr.verifyAPIToken(cli, tk, path, req.URL.Query()); id != "" {
 					ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAPI)
 				}
 			}
@@ -304,13 +99,15 @@ func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 			auth := req.Header.Get("Authorization")
 			tk, ok := strings.CutPrefix(auth, "Bearer ")
 			if !ok {
+				if err == nil {
+					err = ErrUnsupportAuthType
+				}
 				writeJson(rw, http.StatusUnauthorized, Map{
-					"error": "invalid type of authorization",
+					"error": err.Error(),
 				})
 				return
 			}
-			id = cr.verifyAuthToken(cli, tk)
-			if id == "" {
+			if id, err = cr.verifyAuthToken(cli, tk); err != nil {
 				writeJson(rw, http.StatusUnauthorized, Map{
 					"error": "invalid authorization token",
 				})
@@ -357,7 +154,7 @@ func (cr *Cluster) apiV0Ping(rw http.ResponseWriter, req *http.Request) {
 	cli := apiGetClientId(req)
 	auth := req.Header.Get("Authorization")
 	if tk, ok := strings.CutPrefix(auth, "Bearer "); ok {
-		if cr.verifyAuthToken(cli, tk) != "" {
+		if _, err := cr.verifyAuthToken(cli, tk); err == nil {
 			authed = true
 		}
 	}
@@ -457,29 +254,40 @@ func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (cr *Cluster) apiV0RequestToken(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) { // TODO: use POST method with body
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodPost) {
 		return
 	}
+	defer req.Body.Close()
 	if getRequestTokenType(req) != tokenTypeAuth {
 		writeJson(rw, http.StatusUnauthorized, Map{
 			"error": "invalid authorization type",
 		})
 		return
 	}
-	query := req.URL.Query()
-	path := query.Get("path")
-	if path == "" || path[0] != '/' {
+
+	var payload struct {
+		Path  string            `json:"path"`
+		Query map[string]string `json:"query,omitempty"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 		writeJson(rw, http.StatusBadRequest, Map{
-			"error":   "'path' query is invalid",
-			"message": "'path' must be a non empty path which starts with '/'",
+			"error":   "cannot decode payload in json format",
+			"message": err.Error(),
+		})
+	}
+	logDebugf("payload: %#v", payload)
+	if payload.Path == "" || payload.Path[0] != '/' {
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":   "path is invalid",
+			"message": "'path' must be a non empty string which starts with '/'",
 		})
 		return
 	}
 	cli := apiGetClientId(req)
-	token, err := cr.generateAPIToken(cli, path)
+	token, err := cr.generateAPIToken(cli, payload.Path, payload.Query)
 	if err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
-			"error":   "Cannot generate token",
+			"error":   "cannot generate token",
 			"message": err.Error(),
 		})
 		return
@@ -552,7 +360,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 		}
 		return
 	}
-	tid := cr.verifyAuthToken(cli, authData.Token)
+	tid, _ := cr.verifyAuthToken(cli, authData.Token)
 	if tid == "" {
 		conn.WriteJSON(Map{
 			"type":    "error",
@@ -632,7 +440,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 						Type:  "log",
 						Time:  time.Now().UnixMilli(),
 						Level: LogLevelInfo.String(),
-						Log:   "[dashboard]: Set log level of this log.io to " + l,
+						Log:   "[dashboard]: Set log level to " + l + " for this log.io",
 					}:
 					default:
 					}

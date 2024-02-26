@@ -43,8 +43,11 @@ export interface StatusRes {
 	enabled: boolean
 }
 
-async function requestToken(token: string, path: string): Promise<string> {
-	const res = await axios.get<TokenRes>(`/api/v0/requestToken?path=${escape(path)}`, {
+async function requestToken(token: string, path: string, query?: { [key: string]: string }): Promise<string> {
+	const res = await axios.post<TokenRes>(`/api/v0/requestToken`, JSON.stringify({
+		path: path,
+		query: query,
+	}), {
 		headers: {
 			Authorization: `Bearer ${token}`,
 		},
@@ -96,7 +99,9 @@ export interface PprofOptions {
 
 export async function getPprofURL(token: string, opts: PprofOptions): Promise<string> {
 	const pprofURL = `/api/v0/pprof`
-	const tk = await requestToken(token, pprofURL)
+	const tk = await requestToken(token, pprofURL, {
+		lookup: opts.lookup,
+	})
 	const u = new URL(window.location.toString())
 	u.pathname = pprofURL
 	u.searchParams.set('lookup', opts.lookup)

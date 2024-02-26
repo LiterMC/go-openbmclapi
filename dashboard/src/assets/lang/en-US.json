@@ -21,7 +21,9 @@
 			"allocs": "Allocs Dump",
 			"block": "Block Trace",
 			"mutex": "Mutex Trace"
-		}
+		},
+
+		"settings": "Settings"
 	},
 	"message": {
 		"server": {

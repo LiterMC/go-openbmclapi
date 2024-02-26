@@ -21,7 +21,9 @@
 			"allocs": "分配转储",
 			"block": "阻塞跟踪",
 			"mutex": "互斥锁跟踪"
-		}
+		},
+
+		"settings": "设置"
 	},
 	"message": {
 		"server": {

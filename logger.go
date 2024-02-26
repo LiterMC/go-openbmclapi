@@ -46,6 +46,8 @@ var (
 
 	accessLogFileName = filepath.Join(logdir, "access.log")
 	accessLogFile     atomic.Pointer[os.File]
+
+	maxAccessLogFileSize = 1024 * 1024 * 10 // 10MB
 )
 
 func setLogOutput(out io.Writer) {
@@ -306,8 +308,6 @@ func moveAccessLogs(src string, n int) {
 		}
 	}
 }
-
-const maxAccessLogFileSize = 1024 * 1024 // 1MB
 
 func flushAccessLogFile() {
 	var (

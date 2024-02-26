@@ -59,6 +59,7 @@ type Cluster struct {
 	clusterSecret string
 	prefix        string
 	byoc          bool
+	jwtIssuer     string
 
 	dataDir            string
 	maxConn            int
@@ -131,6 +132,7 @@ func NewCluster(
 		clusterSecret: clusterSecret,
 		prefix:        prefix,
 		byoc:          byoc,
+		jwtIssuer:     jwtIssuerPrefix + "#" + clusterId,
 
 		dataDir:     filepath.Join(baseDir, "data"),
 		maxConn:     config.DownloadMaxConn,

@@ -290,31 +290,31 @@ onMounted(() => {
 						severity="warning"
 						:label="tr('title.pprof.heap')"
 						:loading="requestingPprof"
-						@click="requestPprof('heap', false)"
+						@click="(e) => requestPprof('heap', e.shiftKey)"
 					/>
 					<Button
 						severity="primary"
 						:label="tr('title.pprof.goroutine')"
 						:loading="requestingPprof"
-						@click="requestPprof('goroutine', false)"
+						@click="(e) => requestPprof('goroutine', e.shiftKey)"
 					/>
 					<Button
 						severity="contrast"
 						:label="tr('title.pprof.allocs')"
 						:loading="requestingPprof"
-						@click="requestPprof('allocs', false)"
+						@click="(e) => requestPprof('allocs', e.shiftKey)"
 					/>
 					<Button
 						severity="info"
 						:label="tr('title.pprof.block')"
 						:loading="requestingPprof"
-						@click="requestPprof('block', false)"
+						@click="(e) => requestPprof('block', e.shiftKey)"
 					/>
 					<Button
 						severity="help"
 						:label="tr('title.pprof.mutex')"
 						:loading="requestingPprof"
-						@click="requestPprof('mutex', false)"
+						@click="(e) => requestPprof('mutex', e.shiftKey)"
 					/>
 				</nav>
 				<div class="flex-row-center log-options">

@@ -17,19 +17,26 @@ const emit = defineEmits<{
 
 const username = ref('')
 const password = ref('')
+const usernameInvalid = ref(false)
+const passwordInvalid = ref(false)
 const loading = ref(false)
 const errMsg = ref<(() => string) | string | null>(null)
 
 async function login(): Promise<void> {
+	usernameInvalid.value = false
+	passwordInvalid.value = false
 	errMsg.value = null
 	await nextTick()
+
 	const user = username.value
 	const passwd = password.value
 	if (!user) {
+		usernameInvalid.value = true
 		errMsg.value = () => tr('message.login.input.username')
 		return
 	}
 	if (!password.value) {
+		passwordInvalid.value = true
 		errMsg.value = () => tr('message.login.input.password')
 		return
 	}
@@ -38,6 +45,10 @@ async function login(): Promise<void> {
 		console.error('LoginError:', err)
 		const data = err.response?.data
 		if (data?.error) {
+			if (data.error.indexOf(' incorrect') >= 0) {
+				usernameInvalid.value = true
+				passwordInvalid.value = true
+			}
 			errMsg.value = 'LoginError: ' + data.error
 			if (data.message) {
 				errMsg.value += ': ' + data.message
@@ -63,7 +74,12 @@ async function login(): Promise<void> {
 					<i class="pi pi-user"></i>
 				</InputGroupAddon>
 				<FloatLabel>
-					<InputText name="username" autocomplete="username" v-model="username" />
+					<InputText
+						name="username"
+						autocomplete="username"
+						v-model="username"
+						:invalid="usernameInvalid"
+					/>
 					<label for="username">{{ tr('title.username') }}</label>
 				</FloatLabel>
 			</InputGroup>
@@ -72,7 +88,13 @@ async function login(): Promise<void> {
 					<i class="pi pi-lock"></i>
 				</InputGroupAddon>
 				<FloatLabel>
-					<InputText type="password" name="password" autocomplete="username" v-model="password" />
+					<InputText
+						type="password"
+						name="password"
+						autocomplete="username"
+						v-model="password"
+						:invalid="passwordInvalid"
+					/>
 					<label for="password">{{ tr('title.password') }}</label>
 				</FloatLabel>
 			</InputGroup>

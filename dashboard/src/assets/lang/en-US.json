@@ -23,7 +23,15 @@
 			"mutex": "Mutex Trace"
 		},
 
-		"settings": "Settings"
+		"settings": "Settings",
+
+		"notification": "Notification",
+		"notify": {
+			"when.disabled": "Notify when disabled",
+			"when.enabled": "Notify when enabled",
+			"when.sync.done": "Notify when sync finished",
+			"when.update.available": "Notify when updates available"
+		}
 	},
 	"message": {
 		"server": {
@@ -41,6 +49,12 @@
 				"debug": "Debug Log"
 			},
 			"login-to-view": " to view logs"
+		},
+		"settings": {
+			"notify": {
+				"cant.enable": "Cannot enable notification",
+				"denied": "Notification is denied by the browser"
+			}
 		}
 	},
 	"badge": {

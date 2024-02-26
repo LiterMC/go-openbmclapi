@@ -69,13 +69,18 @@ export function tr(key: string, ...values: unknown[]): string {
 	console.debug('translating:', key)
 	const item = currentLang.value
 	let cur: string | LangMap | null = currentTr.value
-	if (!cur) {
+	if (!cur || (key && typeof cur === 'string')) {
 		return `{{${key}}}`
 	}
-	let keys = key.split('.')
-	for (let k of keys) {
-		if (!cur || typeof cur === 'string') {
+	const keys = key.split('.')
+	for (let i = 0; i < keys.length; i++) {
+		const k = keys[i]
+		if (typeof cur === 'string') {
 			return `{{${key}}}`
+		}
+		if (!(k in cur) || typeof cur[k] === 'string') {
+			cur = cur[keys.slice(i).join('.')]
+			break
 		}
 		cur = cur[k]
 	}

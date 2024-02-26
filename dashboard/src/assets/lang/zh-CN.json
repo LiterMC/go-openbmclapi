@@ -23,7 +23,15 @@
 			"mutex": "互斥锁跟踪"
 		},
 
-		"settings": "设置"
+		"settings": "设置",
+
+		"notification": "推送",
+		"notify": {
+			"when.disabled": "下线时发送通知",
+			"when.enabled": "上线时发送通知",
+			"when.sync.done": "同步完成时发送通知",
+			"when.update.available": "有更新时发送通知"
+		}
 	},
 	"message": {
 		"server": {
@@ -41,6 +49,12 @@
 				"debug": "调试日志"
 			},
 			"login-to-view": "后查看日志"
+		},
+		"settings": {
+			"notify": {
+				"cant.enable": "无法启用推送",
+				"denied": "推送已被浏览器拒绝"
+			}
 		}
 	},
 	"badge": {

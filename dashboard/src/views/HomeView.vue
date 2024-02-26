@@ -222,7 +222,7 @@ onMounted(() => {
 
 					<ProgressSpinner v-if="loading" class="polling" strokeWidth="6" />
 				</div>
-				<div v-if="!error">
+				<div v-if="error">
 					<b>{{ error }}</b>
 				</div>
 				<template v-else-if="data">

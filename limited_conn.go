@@ -215,17 +215,17 @@ func (l *RateController) Close() error {
 }
 
 func (l *RateController) DoWithContext(ctx context.Context, operator func() (net.Conn, error)) (net.Conn, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	go func() {
 		select {
 		case <-ctx.Done():
 		case <-l.closeCh:
-			cancel()
+			cancel(net.ErrClosed)
 		}
 	}()
 	if !l.AcquireWithContext(ctx) {
-		return nil, net.ErrClosed
+		return nil, context.Cause(ctx)
 	}
 	c, err := operator()
 	if err != nil {

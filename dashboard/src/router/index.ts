@@ -10,11 +10,6 @@ const router = createRouter({
 			component: HomeView,
 		},
 		{
-			path: '/login',
-			name: 'login',
-			component: () => import('@/views/LoginView.vue'),
-		},
-		{
 			path: '/about',
 			name: 'about',
 			// route level code-splitting
@@ -22,13 +17,19 @@ const router = createRouter({
 			// which is lazy-loaded when the route is visited.
 			component: () => import('@/views/AboutView.vue'),
 		},
+		{
+			path: '/login',
+			name: 'login',
+			component: () => import('@/views/LoginView.vue'),
+		},
+		{
+			path: '/settings',
+			name: 'settings',
+			component: () => import('@/views/SettingsView.vue'),
+		},
 	],
-	scrollBehavior: (to, from, savedPosition) => {
-		if (savedPosition) {
-			return savedPosition
-		} else {
-			return { top: 0 }
-		}
+	scrollBehavior(to, from, savedPosition) {
+		return savedPosition || { top: 0 }
 	},
 })
 

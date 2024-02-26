@@ -168,7 +168,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 			ReadSeeker: fd,
 		}
 		rw.Header().Set("ETag", `"`+hash+`"`)
-		rw.Header().Set("Cache-Control", "public,max-age=31536000,immutable") // cache for a year
+		rw.Header().Set("Cache-Control", "public, max-age=31536000, immutable") // cache for a year
 		rw.Header().Set("Content-Type", "application/octet-stream")
 		if name != "" {
 			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
@@ -209,7 +209,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		}
 	}
 	rw.Header().Set("ETag", `"`+hash+`"`)
-	rw.Header().Set("Cache-Control", "public,max-age=31536000,immutable") // cache for a year
+	rw.Header().Set("Cache-Control", "public, max-age=31536000, immutable") // cache for a year
 	rw.Header().Set("Content-Type", "application/octet-stream")
 	if name != "" {
 		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))

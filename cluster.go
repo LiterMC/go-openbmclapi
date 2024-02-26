@@ -44,6 +44,7 @@ import (
 
 	"github.com/LiterMC/socket.io"
 	"github.com/LiterMC/socket.io/engine.io"
+	"github.com/gorilla/websocket"
 	"github.com/gregjones/httpcache"
 	"github.com/hamba/avro/v2"
 	"github.com/klauspost/compress/zstd"
@@ -93,6 +94,7 @@ type Cluster struct {
 	bufSlots  *BufSlots
 	tokens    *TokenStorage
 
+	wsUpgrader   *websocket.Upgrader
 	handlerAPIv0 http.Handler
 	handlerAPIv1 http.Handler
 }
@@ -146,6 +148,10 @@ func NewCluster(
 			Transport: cachedTransport,
 		},
 		tokens: NewTokenStorage(),
+
+		wsUpgrader: &websocket.Upgrader{
+			HandshakeTimeout: time.Minute,
+		},
 	}
 	close(cr.disabled)
 
@@ -1231,6 +1237,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	if err != nil {
 		return
 	}
+	defer os.Remove(path)
 	var srcFd *os.File
 	if srcFd, err = os.Open(path); err != nil {
 		return

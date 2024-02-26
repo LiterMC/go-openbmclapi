@@ -250,6 +250,8 @@ advanced:
   noopen: false
   # 跳过文件哈希值校验
   no-heavy-check: true
+  # 不删除未使用的文件对象 **注意⚠️: 该选项打开后磁盘使用率会随时间增长**
+  no-gc: false
   # 两次哈希校验之间间隔几次简单检查
   heavy-check-interval: 120
   # 发送心跳包的超时限制 (秒), 网不好就调高点

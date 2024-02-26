@@ -312,7 +312,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 				}
 			}
 			rw.Header().Set("Location", location)
-			rw.Header().Set("Cache-Control", fmt.Sprintf("public,max-age=%d", (int64)(s.opt.RedirectLinkCache.Dur().Seconds())))
+			rw.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", (int64)(s.opt.RedirectLinkCache.Dur().Seconds())))
 			rw.WriteHeader(http.StatusFound)
 			return size, nil
 		}
@@ -371,8 +371,11 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		rwh.Set("Location", location)
 		copyHeader("ETag", rwh, resp.Header)
 		copyHeader("Last-Modified", rwh, resp.Header)
-		if s.opt.RedirectLinkCache > 0 {
-			rwh.Set("Cache-Control", fmt.Sprintf("public,max-age=%d", (int64)(s.opt.RedirectLinkCache.Dur().Seconds())))
+		cacheCtrl := resp.Header.Get("Cache-Control")
+		if cacheCtrl != "" {
+			rwh.Set("Cache-Control", cacheCtrl)
+		} else if s.opt.RedirectLinkCache > 0 {
+			rwh.Set("Cache-Control", fmt.Sprintf("public, max-age=%d", (int64)(s.opt.RedirectLinkCache.Dur().Seconds())))
 			s.cache.Set(hash, location, CacheOpt{Expiration: s.opt.RedirectLinkCache.Dur()})
 		}
 		rw.WriteHeader(resp.StatusCode)

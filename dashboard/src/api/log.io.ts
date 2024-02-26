@@ -39,6 +39,10 @@ export class LogIO {
 		this.ws = ws
 	}
 
+	get isActive(): boolean {
+		return !!this.ws && this.ws.readyState === WebSocket.OPEN
+	}
+
 	close(): void {
 		if (this.ws) {
 			this.onClose()

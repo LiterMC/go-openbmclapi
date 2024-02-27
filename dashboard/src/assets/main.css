@@ -25,7 +25,7 @@
 	cursor: pointer;
 }
 
-@media(max-width: 60rem) {
+@media (max-width: 60rem) {
 	.p-dropdown .p-dropdown-label.p-inputtext {
 		padding-left: 0.6rem;
 	}

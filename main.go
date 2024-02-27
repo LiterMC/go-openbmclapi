@@ -101,7 +101,7 @@ func main() {
 
 	var (
 		dumpCmdFile = filepath.Join(os.TempDir(), fmt.Sprintf("go-openbmclapi-dump-command.%d.in", os.Getpid()))
-		dumpCmdFd *os.File
+		dumpCmdFd   *os.File
 	)
 	if config.Advanced.DebugLog {
 		var err error

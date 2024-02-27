@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,6 +40,7 @@ type httpTLSListener struct {
 	TLSConfig *tls.Config
 	hosts     []string
 
+	accepting  atomic.Bool
 	acceptedCh chan net.Conn
 	errCh      chan error
 }
@@ -126,15 +128,16 @@ READ_HEAD:
 }
 
 func (s *httpTLSListener) accepter() {
-	for {
+	for s.accepting.CompareAndSwap(false, true) {
 		conn, err := s.Listener.Accept()
+		s.accepting.Store(false)
 		if err != nil {
 			s.errCh <- err
 			return
 		}
-		// TODO: start another accepter while reading this one
+		go s.accepter()
 		hr := &connHeadReader{Conn: conn}
-		hr.SetReadDeadline(time.Now().Add(time.Second))
+		hr.SetReadDeadline(time.Now().Add(time.Second * 5))
 		if !s.maybeRedirectConn(hr) {
 			hr.SetReadDeadline(time.Time{})
 			// if it's not a http connection, try it with tls and return

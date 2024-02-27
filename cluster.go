@@ -306,6 +306,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		logErrorf("Dial error: %v", err)
 		return false
 	}
+	logInfo("Connecting to socket.io namespace")
 	if err := cr.socket.Connect(""); err != nil {
 		logErrorf("Open namespace error: %v", err)
 		return false
@@ -440,7 +441,7 @@ func (cr *Cluster) disconnected() bool {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
-	if !cr.enabled.Swap(false) {
+	if cr.enabled.CompareAndSwap(true, false) {
 		return false
 	}
 	if cr.cancelKeepalive != nil {
@@ -669,7 +670,7 @@ type syncStats struct {
 
 func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) bool {
 	logInfo("Preparing to sync files...")
-	if cr.issync.Swap(true) {
+	if !cr.issync.CompareAndSwap(false, true) {
 		logWarn("Another sync task is running!")
 		return false
 	}

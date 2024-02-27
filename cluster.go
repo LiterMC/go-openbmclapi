@@ -846,7 +846,7 @@ func (cr *Cluster) checkFileFor(
 }
 
 func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
-	pg := mpb.New(mpb.WithAutoRefresh(), mpb.WithWidth(140))
+	pg := mpb.New(mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh(), mpb.WithWidth(140))
 	defer pg.Shutdown()
 	setLogOutput(pg)
 	defer setLogOutput(nil)

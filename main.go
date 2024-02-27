@@ -150,7 +150,7 @@ START:
 	}
 
 	if !cluster.Connect(ctx) {
-		// os.Exit(1)
+		os.Exit(1)
 	}
 
 	logDebugf("Receiving signals")

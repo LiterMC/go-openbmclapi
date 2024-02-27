@@ -116,7 +116,7 @@ func cmdUploadWebdav(args []string) {
 
 	var barUnit decor.SizeB1024
 	var wg sync.WaitGroup
-	pg := mpb.New(mpb.WithWaitGroup(&wg), mpb.WithAutoRefresh())
+	pg := mpb.New(mpb.WithWaitGroup(&wg), mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh())
 	setLogOutput(pg)
 
 	webdavBar := pg.AddBar(0,

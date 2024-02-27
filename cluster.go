@@ -50,6 +50,8 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
+
+	gocache "github.com/LiterMC/go-openbmclapi/cache"
 )
 
 type Cluster struct {
@@ -67,7 +69,7 @@ type Cluster struct {
 	storages           []Storage
 	storageWeights     []uint
 	storageTotalWeight uint
-	cache              Cache
+	cache              gocache.Cache
 	apiHmacKey         []byte
 
 	stats     Stats
@@ -110,7 +112,7 @@ func NewCluster(
 	clusterId string, clusterSecret string,
 	byoc bool, dialer *net.Dialer,
 	storageOpts []StorageOption,
-	cache Cache,
+	cache gocache.Cache,
 ) (cr *Cluster) {
 	transport := http.DefaultTransport
 	if dialer != nil {
@@ -120,10 +122,10 @@ func NewCluster(
 	}
 
 	cachedTransport := transport
-	if cache != NoCache {
+	if cache != gocache.NoCache {
 		cachedTransport = &httpcache.Transport{
 			Transport: transport,
-			Cache:     WrapToHTTPCache(NewCacheWithNamespace(cache, "http@")),
+			Cache:     gocache.WrapToHTTPCache(gocache.NewCacheWithNamespace(cache, "http@")),
 		}
 	}
 

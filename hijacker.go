@@ -84,6 +84,9 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, err.Error(), http.StatusBadGateway)
 		return
 	}
+	for k, v := range req.Header {
+		req2.Header[k] = v
+	}
 	res, err := h.client.Do(req2)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadGateway)

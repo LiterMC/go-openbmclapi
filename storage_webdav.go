@@ -34,6 +34,7 @@ import (
 	"github.com/studio-b12/gowebdav"
 	"gopkg.in/yaml.v3"
 
+	gocache "github.com/LiterMC/go-openbmclapi/cache"
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 )
 
@@ -108,7 +109,7 @@ func (o *WebDavStorageOption) GetPassword() string {
 type WebDavStorage struct {
 	opt WebDavStorageOption
 
-	cache         Cache
+	cache         gocache.Cache
 	cli           *gowebdav.Client
 	limitedDialer *LimitedDialer
 	httpCli       *http.Client
@@ -168,10 +169,10 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		s.opt.fullEndPoint = s.opt.EndPoint
 	}
 
-	if cache, ok := ctx.Value(ClusterCacheCtxKey).(Cache); ok && cache != nil {
-		s.cache = NewCacheWithNamespace(cache, fmt.Sprintf("redirect-cache@%s;%s@", s.opt.GetUsername(), s.opt.GetEndPoint()))
+	if cache, ok := ctx.Value(ClusterCacheCtxKey).(gocache.Cache); ok && cache != nil {
+		s.cache = gocache.NewCacheWithNamespace(cache, fmt.Sprintf("redirect-cache@%s;%s@", s.opt.GetUsername(), s.opt.GetEndPoint()))
 	} else {
-		s.cache = NoCache
+		s.cache = gocache.NoCache
 	}
 
 	s.limitedDialer = NewLimitedDialer(nil, s.opt.MaxConn, s.opt.MaxDownloadRate*1024, s.opt.MaxUploadRate*1024)
@@ -376,7 +377,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 			rwh.Set("Cache-Control", cacheCtrl)
 		} else if s.opt.RedirectLinkCache > 0 {
 			rwh.Set("Cache-Control", fmt.Sprintf("public, max-age=%d", (int64)(s.opt.RedirectLinkCache.Dur().Seconds())))
-			s.cache.Set(hash, location, CacheOpt{Expiration: s.opt.RedirectLinkCache.Dur()})
+			s.cache.Set(hash, location, gocache.CacheOpt{Expiration: s.opt.RedirectLinkCache.Dur()})
 		}
 		rw.WriteHeader(resp.StatusCode)
 		return size, nil

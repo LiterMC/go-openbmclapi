@@ -28,6 +28,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/LiterMC/go-openbmclapi/cache"
 )
 
 type AdvancedConfig struct {
@@ -60,7 +62,7 @@ type CacheConfig struct {
 	Type string `yaml:"type"`
 	Data any    `yaml:"data,omitempty"`
 
-	newCache func() Cache `yaml:"-"`
+	newCache func() cache.Cache `yaml:"-"`
 }
 
 func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
@@ -75,16 +77,16 @@ func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 	c.Data = nil
 	switch strings.ToLower(c.Type) {
 	case "no", "off", "disabled", "nocache", "no-cache":
-		c.newCache = func() Cache { return NoCache }
+		c.newCache = func() cache.Cache { return cache.NoCache }
 	case "mem", "memory", "inmem":
-		c.newCache = func() Cache { return NewInMemCache() }
+		c.newCache = func() cache.Cache { return cache.NewInMemCache() }
 	case "redis":
-		opt := new(RedisOptions)
+		opt := new(cache.RedisOptions)
 		if err = cfg.Data.Decode(opt); err != nil {
 			return
 		}
 		c.Data = opt
-		c.newCache = func() Cache { return NewRedisCache(opt.ToRedis()) }
+		c.newCache = func() cache.Cache { return cache.NewRedisCache(opt.ToRedis()) }
 	default:
 		return fmt.Errorf("Unexpected cache type %q", c.Type)
 	}
@@ -161,7 +163,7 @@ var defaultConfig = Config{
 
 	Cache: CacheConfig{
 		Type:     "inmem",
-		newCache: func() Cache { return NewInMemCache() },
+		newCache: func() cache.Cache { return cache.NewInMemCache() },
 	},
 
 	ServeLimit: ServeLimitConfig{

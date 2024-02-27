@@ -32,7 +32,7 @@ storages:
     id: local-storage-0
     weight: 100
     data:
-      cache-path: cache
+      cache-path: _cache
       compressor: ""
 webdav-users:
   example-user:

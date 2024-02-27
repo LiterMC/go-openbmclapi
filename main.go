@@ -279,7 +279,7 @@ START:
 		if publicHost == "" {
 			publicHost = config.PublicHost
 		}
-		logInfof("Server public at https://%s:%d (%s) with %d certificated", publicHost, publicPort, clusterSvr.Addr, certCount)
+		logInfof("Server public at https://%s:%d (%s) with %d certificates", publicHost, publicPort, clusterSvr.Addr, certCount)
 
 		logInfof("Waiting for the first sync ...")
 		select {

@@ -16,6 +16,8 @@ mkdir -p "$outputdir"
 
 echo "Detected tag: $TAG"
 
+ldflags="-X 'main.BuildVersion=$TAG'"
+
 export CGO_ENABLED=0
 
 for p in "${available_platforms[@]}"; do
@@ -26,5 +28,5 @@ for p in "${available_platforms[@]}"; do
 		target="${target}.exe"
 	fi
 	echo "Building $target ..."
-	GOOS=$os GOARCH=$arch go build -o "$target" -ldflags "-X 'main.BuildVersion=$TAG'" "$@" "$curdir" || exit $?
+	GOOS=$os GOARCH=$arch go build -o "$target" -ldflags "$ldflags" "$@" "$curdir" || exit $?
 done

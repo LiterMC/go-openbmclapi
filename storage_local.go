@@ -226,7 +226,8 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 			defer bufPool.Put(buf0)
 			buf = *buf0
 		}
-		return io.CopyBuffer(rw, r, buf)
+		n, _ := io.CopyBuffer(rw, r, buf)
+		return n, nil
 	}
 	return 0, nil
 }

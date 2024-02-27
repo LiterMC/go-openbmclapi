@@ -76,6 +76,10 @@ func (cr *Cluster) serveDashboard(rw http.ResponseWriter, req *http.Request, pth
 		rw.Header().Set("Content-Type", "application/manifest+json")
 		http.ServeContent(rw, req, "manifest.webmanifest", startTime, bytes.NewReader(buf))
 		return
+	case "sw.js":
+		// Must not cache service worker
+		rw.Header().Set("Cache-Control", "no-store")
+		fallthrough
 	default:
 		fd, err := dsbDist.Open(pth)
 		if err == nil {
@@ -90,6 +94,11 @@ func (cr *Cluster) serveDashboard(rw http.ResponseWriter, req *http.Request, pth
 				typ = "application/octet-stream"
 			}
 			rw.Header().Set("Content-Type", typ)
+			if rw.Header().Get("Cache-Control") == "" {
+				if strings.HasPrefix(pth, "assets/") {
+					rw.Header().Set("Cache-Control", "public, max-age=2592000")
+				}
+			}
 			http.ServeContent(rw, req, name, startTime, fd.(io.ReadSeeker))
 			return
 		}

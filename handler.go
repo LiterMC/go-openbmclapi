@@ -30,6 +30,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/textproto"
 	"os"
 	"strconv"
 	"strings"
@@ -56,7 +57,9 @@ type statusResponseWriter struct {
 var _ http.Hijacker = (*statusResponseWriter)(nil)
 
 func (w *statusResponseWriter) WriteHeader(status int) {
-	w.status = status
+	if w.status == 0 {
+		w.status = status
+	}
 	w.ResponseWriter.WriteHeader(status)
 }
 
@@ -143,15 +146,15 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 	handler = cr
 	{
 		type record struct {
-			used  float64
-			bytes float64
-			ua    string
+			used    float64
+			bytes   float64
+			ua      string
+			isRange bool
 		}
 		recordCh := make(chan record, 1024)
 
 		next := handler
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-			rw.Header().Set("X-Powered-By", "go-openbmclapi; url=https://github.com/LiterMC/go-openbmclapi")
 			ua := req.Header.Get("User-Agent")
 			var addr string
 			if config.TrustedXForwardedFor {
@@ -193,7 +196,6 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				Method:  req.Method,
 				URI:     req.RequestURI,
 				UA:      ua,
-				Extra:   extraInfoMap,
 			}
 			if len(extraInfoMap) > 0 {
 				accRec.Extra = extraInfoMap
@@ -211,6 +213,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			rec.bytes = (float64)(srw.wrote)
 			ua, _ = split(ua, ' ')
 			rec.ua, _ = split(ua, '/')
+			rec.isRange = extraInfoMap["skip-ua-count"] != nil
 			select {
 			case recordCh <- rec:
 			default:
@@ -253,7 +256,9 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 					total++
 					totalUsed += rec.used
 					totalBytes += rec.bytes
-					uas[rec.ua]++
+					if !rec.isRange {
+						uas[rec.ua]++
+					}
 				case <-disabled:
 					total = 0
 					totalUsed = 0
@@ -288,6 +293,8 @@ var emptyHashes = func() (hashes map[string]struct{}) {
 func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	u := req.URL
+
+	rw.Header().Set("X-Powered-By", "go-openbmclapi; url=https://github.com/LiterMC/go-openbmclapi")
 
 	rawpath := u.EscapedPath()
 	switch {
@@ -385,6 +392,12 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		return
 	}
 
+	if r := req.Header.Get("Range"); r != "" {
+		if start, ok := parseRangeFirstStart(r); ok && start != 0 {
+			SetAccessInfo(req, "skip-ua-count", "range")
+		}
+	}
+
 	var err error
 	// check if file was indexed in the fileset
 	size, ok := cr.CachedFileSize(hash)
@@ -427,4 +440,24 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		return
 	}
 	logDebug("[handler]: download served successed")
+}
+
+// Note: this method is a fast parse, it does not deeply check if the range is valid or not
+func parseRangeFirstStart(rg string) (start int64, ok bool) {
+	const b = "bytes="
+	if rg, ok = strings.CutPrefix(rg, b); !ok {
+		return
+	}
+	rg, _, _ = strings.Cut(rg, ",")
+	if rg, _, ok = strings.Cut(rg, "-"); !ok {
+		return
+	}
+	if rg = textproto.TrimString(rg); rg == "" {
+		return -1, true
+	}
+	start, err := strconv.ParseInt(rg, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return start, true
 }

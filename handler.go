@@ -155,7 +155,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 
 		next := handler
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-			ua := req.Header.Get("User-Agent")
+			ua := req.UserAgent()
 			var addr string
 			if config.TrustedXForwardedFor {
 				// X-Forwarded-For: <client>, <proxy1>, <proxy2>
@@ -290,11 +290,13 @@ var emptyHashes = func() (hashes map[string]struct{}) {
 	return
 }()
 
+const HeaderXPoweredBy = "go-openbmclapi; url=https://github.com/LiterMC/go-openbmclapi"
+
 func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	u := req.URL
 
-	rw.Header().Set("X-Powered-By", "go-openbmclapi; url=https://github.com/LiterMC/go-openbmclapi")
+	rw.Header().Set("X-Powered-By", HeaderXPoweredBy)
 
 	rawpath := u.EscapedPath()
 	switch {

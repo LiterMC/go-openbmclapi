@@ -99,14 +99,19 @@ func main() {
 
 	signalCh := make(chan os.Signal, 1)
 
-	dumpCmdFile := filepath.Join(os.TempDir(), fmt.Sprintf("go-openbmclapi-dump-command.%d.in", os.Getpid()))
-	dumpCmdFd, err := os.OpenFile(dumpCmdFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, 0660)
-	if err != nil {
-		logErrorf("Cannot create %q: %v", dumpCmdFile, err)
-	} else {
-		defer os.Remove(dumpCmdFile)
-		defer dumpCmdFd.Close()
-		logInfof("Dump command file %s has created", dumpCmdFile)
+	var (
+		dumpCmdFile = filepath.Join(os.TempDir(), fmt.Sprintf("go-openbmclapi-dump-command.%d.in", os.Getpid()))
+		dumpCmdFd *os.File
+	)
+	if config.Advanced.DebugLog {
+		var err error
+		if dumpCmdFd, err = os.OpenFile(dumpCmdFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, 0660); err != nil {
+			logErrorf("Cannot create %q: %v", dumpCmdFile, err)
+		} else {
+			defer os.Remove(dumpCmdFile)
+			defer dumpCmdFd.Close()
+			logInfof("Dump command file %s has created", dumpCmdFile)
+		}
 	}
 
 START:
@@ -267,7 +272,7 @@ START:
 		if tlsConfig != nil {
 			certCount = len(tlsConfig.Certificates)
 			publicHost, _ = parseCertCommonName(tlsConfig.Certificates[0].Certificate[0])
-			listener = tls.NewListener(listener, tlsConfig)
+			listener = newHttpTLSListener(listener, tlsConfig, publicPort)
 		}
 		go func(listener net.Listener) {
 			defer listener.Close()

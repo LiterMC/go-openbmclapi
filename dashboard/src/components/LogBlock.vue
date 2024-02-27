@@ -10,10 +10,11 @@ interface Log {
 
 const box = ref<HTMLElement>()
 const logs = reactive<Log[]>([])
-const MAX_LOG_LENGTH = 1000
+const MAX_LOG_LENGTH = 1024 * 4
 
 var logInc = 0
 var focusLastLog = true
+var justSplicedLog = false
 
 function pushLog(log: Log) {
 	log._inc = logInc = (logInc + 1) % 65536
@@ -21,19 +22,24 @@ function pushLog(log: Log) {
 	const minI = logs.length - MAX_LOG_LENGTH
 	if (minI > 0) {
 		logs.splice(0, minI)
+		justSplicedLog = true
 	}
 }
 
 var boxLastPosTop = 0
 
 function onScrollBox(): void {
-	if (!box.value) {
+	if (document.hidden || !box.value) {
 		return
 	}
 	const scrolledY = box.value.scrollTop - boxLastPosTop
 	boxLastPosTop = box.value.scrollTop
 	if (scrolledY < 0) {
-		focusLastLog = false
+		if (justSplicedLog) {
+			justSplicedLog = false
+		} else {
+			focusLastLog = false
+		}
 	}
 }
 
@@ -53,7 +59,7 @@ watch(logs, async (logs: Log[]) => {
 	}
 	const diff = box.value.scrollHeight - (box.value.scrollTop + box.value.clientHeight)
 	focusLastLog ||= diff < 5
-	if (focusLastLog) {
+	if (focusLastLog && !document.hidden) {
 		await nextTick()
 		box.value.scroll({
 			top: box.value.scrollHeight,

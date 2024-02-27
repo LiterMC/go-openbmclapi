@@ -238,14 +238,14 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		logInfo("Engine.IO connected")
 	})
 	engio.OnDisconnect(func(_ *engine.Socket, err error) {
+		if err != nil {
+			logWarnf("Engine.IO disconnected: %v", err)
+		}
 		if config.Advanced.ExitWhenDisconnected {
 			if cr.shouldEnable.Load() {
 				logErrorf("Cluster disconnected from remote; exit.")
 				os.Exit(0x08)
 			}
-		}
-		if err != nil {
-			logWarnf("Engine.IO disconnected: %v", err)
 		}
 		go cr.disconnected()
 	})

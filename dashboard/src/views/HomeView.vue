@@ -146,7 +146,7 @@ async function requestPprof(lookup: PprofLookups, view?: boolean): Promise<void>
 }
 
 async function onTokenChanged(tk: string | null): Promise<void> {
-	if (logIO) {
+	if (logIO || requestingLogIO) {
 		logIO.close()
 		logIO = null
 	}

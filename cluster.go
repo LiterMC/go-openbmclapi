@@ -238,6 +238,10 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		logInfo("Engine.IO connected")
 	})
 	engio.OnDisconnect(func(_ *engine.Socket, err error) {
+		if ctx.Err() != nil {
+			// Ignore if the error is because context cancelled
+			return
+		}
 		if err != nil {
 			logWarnf("Engine.IO disconnected: %v", err)
 		}
@@ -286,6 +290,10 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		go cr.disconnected()
 	})
 	cr.socket.OnError(func(_ *socket.Socket, err error) {
+		if ctx.Err() != nil {
+			// Ignore if the error is because context cancelled
+			return
+		}
 		logErrorf("Socket.IO error: %v", err)
 	})
 	cr.socket.OnMessage(func(event string, data []any) {

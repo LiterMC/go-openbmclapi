@@ -455,8 +455,6 @@ func (cr *Cluster) disconnected() bool {
 		cr.cancelKeepalive()
 		cr.cancelKeepalive = nil
 	}
-	go cr.socket.Close()
-	cr.socket = nil
 	return true
 }
 

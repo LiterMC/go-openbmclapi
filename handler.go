@@ -35,9 +35,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
-	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 type statusResponseWriter struct {
@@ -125,7 +125,7 @@ func (r *accessRecord) String() string {
 		r.Method, r.URI, r.UA)
 	if len(r.Extra) > 0 {
 		buf.WriteString(" | ")
-		e := json.NewEncoder(&utils.NoLastNewLineWriter{&buf})
+		e := json.NewEncoder(&utils.NoLastNewLineWriter{Writer: &buf})
 		e.SetEscapeHTML(false)
 		e.Encode(r.Extra)
 	}

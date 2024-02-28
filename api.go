@@ -34,8 +34,8 @@ import (
 	"runtime/pprof"
 	// "github.com/gorilla/websocket"
 
-	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 const (

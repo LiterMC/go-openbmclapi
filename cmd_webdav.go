@@ -31,8 +31,8 @@ import (
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
-	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/storage"
 )
 
 func cmdUploadWebdav(args []string) {

@@ -83,51 +83,21 @@ func httpToWs(origin string) string {
 	return origin
 }
 
+const byteUnits = "KMGTPE"
+
 func bytesToUnit(size float64) string {
 	if size < 1000 {
 		return fmt.Sprintf("%dB", (int)(size))
 	}
-	size /= 1024
-	unit := "KB"
-	if size >= 1000 {
+	var unit rune
+	for _, u := range byteUnits {
+		unit = u
 		size /= 1024
-		unit = "MB"
-		if size >= 1000 {
-			size /= 1024
-			unit = "GB"
-			if size >= 1000 {
-				size /= 1024
-				unit = "TB"
-			}
+		if size < 1000 {
+			break
 		}
 	}
-	return fmt.Sprintf("%.1f%s", size, unit)
-}
-
-func withContext(ctx context.Context, call func()) bool {
-	if ctx == nil {
-		call()
-		return true
-	}
-	done := make(chan struct{}, 0)
-	go func() {
-		defer close(done)
-		call()
-	}()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-done:
-		return true
-	}
-}
-
-const BUF_SIZE = 1024 * 512 // 512KB
-var bufPool = sync.Pool{
-	New: func() any {
-		buf := make([]byte, BUF_SIZE)
-		return &buf
-	},
+	return fmt.Sprintf("%.1f%sB", size, string(unit))
 }
 
 func getHashMethod(l int) (hashMethod crypto.Hash, err error) {

@@ -52,11 +52,11 @@ import (
 	"github.com/vbauerster/mpb/v8/decor"
 
 	gocache "github.com/LiterMC/go-openbmclapi/cache"
-	"github.com/LiterMC/go-openbmclapi/limited"
-	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
-	"github.com/LiterMC/go-openbmclapi/utils"
+	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type Cluster struct {

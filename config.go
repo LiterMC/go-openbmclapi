@@ -23,17 +23,17 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
-	"net/url"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/LiterMC/go-openbmclapi/cache"
+	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
-	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 type AdvancedConfig struct {
@@ -71,7 +71,7 @@ type CacheConfig struct {
 
 func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 	var cfg struct {
-		Type string  `yaml:"type"`
+		Type string        `yaml:"type"`
 		Data utils.RawYAML `yaml:"data,omitempty"`
 	}
 	if err = n.Decode(&cfg); err != nil {

@@ -37,9 +37,9 @@ import (
 
 	"runtime/pprof"
 
-	"github.com/LiterMC/go-openbmclapi/log"
-	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/limited"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 const ClusterServerURL = "https://openbmclapi.bangbang93.com"

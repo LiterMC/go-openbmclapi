@@ -154,7 +154,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			if err != nil {
 				host = req.Host
 			}
-			if host != "" {
+			if host != "" && len(cr.publicHosts) > 0 {
 				host = strings.ToLower(host)
 				ok := false
 				for _, h := range cr.publicHosts { // cr.publicHosts are already lower case

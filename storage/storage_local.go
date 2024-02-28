@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package storage
 
 import (
 	"compress/gzip"
@@ -31,6 +31,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/LiterMC/go-openbmclapi/log"
+	. "github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type LocalStorageOption struct {
@@ -132,11 +135,11 @@ func (s *LocalStorage) Remove(hash string) error {
 }
 
 func (s *LocalStorage) WalkDir(walker func(hash string, size int64) error) error {
-	return walkCacheDir(s.opt.CachePath, walker)
+	return WalkCacheDir(s.opt.CachePath, walker)
 }
 
 func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
-	acceptEncoding := splitCSV(req.Header.Get("Accept-Encoding"))
+	acceptEncoding := SplitCSV(req.Header.Get("Accept-Encoding"))
 	name := req.URL.Query().Get("name")
 
 	hasGzip := false
@@ -164,7 +167,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		}
 		defer fd.Close()
 
-		counter := &countReader{
+		counter := &CountReader{
 			ReadSeeker: fd,
 		}
 		rw.Header().Set("ETag", `"`+hash+`"`)
@@ -175,7 +178,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		}
 		rw.Header().Set("X-Bmclapi-Hash", hash)
 		http.ServeContent(rw, req, name, time.Time{}, counter)
-		return counter.n, nil
+		return counter.N, nil
 	}
 
 	var r io.Reader
@@ -190,7 +193,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		}
 		defer fd.Close()
 		r = fd
-		size, _ = getFileSize(fd)
+		size, _ = GetFileSize(fd)
 		rw.Header().Set("Content-Encoding", "gzip")
 	} else {
 		fd, err := os.Open(path)
@@ -202,7 +205,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		if isGzip {
 			size = 0
 			if r, err = gzip.NewReader(r); err != nil {
-				logErrorf("Could not decompress %q: %v", path, err)
+				log.Errorf("Could not decompress %q: %v", path, err)
 				return 0, err
 			}
 			isGzip = false
@@ -220,12 +223,8 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 	}
 	rw.WriteHeader(http.StatusOK)
 	if req.Method == http.MethodGet {
-		var buf []byte
-		{
-			buf0 := bufPool.Get().(*[]byte)
-			defer bufPool.Put(buf0)
-			buf = *buf0
-		}
+		buf, free := AllocBuf()
+		defer free()
 		n, _ := io.CopyBuffer(rw, r, buf)
 		return n, nil
 	}
@@ -233,35 +232,11 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 }
 
 func (s *LocalStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, size int) error {
-	rw.Header().Set("Content-Length", strconv.Itoa(size*mbChunkSize))
+	rw.Header().Set("Content-Length", strconv.Itoa(size*MbChunkSize))
 	rw.WriteHeader(http.StatusOK)
 	if req.Method == http.MethodGet {
 		for i := 0; i < size; i++ {
-			rw.Write(mbChunk[:])
-		}
-	}
-	return nil
-}
-
-func walkCacheDir(cacheDir string, walker func(hash string, size int64) (err error)) (err error) {
-	for _, dir := range hex256 {
-		files, err := os.ReadDir(filepath.Join(cacheDir, dir))
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return err
-		}
-		for _, f := range files {
-			if !f.IsDir() {
-				if hash := f.Name(); len(hash) >= 2 && hash[:2] == dir {
-					if info, err := f.Info(); err == nil {
-						if err := walker(hash, info.Size()); err != nil {
-							return err
-						}
-					}
-				}
-			}
+			rw.Write(MbChunk[:])
 		}
 	}
 	return nil

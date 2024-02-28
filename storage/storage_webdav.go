@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package storage
 
 import (
 	"context"
@@ -30,12 +30,17 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/studio-b12/gowebdav"
 	"gopkg.in/yaml.v3"
 
 	gocache "github.com/LiterMC/go-openbmclapi/cache"
+	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
+	"github.com/LiterMC/go-openbmclapi/limited"
+	"github.com/LiterMC/go-openbmclapi/log"
+	. "github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type WebDavStorageOption struct {
@@ -49,8 +54,14 @@ type WebDavStorageOption struct {
 	Alias      string `yaml:"alias,omitempty"`
 	WebDavUser `yaml:",inline,omitempty"`
 
-	aliasUser    *WebDavUser
-	fullEndPoint string
+	AliasUser    *WebDavUser `yaml:"-"`
+	FullEndPoint string      `yaml:"-"`
+}
+
+type WebDavUser struct {
+	EndPoint string `yaml:"endpoint,omitempty"`
+	Username string `yaml:"username,omitempty"`
+	Password string `yaml:"password,omitempty"`
 }
 
 var (
@@ -81,7 +92,7 @@ func (o *WebDavStorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 }
 
 func (o *WebDavStorageOption) GetEndPoint() string {
-	return o.fullEndPoint
+	return o.FullEndPoint
 }
 
 func (o *WebDavStorageOption) GetUsername() string {
@@ -90,7 +101,7 @@ func (o *WebDavStorageOption) GetUsername() string {
 	}
 	if o.Alias != "" {
 		// assert o.aliasUser != nil
-		return o.aliasUser.Username
+		return o.AliasUser.Username
 	}
 	return ""
 }
@@ -101,7 +112,7 @@ func (o *WebDavStorageOption) GetPassword() string {
 	}
 	if o.Alias != "" {
 		// assert o.aliasUser != nil
-		return o.aliasUser.Password
+		return o.AliasUser.Password
 	}
 	return ""
 }
@@ -111,7 +122,7 @@ type WebDavStorage struct {
 
 	cache         gocache.Cache
 	cli           *gowebdav.Client
-	limitedDialer *LimitedDialer
+	limitedDialer *limited.LimitedDialer
 	httpCli       *http.Client
 	noRedCli      *http.Client // no redirect client
 }
@@ -145,37 +156,13 @@ func webdavIsHTTPError(err error, code int) bool {
 const ClusterCacheCtxKey = "go-openbmclapi.cluster.cache"
 
 func (s *WebDavStorage) Init(ctx context.Context) (err error) {
-	if alias := s.opt.Alias; alias != "" {
-		user, ok := config.WebdavUsers[alias]
-		if !ok {
-			logErrorf("Web dav user %q does not exists", alias)
-			os.Exit(1)
-		}
-		s.opt.aliasUser = user
-		var end *url.URL
-		if end, err = url.Parse(s.opt.aliasUser.EndPoint); err != nil {
-			return
-		}
-		if s.opt.EndPoint != "" {
-			var full *url.URL
-			if full, err = end.Parse(s.opt.EndPoint); err != nil {
-				return
-			}
-			s.opt.fullEndPoint = full.String()
-		} else {
-			s.opt.fullEndPoint = s.opt.aliasUser.EndPoint
-		}
-	} else {
-		s.opt.fullEndPoint = s.opt.EndPoint
-	}
-
 	if cache, ok := ctx.Value(ClusterCacheCtxKey).(gocache.Cache); ok && cache != nil {
 		s.cache = gocache.NewCacheWithNamespace(cache, fmt.Sprintf("redirect-cache@%s;%s@", s.opt.GetUsername(), s.opt.GetEndPoint()))
 	} else {
 		s.cache = gocache.NoCache
 	}
 
-	s.limitedDialer = NewLimitedDialer(nil, s.opt.MaxConn, s.opt.MaxDownloadRate*1024, s.opt.MaxUploadRate*1024)
+	s.limitedDialer = limited.NewLimitedDialer(nil, s.opt.MaxConn, s.opt.MaxDownloadRate*1024, s.opt.MaxUploadRate*1024)
 	s.limitedDialer.SetMinReadRate(1024)
 	s.limitedDialer.SetMinWriteRate(1024)
 
@@ -191,27 +178,27 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 	}
 
 	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())
-	s.cli.SetHeader("User-Agent", ClusterUserAgentFull)
+	s.cli.SetHeader("User-Agent", build.ClusterUserAgentFull)
 
 	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {
-			logWarnf("Could not create measure folder for %s: %v", s.String(), err)
+			log.Warnf("Could not create measure folder for %s: %v", s.String(), err)
 		}
 	}
 	if s.opt.PreGenMeasures {
-		logInfo("Creating measure files at %s", s.String())
+		log.Info("Creating measure files at %s", s.String())
 		for i := 1; i <= 200; i++ {
 			if err := s.createMeasureFile(ctx, i); err != nil {
 				os.Exit(2)
 			}
 		}
-		logInfo("Measure files created")
+		log.Info("Measure files created")
 	}
 	return
 }
 
 func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
-	size, err := getFileSize(r)
+	size, err := GetFileSize(r)
 	if err != nil {
 		return err
 	}
@@ -219,7 +206,7 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	if err != nil {
 		return err
 	}
-	logDebugf("Putting %q", target)
+	log.Debugf("Putting %q", target)
 
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, r)
 	if err != nil {
@@ -273,7 +260,7 @@ func (s *WebDavStorage) WalkDir(walker func(hash string, size int64) error) erro
 	s.limitedDialer.Acquire()
 	defer s.limitedDialer.Release()
 
-	for _, dir := range hex256 {
+	for _, dir := range Hex256 {
 		files, err := s.cli.ReadDir(path.Join("download", dir))
 		if err != nil {
 			continue
@@ -352,7 +339,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		return 0, err
 	}
 	defer resp.Body.Close()
-	logDebugf("Requested %q: status=%d", target, resp.StatusCode)
+	log.Debugf("Requested %q: status=%d", target, resp.StatusCode)
 
 	rwh := rw.Header()
 	switch resp.StatusCode / 100 {
@@ -425,7 +412,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 		return err
 	}
 	defer resp.Body.Close()
-	logDebugf("Requested %q: status=%d", target, resp.StatusCode)
+	log.Debugf("Requested %q: status=%d", target, resp.StatusCode)
 
 	rwh := rw.Header()
 	switch resp.StatusCode / 100 {
@@ -440,11 +427,11 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 		fallthrough
 	default:
 		resp.Body.Close()
-		rw.Header().Set("Content-Length", strconv.Itoa(size*mbChunkSize))
+		rw.Header().Set("Content-Length", strconv.Itoa(size*MbChunkSize))
 		rw.WriteHeader(http.StatusOK)
 		if req.Method == http.MethodGet {
 			for i := 0; i < size; i++ {
-				rw.Write(mbChunk[:])
+				rw.Write(MbChunk[:])
 			}
 		}
 		return nil
@@ -453,7 +440,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 
 func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err error) {
 	t := path.Join("measure", strconv.Itoa(size))
-	tsz := (int64)(size) * mbChunkSize
+	tsz := (int64)(size) * MbChunkSize
 	if size == 0 {
 		tsz = 2
 	}
@@ -462,16 +449,39 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err er
 		if sz == tsz {
 			return nil
 		}
-		logDebugf("File [%d] size %d does not match %d", size, sz, tsz)
+		log.Debugf("File [%d] size %d does not match %d", size, sz, tsz)
 	} else if e := ctx.Err(); e != nil {
 		return e
 	} else if !errors.Is(err, os.ErrNotExist) {
-		logErrorf("Cannot get stat of %s: %v", t, err)
+		log.Errorf("Cannot get stat of %s: %v", t, err)
 	}
-	logInfof("Creating measure file at %q", t)
+	log.Infof("Creating measure file at %q", t)
 	if err = s.putFile(t, io.NewSectionReader(EmptyReader, 0, tsz)); err != nil {
-		logErrorf("Cannot create measure file %q: %v", t, err)
+		log.Errorf("Cannot create measure file %q: %v", t, err)
 		return
 	}
+	return nil
+}
+
+type YAMLDuration time.Duration
+
+func (d YAMLDuration) Dur() time.Duration {
+	return (time.Duration)(d)
+}
+
+func (d YAMLDuration) MarshalYAML() (any, error) {
+	return (time.Duration)(d).String(), nil
+}
+
+func (d *YAMLDuration) UnmarshalYAML(n *yaml.Node) (err error) {
+	var v string
+	if err = n.Decode(&v); err != nil {
+		return
+	}
+	var td time.Duration
+	if td, err = time.ParseDuration(v); err != nil {
+		return
+	}
+	*d = (YAMLDuration)(td)
 	return nil
 }

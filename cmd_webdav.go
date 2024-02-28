@@ -30,56 +30,59 @@ import (
 
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
+
+	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 func cmdUploadWebdav(args []string) {
 	config = readConfig()
 
-	var localOpt *LocalStorageOption
-	webdavOpts := make([]*WebDavStorageOption, 0, 4)
+	var localOpt *storage.LocalStorageOption
+	webdavOpts := make([]*storage.WebDavStorageOption, 0, 4)
 	for _, s := range config.Storages {
 		switch s := s.Data.(type) {
-		case *LocalStorageOption:
+		case *storage.LocalStorageOption:
 			if localOpt == nil {
 				localOpt = s
 			}
-		case *WebDavStorageOption:
+		case *storage.WebDavStorageOption:
 			webdavOpts = append(webdavOpts, s)
 		}
 	}
 
 	if localOpt == nil {
-		logError("At least one local storage is required")
+		log.Error("At least one local storage is required")
 		os.Exit(1)
 	}
 	if len(webdavOpts) == 0 {
-		logError("At least one webdav storage is required")
+		log.Error("At least one webdav storage is required")
 		os.Exit(1)
 	}
 
 	ctx := context.Background()
 
-	var local LocalStorage
+	var local storage.LocalStorage
 	local.SetOptions(localOpt)
 	if err := local.Init(ctx); err != nil {
-		logErrorf("Cannot initialize %s: %v", local.String(), err)
+		log.Errorf("Cannot initialize %s: %v", local.String(), err)
 		os.Exit(1)
 	}
-	logInfof("From: %s", local.String())
+	log.Infof("From: %s", local.String())
 
-	webdavs := make([]*WebDavStorage, len(webdavOpts))
+	webdavs := make([]*storage.WebDavStorage, len(webdavOpts))
 	maxProc := 0
 	for i, opt := range webdavOpts {
 		if opt.MaxConn > maxProc {
 			maxProc = opt.MaxConn
 		}
-		s := new(WebDavStorage)
+		s := new(storage.WebDavStorage)
 		s.SetOptions(opt)
 		if err := s.Init(ctx); err != nil {
-			logErrorf("Cannot initialize %s: %v", s.String(), err)
+			log.Errorf("Cannot initialize %s: %v", s.String(), err)
 			os.Exit(1)
 		}
-		logInfof("To: %s", s.String())
+		log.Infof("To: %s", s.String())
 		webdavs[i] = s
 	}
 
@@ -117,7 +120,7 @@ func cmdUploadWebdav(args []string) {
 	var barUnit decor.SizeB1024
 	var wg sync.WaitGroup
 	pg := mpb.New(mpb.WithWaitGroup(&wg), mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh())
-	setLogOutput(pg)
+	log.SetLogOutput(pg)
 
 	webdavBar := pg.AddBar(0,
 		mpb.BarRemoveOnComplete(),
@@ -142,7 +145,7 @@ func cmdUploadWebdav(args []string) {
 			return nil
 		})
 		if err != nil {
-			logErrorf("Cannot walk %s: %v", s, err)
+			log.Errorf("Cannot walk %s: %v", s, err)
 			os.Exit(2)
 		}
 		files := make([]fileInfo, 0, 100)
@@ -185,11 +188,11 @@ func cmdUploadWebdav(args []string) {
 		),
 	)
 
-	logInfof("Max Proc: %d", maxProc)
+	log.Infof("Max Proc: %d", maxProc)
 
 	for i, files := range webdavFiles {
 		s := webdavs[i]
-		logInfof("Storage %s need sync %d files", s, len(files))
+		log.Infof("Storage %s need sync %d files", s, len(files))
 		for _, info := range files {
 			hash, size := info.Hash, info.Size
 			slot := <-slots
@@ -197,7 +200,7 @@ func cmdUploadWebdav(args []string) {
 			fd, err := local.OpenFd(hash)
 			if err != nil {
 				putSlot(slot)
-				logErrorf("Cannot open %s: %v", hash, err)
+				log.Errorf("Cannot open %s: %v", hash, err)
 				continue
 			}
 
@@ -216,7 +219,7 @@ func cmdUploadWebdav(args []string) {
 				),
 			)
 			wg.Add(1)
-			go func(slot int, bar *mpb.Bar, s Storage, hash string, size int64) {
+			go func(slot int, bar *mpb.Bar, s *storage.WebDavStorage, hash string, size int64) {
 				defer putSlot(slot)
 				defer wg.Done()
 				defer func() {
@@ -230,18 +233,18 @@ func cmdUploadWebdav(args []string) {
 
 				bar.SetTotal(size, false)
 
-				logDebugf("Uploading %s/%s", s.String(), hash)
+				log.Debugf("Uploading %s/%s", s.String(), hash)
 				err := s.Create(hash, ProxyReadSeeker(fd, bar, totalBar, lastInc))
 				uploadedFiles.Add(1)
 				if err != nil {
-					logErrorf("Cannot create %s at %s: %v", hash, s.String(), err)
+					log.Errorf("Cannot create %s at %s: %v", hash, s.String(), err)
 					return
 				}
-				logInfof("File %s uploaded to %s", hash, s.String())
+				log.Infof("File %s uploaded to %s", hash, s.String())
 			}(slot, bar, s, hash, size)
 		}
 	}
 
 	pg.Wait()
-	setLogOutput(nil)
+	log.SetLogOutput(nil)
 }

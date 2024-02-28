@@ -31,22 +31,14 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
-
-const mbChunkSize = 1024 * 1024
-
-var mbChunk [mbChunkSize]byte
 
 var closedCh = func() <-chan struct{} {
 	ch := make(chan struct{}, 0)
@@ -62,22 +54,7 @@ func split(str string, b byte) (l, r string) {
 	return str, ""
 }
 
-func splitCSV(line string) (values map[string]float32) {
-	list := strings.Split(line, ",")
-	values = make(map[string]float32, len(list))
-	for _, v := range list {
-		name, opt := split(strings.ToLower(strings.TrimSpace(v)), ';')
-		var q float64 = 1
-		if v, ok := strings.CutPrefix(opt, "q="); ok {
-			q, _ = strconv.ParseFloat(v, 32)
-		}
-		values[name] = (float32)(q)
-	}
-	return
-}
-
 func createInterval(ctx context.Context, do func(), delay time.Duration) {
-	logDebug("Interval created:", ctx)
 	go func() {
 		ticker := time.NewTicker(delay)
 		defer ticker.Stop()
@@ -85,7 +62,6 @@ func createInterval(ctx context.Context, do func(), delay time.Duration) {
 		for {
 			select {
 			case <-ctx.Done():
-				logDebug("Interval stopped:", ctx)
 				return
 			case <-ticker.C:
 				do()
@@ -252,59 +228,6 @@ func copyFile(src, dst string, mode os.FileMode) (err error) {
 	return
 }
 
-type devNull struct{}
-
-var (
-	DevNull = devNull{}
-
-	_ io.ReaderAt   = DevNull
-	_ io.ReadSeeker = DevNull
-	_ io.Writer     = DevNull
-)
-
-func (devNull) Read([]byte) (int, error)          { return 0, io.EOF }
-func (devNull) ReadAt([]byte, int64) (int, error) { return 0, io.EOF }
-func (devNull) Seek(int64, int) (int64, error)    { return 0, nil }
-func (devNull) Write(buf []byte) (int, error)     { return len(buf), nil }
-
-type emptyReader struct{}
-
-var (
-	EmptyReader = emptyReader{}
-
-	_ io.ReaderAt = EmptyReader
-)
-
-func (emptyReader) ReadAt(buf []byte, _ int64) (int, error) { return len(buf), nil }
-
-type noLastNewLineWriter struct {
-	io.Writer
-}
-
-var _ io.Writer = (*noLastNewLineWriter)(nil)
-
-func (w *noLastNewLineWriter) Write(buf []byte) (int, error) {
-	if l := len(buf) - 1; l >= 0 && buf[l] == '\n' {
-		buf = buf[:l]
-	}
-	return w.Writer.Write(buf)
-}
-
-var errNotSeeker = errors.New("r is not an io.Seeker")
-
-func getFileSize(r io.Reader) (n int64, err error) {
-	if s, ok := r.(io.Seeker); ok {
-		if n, err = s.Seek(0, io.SeekEnd); err == nil {
-			if _, err = s.Seek(0, io.SeekStart); err != nil {
-				return
-			}
-		}
-	} else {
-		err = errNotSeeker
-	}
-	return
-}
-
 func checkQuerySign(hash string, secret string, query url.Values) bool {
 	if config.Advanced.SkipSignatureCheck {
 		return true
@@ -383,235 +306,6 @@ func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, has bool) {
 		m.m[k] = v
 	}
 	return
-}
-
-type HTTPStatusError struct {
-	Code    int
-	URL     string
-	Message string
-}
-
-func NewHTTPStatusErrorFromResponse(res *http.Response) (e *HTTPStatusError) {
-	e = &HTTPStatusError{
-		Code: res.StatusCode,
-	}
-	if res.Request != nil {
-		e.URL = res.Request.URL.String()
-	}
-	var buf [512]byte
-	n, _ := res.Body.Read(buf[:])
-	e.Message = (string)(buf[:n])
-	return
-}
-
-func (e *HTTPStatusError) Error() string {
-	s := fmt.Sprintf("Unexpected http status %d %s", e.Code, http.StatusText(e.Code))
-	if e.URL != "" {
-		s += " for " + e.URL
-	}
-	if e.Message != "" {
-		s += ":\n\t" + e.Message
-	}
-	return s
-}
-
-type RawYAML struct {
-	*yaml.Node
-}
-
-var (
-	_ yaml.Marshaler   = RawYAML{}
-	_ yaml.Unmarshaler = (*RawYAML)(nil)
-)
-
-func (r RawYAML) MarshalYAML() (any, error) {
-	return r.Node, nil
-}
-
-func (r *RawYAML) UnmarshalYAML(n *yaml.Node) (err error) {
-	r.Node = n
-	return nil
-}
-
-type YAMLDuration time.Duration
-
-func (d YAMLDuration) Dur() time.Duration {
-	return (time.Duration)(d)
-}
-
-func (d YAMLDuration) MarshalYAML() (any, error) {
-	return (time.Duration)(d).String(), nil
-}
-
-func (d *YAMLDuration) UnmarshalYAML(n *yaml.Node) (err error) {
-	var v string
-	if err = n.Decode(&v); err != nil {
-		return
-	}
-	var td time.Duration
-	if td, err = time.ParseDuration(v); err != nil {
-		return
-	}
-	*d = (YAMLDuration)(td)
-	return nil
-}
-
-type slotInfo struct {
-	id  int
-	buf []byte
-}
-
-type BufSlots struct {
-	c chan slotInfo
-}
-
-func NewBufSlots(size int) *BufSlots {
-	c := make(chan slotInfo, size)
-	for i := 0; i < size; i++ {
-		c <- slotInfo{
-			id:  i,
-			buf: make([]byte, 1024*512),
-		}
-	}
-	return &BufSlots{
-		c: c,
-	}
-}
-
-func (s *BufSlots) Len() int {
-	return len(s.c)
-}
-
-func (s *BufSlots) Cap() int {
-	return cap(s.c)
-}
-
-func (s *BufSlots) Alloc(ctx context.Context) (slotId int, buf []byte, free func()) {
-	select {
-	case slot := <-s.c:
-		return slot.id, slot.buf, func() {
-			s.c <- slot
-		}
-	case <-ctx.Done():
-		return 0, nil, nil
-	}
-}
-
-type Semaphore struct {
-	c chan struct{}
-}
-
-// NewSemaphore create a semaphore
-// zero or negative size means infinity space
-func NewSemaphore(size int) *Semaphore {
-	if size <= 0 {
-		return nil
-	}
-	return &Semaphore{
-		c: make(chan struct{}, size),
-	}
-}
-
-func (s *Semaphore) Len() int {
-	if s == nil {
-		return 0
-	}
-	return len(s.c)
-}
-
-func (s *Semaphore) Cap() int {
-	if s == nil {
-		return 0
-	}
-	return cap(s.c)
-}
-
-func (s *Semaphore) Acquire() {
-	if s == nil {
-		return
-	}
-	s.c <- struct{}{}
-}
-
-func (s *Semaphore) AcquireWithContext(ctx context.Context) bool {
-	if s == nil {
-		return true
-	}
-	return s.AcquireWithNotify(ctx.Done())
-}
-
-func (s *Semaphore) AcquireWithNotify(notifier <-chan struct{}) bool {
-	if s == nil {
-		return true
-	}
-	select {
-	case s.c <- struct{}{}:
-		return true
-	case <-notifier:
-		return false
-	}
-}
-
-func (s *Semaphore) Release() {
-	if s == nil {
-		return
-	}
-	<-s.c
-}
-
-type spProxyReader struct {
-	io.Reader
-	released atomic.Bool
-	s        *Semaphore
-}
-
-func (r *spProxyReader) Close() error {
-	if !r.released.Swap(true) {
-		r.s.Release()
-	}
-	if c, ok := r.Reader.(io.Closer); ok {
-		return c.Close()
-	}
-	return nil
-}
-
-func (s *Semaphore) ProxyReader(r io.Reader) io.ReadCloser {
-	return &spProxyReader{
-		Reader: r,
-		s:      s,
-	}
-}
-
-const numToHexMap = "0123456789abcdef"
-
-var hex256 = func() (hex256 []string) {
-	hex256 = make([]string, 0x100)
-	for i := 0; i < 0x100; i++ {
-		a, b := i>>4, i&0xf
-		hex256[i] = numToHexMap[a:a+1] + numToHexMap[b:b+1]
-	}
-	return
-}()
-
-var hexToNumMap = [256]int{
-	'0': 0x0, '1': 0x1, '2': 0x2, '3': 0x3, '4': 0x4, '5': 0x5, '6': 0x6, '7': 0x7, '8': 0x8, '9': 0x9,
-	'a': 0xa, 'b': 0xb, 'c': 0xc, 'd': 0xd, 'e': 0xe, 'f': 0xf,
-}
-
-func IsHex(s string) bool {
-	if len(s) < 2 || len(s)%2 != 0 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if s[i] != '0' && hexToNumMap[s[i]] == 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func HexTo256(s string) (n int) {
-	return hexToNumMap[s[0]]*0x10 + hexToNumMap[s[1]]
 }
 
 // return a URL encoded base64 string

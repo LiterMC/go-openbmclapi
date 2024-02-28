@@ -29,6 +29,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type ClusterToken struct {
@@ -68,7 +70,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		return
 	}
 	if res.StatusCode != http.StatusOK {
-		err = NewHTTPStatusErrorFromResponse(res)
+		err = utils.NewHTTPStatusErrorFromResponse(res)
 		res.Body.Close()
 		return
 	}
@@ -106,7 +108,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		return
 	}
 	if res.StatusCode/100 != 2 {
-		err = NewHTTPStatusErrorFromResponse(res)
+		err = utils.NewHTTPStatusErrorFromResponse(res)
 		res.Body.Close()
 		return
 	}

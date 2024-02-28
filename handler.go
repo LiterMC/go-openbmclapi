@@ -27,7 +27,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/textproto"
@@ -35,18 +34,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/utils"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
-
-type countReader struct {
-	io.ReadSeeker
-	n int64
-}
-
-func (r *countReader) Read(buf []byte) (n int, err error) {
-	n, err = r.ReadSeeker.Read(buf)
-	r.n += (int64)(n)
-	return
-}
 
 type statusResponseWriter struct {
 	http.ResponseWriter
@@ -133,7 +125,7 @@ func (r *accessRecord) String() string {
 		r.Method, r.URI, r.UA)
 	if len(r.Extra) > 0 {
 		buf.WriteString(" | ")
-		e := json.NewEncoder(&noLastNewLineWriter{&buf})
+		e := json.NewEncoder(&utils.NoLastNewLineWriter{&buf})
 		e.SetEscapeHTML(false)
 		e.Encode(r.Extra)
 	}
@@ -168,7 +160,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			srw := &statusResponseWriter{ResponseWriter: rw}
 			start := time.Now()
 
-			LogAccess(LogLevelDebug, &preAccessRecord{
+			log.LogAccess(log.LevelDebug, &preAccessRecord{
 				Type:   "pre-access",
 				Time:   start,
 				Addr:   addr,
@@ -200,7 +192,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			if len(extraInfoMap) > 0 {
 				accRec.Extra = extraInfoMap
 			}
-			LogAccess(LogLevelInfo, accRec)
+			log.LogAccess(log.LevelInfo, accRec)
 
 			if srw.status < 200 && 400 <= srw.status {
 				return
@@ -237,7 +229,7 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 				case <-updateTicker.C:
 					cr.stats.mux.Lock()
 
-					logInfof("Served %d requests, total responsed body = %s, total used CPU time = %.2fs",
+					log.Infof("Served %d requests, total responsed body = %s, total used CPU time = %.2fs",
 						total, bytesToUnit(totalBytes), totalUsed)
 					for ua, v := range uas {
 						if ua == "" {
@@ -308,7 +300,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		hash := rawpath[len("/download/"):]
-		if !IsHex(hash) {
+		if !utils.IsHex(hash) {
 			http.Error(rw, hash+" is not a valid hash", http.StatusNotFound)
 			return
 		}
@@ -319,7 +311,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		logDebugf("Handling download %s", hash)
+		log.Debugf("Handling download %s", hash)
 		cr.handleDownload(rw, req, hash)
 		return
 	case strings.HasPrefix(rawpath, "/measure/"):
@@ -345,7 +337,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 		if err := cr.storages[0].ServeMeasure(rw, req, n); err != nil {
-			logErrorf("Could not serve measure %d: %v", n, err)
+			log.Errorf("Could not serve measure %d: %v", n, err)
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
 		return
@@ -409,12 +401,12 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			return
 		}
 	}
-	var storage Storage
+	var sto storage.Storage
 	forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
-		storage = cr.storages[i]
-		logDebugf("[handler]: Checking file on Storage [%d] %s ...", i, storage.String())
+		sto = cr.storages[i]
+		log.Debugf("[handler]: Checking file on Storage [%d] %s ...", i, sto.String())
 
-		sz, er := storage.ServeDownload(rw, req, hash, size)
+		sz, er := sto.ServeDownload(rw, req, hash, size)
 		if er != nil {
 			err = er
 			return false
@@ -425,23 +417,23 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		}
 		return true
 	})
-	if storage != nil {
-		SetAccessInfo(req, "storage", storage.String())
+	if sto != nil {
+		SetAccessInfo(req, "storage", sto.String())
 	}
 	if err != nil {
-		logDebugf("[handler]: failed to serve download: %v", err)
+		log.Debugf("[handler]: failed to serve download: %v", err)
 		if errors.Is(err, os.ErrNotExist) {
 			http.Error(rw, "404 Status Not Found", http.StatusNotFound)
 			return
 		}
-		if _, ok := err.(*HTTPStatusError); ok {
+		if _, ok := err.(*utils.HTTPStatusError); ok {
 			http.Error(rw, err.Error(), http.StatusBadGateway)
 		} else {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
-	logDebug("[handler]: download served successed")
+	log.Debug("[handler]: download served successed")
 }
 
 // Note: this method is a fast parse, it does not deeply check if the range is valid or not

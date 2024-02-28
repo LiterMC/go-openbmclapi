@@ -36,6 +36,10 @@ import (
 	"time"
 
 	"runtime/pprof"
+
+	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/limited"
+	"github.com/LiterMC/go-openbmclapi/internal/build"
 )
 
 const ClusterServerURL = "https://openbmclapi.bangbang93.com"
@@ -60,7 +64,7 @@ func parseArgs() {
 			printLongLicense()
 			os.Exit(0)
 		case "version", "--version":
-			fmt.Printf("Go-OpenBmclApi v%s (%s)\n", ClusterVersion, BuildVersion)
+			fmt.Printf("Go-OpenBmclApi v%s (%s)\n", build.ClusterVersion, build.BuildVersion)
 			os.Exit(0)
 		case "help", "--help":
 			printHelp()
@@ -88,12 +92,12 @@ func main() {
 
 	defer func() {
 		if err := recover(); err != nil {
-			logError("Panic:", err)
+			log.Error("Panic:", err)
 			panic(err)
 		}
 	}()
 
-	startFlushLogFile()
+	log.StartFlushLogFile()
 
 	bgctx := context.Background()
 
@@ -106,11 +110,11 @@ func main() {
 	if config.Advanced.DebugLog {
 		var err error
 		if dumpCmdFd, err = os.OpenFile(dumpCmdFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, 0660); err != nil {
-			logErrorf("Cannot create %q: %v", dumpCmdFile, err)
+			log.Errorf("Cannot create %q: %v", dumpCmdFile, err)
 		} else {
 			defer os.Remove(dumpCmdFile)
 			defer dumpCmdFd.Close()
-			logInfof("Dump command file %s has created", dumpCmdFile)
+			log.Infof("Dump command file %s has created", dumpCmdFile)
 		}
 	}
 
@@ -127,10 +131,10 @@ START:
 		dialer *net.Dialer
 	)
 
-	logInfof("Starting Go-OpenBmclApi v%s (%s)", ClusterVersion, BuildVersion)
+	log.Infof("Starting Go-OpenBmclApi v%s (%s)", build.ClusterVersion, build.BuildVersion)
 
 	if config.ClusterId == defaultConfig.ClusterId || config.ClusterSecret == defaultConfig.ClusterSecret {
-		logError("Please set cluster-id and cluster-secret in config.yaml before start!")
+		log.Error("Please set cluster-id and cluster-secret in config.yaml before start!")
 		os.Exit(1)
 	}
 
@@ -150,7 +154,7 @@ START:
 		cache,
 	)
 	if err := cluster.Init(ctx); err != nil {
-		logError("Cannot init cluster:", err)
+		log.Error("Cannot init cluster:", err)
 		os.Exit(1)
 	}
 
@@ -158,7 +162,7 @@ START:
 		os.Exit(1)
 	}
 
-	logDebugf("Receiving signals")
+	log.Debugf("Receiving signals")
 	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	clusterSvr := &http.Server{
@@ -166,17 +170,17 @@ START:
 		ReadTimeout: 10 * time.Second,
 		IdleTimeout: 5 * time.Second,
 		Handler:     cluster.GetHandler(),
-		ErrorLog:    NullLogger, // for ignore TLS handshake error
+		ErrorLog:    log.ProxiedStdLog,
 	}
 
 	firstSyncDone := make(chan struct{}, 0)
 
 	go func(ctx context.Context) {
 		defer close(firstSyncDone)
-		logInfof("Fetching file list")
+		log.Infof("Fetching file list")
 		fl, err := cluster.GetFileList(ctx)
 		if err != nil {
-			logError("Cannot query cluster file list:", err)
+			log.Error("Cannot query cluster file list:", err)
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -206,10 +210,10 @@ START:
 			cluster.mux.Unlock()
 		}
 		createInterval(ctx, func() {
-			logInfof("Fetching file list")
+			log.Infof("Fetching file list")
 			fl, err := cluster.GetFileList(ctx)
 			if err != nil {
-				logError("Cannot query cluster file list:", err)
+				log.Error("Cannot query cluster file list:", err)
 				return
 			}
 			checkCount = (checkCount + 1) % heavyCheckInterval
@@ -220,20 +224,20 @@ START:
 	go func(ctx context.Context) {
 		listener, err := net.Listen("tcp", clusterSvr.Addr)
 		if err != nil {
-			logErrorf("Cannot listen on %s: %v", clusterSvr.Addr, err)
+			log.Errorf("Cannot listen on %s: %v", clusterSvr.Addr, err)
 			os.Exit(1)
 		}
 		if config.ServeLimit.Enable {
-			limited := NewLimitedListener(listener, config.ServeLimit.MaxConn, 0, config.ServeLimit.UploadRate*1024)
-			limited.SetMinWriteRate(1024)
-			listener = limited
+			limted := limited.NewLimitedListener(listener, config.ServeLimit.MaxConn, 0, config.ServeLimit.UploadRate*1024)
+			limted.SetMinWriteRate(1024)
+			listener = limted
 		}
 
 		var tlsConfig *tls.Config
 		var publicHost string
 		if config.UseCert {
 			if len(config.Certificates) == 0 {
-				logError("No certificates was set in the config")
+				log.Error("No certificates was set in the config")
 				os.Exit(1)
 			}
 			tlsConfig = new(tls.Config)
@@ -242,7 +246,7 @@ START:
 				var err error
 				tlsConfig.Certificates[i], err = tls.LoadX509KeyPair(c.Cert, c.Key)
 				if err != nil {
-					logErrorf("Cannot parse certificate key pair[%d]: %v", i, err)
+					log.Errorf("Cannot parse certificate key pair[%d]: %v", i, err)
 					os.Exit(1)
 				}
 			}
@@ -252,7 +256,7 @@ START:
 			pair, err := cluster.RequestCert(tctx)
 			cancel()
 			if err != nil {
-				logError("Error when requesting certificate key pair:", err)
+				log.Error("Error when requesting certificate key pair:", err)
 				os.Exit(1)
 			}
 			if tlsConfig == nil {
@@ -261,12 +265,12 @@ START:
 			var cert tls.Certificate
 			cert, err = tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
 			if err != nil {
-				logError("Cannot parse requested certificate key pair:", err)
+				log.Error("Cannot parse requested certificate key pair:", err)
 				os.Exit(1)
 			}
 			tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
 			certHost, _ := parseCertCommonName(cert.Certificate[0])
-			logInfof("Requested certificate for %s", certHost)
+			log.Infof("Requested certificate for %s", certHost)
 		}
 		certCount := 0
 		if tlsConfig != nil {
@@ -277,16 +281,16 @@ START:
 		go func(listener net.Listener) {
 			defer listener.Close()
 			if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-				logError("Error on server:", err)
+				log.Error("Error on server:", err)
 				os.Exit(1)
 			}
 		}(listener)
 		if publicHost == "" {
 			publicHost = config.PublicHost
 		}
-		logInfof("Server public at https://%s:%d (%s) with %d certificates", publicHost, publicPort, clusterSvr.Addr, certCount)
+		log.Infof("Server public at https://%s:%d (%s) with %d certificates", publicHost, publicPort, clusterSvr.Addr, certCount)
 
-		logInfof("Waiting for the first sync ...")
+		log.Infof("Waiting for the first sync ...")
 		select {
 		case <-firstSyncDone:
 		case <-ctx.Done():
@@ -302,7 +306,7 @@ START:
 		}
 
 		if err := cluster.Enable(ctx); err != nil {
-			logError("Cannot enable cluster:", err)
+			log.Error("Cannot enable cluster:", err)
 			os.Exit(1)
 		}
 	}(ctx)
@@ -316,25 +320,25 @@ SELECT_SIGNAL:
 			if dumpCmdFd != nil {
 				var buf [256]byte
 				if _, err := dumpCmdFd.Seek(0, io.SeekStart); err != nil {
-					logErrorf("Cannot read dump command file: %v", err)
+					log.Errorf("Cannot read dump command file: %v", err)
 				} else if n, err := dumpCmdFd.Read(buf[:]); err != nil {
-					logErrorf("Cannot read dump command file: %v", err)
+					log.Errorf("Cannot read dump command file: %v", err)
 				} else {
 					dumpCommand = (string)(bytes.TrimSpace(buf[:n]))
 				}
 				dumpCmdFd.Truncate(0)
 			}
 			name := fmt.Sprintf(time.Now().Format("dump-%s-20060102-150405.txt"), dumpCommand)
-			logInfof("Creating goroutine dump file at %s", name)
+			log.Infof("Creating goroutine dump file at %s", name)
 			if fd, err := os.Create(name); err != nil {
-				logInfof("Cannot create dump file: %v", err)
+				log.Infof("Cannot create dump file: %v", err)
 			} else {
 				err := pprof.Lookup(dumpCommand).WriteTo(fd, 1)
 				fd.Close()
 				if err != nil {
-					logInfof("Cannot write dump file: %v", err)
+					log.Infof("Cannot write dump file: %v", err)
 				} else {
-					logInfo("Dump file created")
+					log.Info("Dump file created")
 				}
 			}
 			goto SELECT_SIGNAL
@@ -342,25 +346,25 @@ SELECT_SIGNAL:
 
 		cancel()
 		shutCtx, cancelShut := context.WithTimeout(context.Background(), 20*time.Second)
-		logWarn("Closing server ...")
+		log.Warn("Closing server ...")
 		shutExit := make(chan struct{}, 0)
 		go func() {
 			defer close(shutExit)
 			defer cancelShut()
 			cluster.Disable(shutCtx)
-			logInfo("Cluster disabled, closing http server")
+			log.Info("Cluster disabled, closing http server")
 			clusterSvr.Shutdown(shutCtx)
 		}()
 		select {
 		case <-shutExit:
 		case s := <-signalCh:
-			logWarn("signal:", s)
-			logError("Second close signal received, exit")
+			log.Warn("signal:", s)
+			log.Error("Second close signal received, exit")
 			return
 		}
-		logWarn("Server closed.")
+		log.Warn("Server closed.")
 		if s == syscall.SIGHUP {
-			logInfo("Restarting server ...")
+			log.Info("Restarting server ...")
 			goto START
 		}
 	}

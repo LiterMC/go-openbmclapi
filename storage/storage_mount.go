@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package storage
 
 import (
 	"context"
@@ -34,7 +34,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
+	"github.com/LiterMC/go-openbmclapi/log"
+	. "github.com/LiterMC/go-openbmclapi/utils"
 )
 
 var errNotWorking = errors.New("storage is down")
@@ -84,28 +87,28 @@ var checkerClient = &http.Client{
 }
 
 func (s *MountStorage) Init(ctx context.Context) (err error) {
-	logInfof("Initalizing mounted folder %s", s.opt.Path)
+	log.Infof("Initalizing mounted folder %s", s.opt.Path)
 	if err = initCache(s.opt.CachePath()); err != nil {
 		return
 	}
 	if err := os.MkdirAll(s.opt.Path, 0755); err != nil && !errors.Is(err, os.ErrExist) {
-		logErrorf("Cannot create mirror folder %q: %v", s.opt.Path, err)
+		log.Errorf("Cannot create mirror folder %q: %v", s.opt.Path, err)
 		os.Exit(2)
 	}
 
 	measureDir := filepath.Join(s.opt.Path, "measure")
 	if err := os.Mkdir(measureDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
-		logErrorf("Cannot create mirror folder %q: %v", measureDir, err)
+		log.Errorf("Cannot create mirror folder %q: %v", measureDir, err)
 		os.Exit(2)
 	}
 	if s.opt.PreGenMeasures {
-		logInfo("Creating measure files")
+		log.Info("Creating measure files")
 		for i := 1; i <= 200; i++ {
 			if err := s.createMeasureFile(i); err != nil {
 				os.Exit(2)
 			}
 		}
-		logInfo("Measure files created")
+		log.Info("Measure files created")
 	}
 
 	supportRange, err := s.checkAlive(ctx, 10)
@@ -151,7 +154,7 @@ func (s *MountStorage) Remove(hash string) error {
 }
 
 func (s *MountStorage) WalkDir(walker func(hash string, size int64) error) error {
-	return walkCacheDir(s.opt.CachePath(), walker)
+	return WalkCacheDir(s.opt.CachePath(), walker)
 }
 
 func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
@@ -240,9 +243,9 @@ func (s *MountStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 
 func (s *MountStorage) createMeasureFile(size int) (err error) {
 	t := filepath.Join(s.opt.Path, "measure", strconv.Itoa(size))
-	logDebugf("Checking measure file %q", t)
+	log.Debugf("Checking measure file %q", t)
 	if stat, err := os.Stat(t); err == nil {
-		tsz := (int64)(size) * mbChunkSize
+		tsz := (int64)(size) * MbChunkSize
 		if size == 0 {
 			tsz = 2
 		}
@@ -250,26 +253,26 @@ func (s *MountStorage) createMeasureFile(size int) (err error) {
 		if x == tsz {
 			return nil
 		}
-		logDebugf("File [%d] size %d does not match %d", size, x, tsz)
+		log.Debugf("File [%d] size %d does not match %d", size, x, tsz)
 	} else if !errors.Is(err, os.ErrNotExist) {
-		logErrorf("Cannot get stat of %s: %v", t, err)
+		log.Errorf("Cannot get stat of %s: %v", t, err)
 	}
-	logInfof("Creating measure file at %q", t)
+	log.Infof("Creating measure file at %q", t)
 	fd, err := os.Create(t)
 	if err != nil {
-		logErrorf("Cannot create mirror measure file %q: %v", t, err)
+		log.Errorf("Cannot create mirror measure file %q: %v", t, err)
 		return
 	}
 	defer fd.Close()
 	if size == 0 {
-		if _, err = fd.Write(mbChunk[:2]); err != nil {
-			logErrorf("Cannot write mirror measure file %q: %v", t, err)
+		if _, err = fd.Write(MbChunk[:2]); err != nil {
+			log.Errorf("Cannot write mirror measure file %q: %v", t, err)
 			return
 		}
 	} else {
 		for j := 0; j < size; j++ {
-			if _, err = fd.Write(mbChunk[:]); err != nil {
-				logErrorf("Cannot write mirror measure file %q: %v", t, err)
+			if _, err = fd.Write(MbChunk[:]); err != nil {
+				log.Errorf("Cannot write mirror measure file %q: %v", t, err)
 				return
 			}
 		}
@@ -284,7 +287,7 @@ func (s *MountStorage) checkAlive(ctx context.Context, size int) (supportRange b
 	} else {
 		targetSize = (int64)(size) * 1024 * 1024
 	}
-	logInfof("Checking %s for %d bytes ...", s.opt.RedirectBase, targetSize)
+	log.Infof("Checking %s for %d bytes ...", s.opt.RedirectBase, targetSize)
 
 	if err = s.createMeasureFile(size); err != nil {
 		return
@@ -299,31 +302,31 @@ func (s *MountStorage) checkAlive(ctx context.Context, size int) (supportRange b
 		return
 	}
 	req.Header.Set("Range", "bytes=1-")
-	req.Header.Set("User-Agent", ClusterUserAgentFull)
+	req.Header.Set("User-Agent", build.ClusterUserAgentFull)
 	res, err := checkerClient.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("Check request failed %q: %w", target, err)
 	}
 	defer res.Body.Close()
-	logDebugf("Webdav check response status code %d %s", res.StatusCode, res.Status)
+	log.Debugf("Webdav check response status code %d %s", res.StatusCode, res.Status)
 	if supportRange = res.StatusCode == http.StatusPartialContent; supportRange {
-		logDebug("Webdav support Range header!")
+		log.Debug("Webdav support Range header!")
 		targetSize--
 	} else if res.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("Check request failed %q: %d %s", target, res.StatusCode, res.Status)
 	} else {
 		crange := res.Header.Get("Content-Range")
 		if len(crange) > 0 {
-			logWarn("Non standard http response detected, responsed 'Content-Range' header with status 200, expected status 206")
+			log.Warn("Non standard http response detected, responsed 'Content-Range' header with status 200, expected status 206")
 			fields := strings.Fields(crange)
 			if len(fields) >= 2 && fields[0] == "bytes" && strings.HasPrefix(fields[1], "1-") {
-				logDebug("Webdav support Range header?")
+				log.Debug("Webdav support Range header?")
 				supportRange = true
 				targetSize--
 			}
 		}
 	}
-	logDebug("reading webdav server response")
+	log.Debug("reading webdav server response")
 	start := time.Now()
 	n, err := io.Copy(io.Discard, res.Body)
 	if err != nil {
@@ -334,6 +337,6 @@ func (s *MountStorage) checkAlive(ctx context.Context, size int) (supportRange b
 		return false, fmt.Errorf("Webdav check request failed %q: expected %d bytes, but got %d bytes", target, targetSize, n)
 	}
 	rate := (float64)(n) / used.Seconds()
-	logInfof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, bytesToUnit(rate), supportRange)
+	log.Infof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, BytesToUnit(rate), supportRange)
 	return
 }

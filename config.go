@@ -26,10 +26,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"net/url"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/LiterMC/go-openbmclapi/cache"
+	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/utils"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 type AdvancedConfig struct {
@@ -68,7 +72,7 @@ type CacheConfig struct {
 func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 	var cfg struct {
 		Type string  `yaml:"type"`
-		Data RawYAML `yaml:"data,omitempty"`
+		Data utils.RawYAML `yaml:"data,omitempty"`
 	}
 	if err = n.Decode(&cfg); err != nil {
 		return
@@ -102,12 +106,6 @@ type DashboardConfig struct {
 	PwaDesc      string `yaml:"pwa-description"`
 }
 
-type WebDavUser struct {
-	EndPoint string `yaml:"endpoint,omitempty"`
-	Username string `yaml:"username,omitempty"`
-	Password string `yaml:"password,omitempty"`
-}
-
 type Config struct {
 	LogSlots             int    `yaml:"log-slots"`
 	NoAccessLog          bool   `yaml:"no-access-log"`
@@ -123,13 +121,13 @@ type Config struct {
 	SyncInterval         int    `yaml:"sync-interval"`
 	DownloadMaxConn      int    `yaml:"download-max-conn"`
 
-	Certificates []CertificateConfig    `yaml:"certificates"`
-	Cache        CacheConfig            `yaml:"cache"`
-	ServeLimit   ServeLimitConfig       `yaml:"serve-limit"`
-	Dashboard    DashboardConfig        `yaml:"dashboard"`
-	Storages     []StorageOption        `yaml:"storages"`
-	WebdavUsers  map[string]*WebDavUser `yaml:"webdav-users"`
-	Advanced     AdvancedConfig         `yaml:"advanced"`
+	Certificates []CertificateConfig            `yaml:"certificates"`
+	Cache        CacheConfig                    `yaml:"cache"`
+	ServeLimit   ServeLimitConfig               `yaml:"serve-limit"`
+	Dashboard    DashboardConfig                `yaml:"dashboard"`
+	Storages     []storage.StorageOption        `yaml:"storages"`
+	WebdavUsers  map[string]*storage.WebDavUser `yaml:"webdav-users"`
+	Advanced     AdvancedConfig                 `yaml:"advanced"`
 }
 
 func (cfg *Config) applyWebManifest(manifest map[string]any) {
@@ -181,7 +179,7 @@ var defaultConfig = Config{
 
 	Storages: nil,
 
-	WebdavUsers: map[string]*WebDavUser{},
+	WebdavUsers: map[string]*storage.WebDavUser{},
 
 	Advanced: AdvancedConfig{
 		DebugLog:             false,
@@ -315,33 +313,33 @@ func readConfig() (config Config) {
 	notexists := false
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			logError("Cannot read config:", err)
+			log.Error("Cannot read config:", err)
 			os.Exit(1)
 		}
-		logError("Config file not exists, create one")
+		log.Error("Config file not exists, create one")
 		notexists = true
 	} else {
 		migrateConfig(data, &config)
 		if err = yaml.Unmarshal(data, &config); err != nil {
-			logError("Cannot parse config:", err)
+			log.Error("Cannot parse config:", err)
 			os.Exit(1)
 		}
 		if len(config.Storages) == 0 {
-			config.Storages = []StorageOption{
+			config.Storages = []storage.StorageOption{
 				{
-					BasicStorageOption: BasicStorageOption{
+					BasicStorageOption: storage.BasicStorageOption{
 						Id:     "local",
-						Type:   StorageLocal,
+						Type:   storage.StorageLocal,
 						Weight: 100,
 					},
-					Data: &LocalStorageOption{
+					Data: &storage.LocalStorageOption{
 						CachePath: "cache",
 					},
 				},
 			}
 		}
 		if len(config.WebdavUsers) == 0 {
-			config.WebdavUsers["example-user"] = &WebDavUser{
+			config.WebdavUsers["example-user"] = &storage.WebDavUser{
 				EndPoint: "https://webdav.example.com/path/to/endpoint/",
 				Username: "example-username",
 				Password: "example-password",
@@ -354,10 +352,39 @@ func readConfig() (config Config) {
 				config.Storages[i].Id = s.Id
 			}
 			if j, ok := ids[s.Id]; ok {
-				logErrorf("Duplicated storage id %q at [%d] and [%d], please edit the config.", s.Id, i, j)
+				log.Errorf("Duplicated storage id %q at [%d] and [%d], please edit the config.", s.Id, i, j)
 				os.Exit(1)
 			}
 			ids[s.Id] = i
+		}
+	}
+
+	for _, so := range config.Storages {
+		switch opt := so.Data.(type) {
+		case *storage.WebDavStorageOption:
+			if alias := opt.Alias; alias != "" {
+				user, ok := config.WebdavUsers[alias]
+				if !ok {
+					log.Errorf("Web dav user %q does not exists", alias)
+					os.Exit(1)
+				}
+				opt.AliasUser = user
+				var end *url.URL
+				if end, err = url.Parse(opt.AliasUser.EndPoint); err != nil {
+					return
+				}
+				if opt.EndPoint != "" {
+					var full *url.URL
+					if full, err = end.Parse(opt.EndPoint); err != nil {
+						return
+					}
+					opt.FullEndPoint = full.String()
+				} else {
+					opt.FullEndPoint = opt.AliasUser.EndPoint
+				}
+			} else {
+				opt.FullEndPoint = opt.EndPoint
+			}
 		}
 	}
 
@@ -365,15 +392,15 @@ func readConfig() (config Config) {
 	encoder := yaml.NewEncoder(&buf)
 	encoder.SetIndent(2)
 	if err = encoder.Encode(config); err != nil {
-		logError("Cannot encode config:", err)
+		log.Error("Cannot encode config:", err)
 		os.Exit(1)
 	}
 	if err = os.WriteFile(configPath, buf.Bytes(), 0600); err != nil {
-		logError("Cannot write config:", err)
+		log.Error("Cannot write config:", err)
 		os.Exit(1)
 	}
 	if notexists {
-		logError("Config file created, please edit it and start the program again")
+		log.Error("Config file created, please edit it and start the program again")
 		os.Exit(0xff)
 	}
 
@@ -385,14 +412,14 @@ func readConfig() (config Config) {
 	}
 	if v := os.Getenv("CLUSTER_PORT"); v != "" {
 		if n, err := strconv.Atoi(v); err != nil {
-			logErrorf("Cannot parse CLUSTER_PORT %q: %v", v, err)
+			log.Errorf("Cannot parse CLUSTER_PORT %q: %v", v, err)
 		} else {
 			config.Port = (uint16)(n)
 		}
 	}
 	if v := os.Getenv("CLUSTER_PUBLIC_PORT"); v != "" {
 		if n, err := strconv.Atoi(v); err != nil {
-			logErrorf("Cannot parse CLUSTER_PUBLIC_PORT %q: %v", v, err)
+			log.Errorf("Cannot parse CLUSTER_PUBLIC_PORT %q: %v", v, err)
 		} else {
 			config.PublicPort = (uint16)(n)
 		}

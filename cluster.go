@@ -52,6 +52,11 @@ import (
 	"github.com/vbauerster/mpb/v8/decor"
 
 	gocache "github.com/LiterMC/go-openbmclapi/cache"
+	"github.com/LiterMC/go-openbmclapi/limited"
+	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/utils"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 type Cluster struct {
@@ -65,8 +70,8 @@ type Cluster struct {
 
 	dataDir            string
 	maxConn            int
-	storageOpts        []StorageOption
-	storages           []Storage
+	storageOpts        []storage.StorageOption
+	storages           []storage.Storage
 	storageWeights     []uint
 	storageTotalWeight uint
 	cache              gocache.Cache
@@ -96,7 +101,7 @@ type Cluster struct {
 
 	client    *http.Client
 	cachedCli *http.Client
-	bufSlots  *BufSlots
+	bufSlots  *limited.BufSlots
 	tokens    *TokenStorage
 
 	wsUpgrader   *websocket.Upgrader
@@ -111,7 +116,7 @@ func NewCluster(
 	host string, publicPort uint16,
 	clusterId string, clusterSecret string,
 	byoc bool, dialer *net.Dialer,
-	storageOpts []StorageOption,
+	storageOpts []storage.StorageOption,
 	cache gocache.Cache,
 ) (cr *Cluster) {
 	transport := http.DefaultTransport
@@ -161,16 +166,16 @@ func NewCluster(
 	}
 	close(cr.disabled)
 
-	cr.bufSlots = NewBufSlots(cr.maxConn)
+	cr.bufSlots = limited.NewBufSlots(cr.maxConn)
 
 	{
 		var (
 			n   uint = 0
 			wgs      = make([]uint, len(storageOpts))
-			sts      = make([]Storage, len(storageOpts))
+			sts      = make([]storage.Storage, len(storageOpts))
 		)
 		for i, s := range storageOpts {
-			sts[i] = NewStorage(s)
+			sts[i] = storage.NewStorage(s)
 			wgs[i] = s.Weight
 			n += s.Weight
 		}
@@ -183,7 +188,7 @@ func NewCluster(
 
 func (cr *Cluster) Init(ctx context.Context) (err error) {
 	// Init storages
-	vctx := context.WithValue(ctx, ClusterCacheCtxKey, cr.cache)
+	vctx := context.WithValue(ctx, storage.ClusterCacheCtxKey, cr.cache)
 	for _, s := range cr.storages {
 		s.Init(vctx)
 	}
@@ -191,7 +196,7 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	os.MkdirAll(cr.dataDir, 0755)
 	// read old stats
 	if err := cr.stats.Load(cr.dataDir); err != nil {
-		logErrorf("Could not load stats: %v", err)
+		log.Errorf("Could not load stats: %v", err)
 	}
 	if cr.apiHmacKey, err = loadOrCreateHmacKey(cr.dataDir); err != nil {
 		return fmt.Errorf("Cannot load hmac key: %w", err)
@@ -208,7 +213,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	defer cr.mux.Unlock()
 
 	if cr.socket != nil {
-		logDebug("Extra connect")
+		log.Debug("Extra connect")
 		return true
 	}
 
@@ -217,12 +222,12 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		Path: "/socket.io/",
 		ExtraHeaders: http.Header{
 			"Origin":     {cr.prefix},
-			"User-Agent": {ClusterUserAgent},
+			"User-Agent": {build.ClusterUserAgent},
 		},
 		DialTimeout: time.Minute * 6,
 	})
 	if err != nil {
-		logErrorf("Could not parse Engine.IO options: %v; exit.", err)
+		log.Errorf("Could not parse Engine.IO options: %v; exit.", err)
 		os.Exit(1)
 	}
 
@@ -230,14 +235,14 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 
 	if config.Advanced.SocketIOLog {
 		engio.OnRecv(func(_ *engine.Socket, data []byte) {
-			logDebugf("Engine.IO recv: %q", (string)(data))
+			log.Debugf("Engine.IO recv: %q", (string)(data))
 		})
 		engio.OnSend(func(_ *engine.Socket, data []byte) {
-			logDebugf("Engine.IO sending: %q", (string)(data))
+			log.Debugf("Engine.IO sending: %q", (string)(data))
 		})
 	}
 	engio.OnConnect(func(*engine.Socket) {
-		logInfo("Engine.IO connected")
+		log.Info("Engine.IO connected")
 	})
 	engio.OnDisconnect(func(_ *engine.Socket, err error) {
 		if ctx.Err() != nil {
@@ -245,11 +250,11 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 			return
 		}
 		if err != nil {
-			logWarnf("Engine.IO disconnected: %v", err)
+			log.Warnf("Engine.IO disconnected: %v", err)
 		}
 		if config.Advanced.ExitWhenDisconnected {
 			if cr.shouldEnable.Load() {
-				logErrorf("Cluster disconnected from remote; exit.")
+				log.Errorf("Cluster disconnected from remote; exit.")
 				os.Exit(0x08)
 			}
 		}
@@ -258,10 +263,10 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	engio.OnDialError(func(_ *engine.Socket, err error) {
 		const maxReconnectCount = 8
 		cr.reconnectCount++
-		logErrorf("Failed to connect to the center server (%d/%d): %v", cr.reconnectCount, maxReconnectCount, err)
+		log.Errorf("Failed to connect to the center server (%d/%d): %v", cr.reconnectCount, maxReconnectCount, err)
 		if cr.reconnectCount >= maxReconnectCount {
 			if cr.shouldEnable.Load() {
-				logErrorf("Cluster failed to connect too much times; exit.")
+				log.Errorf("Cluster failed to connect too much times; exit.")
 				os.Exit(0x08)
 			}
 		}
@@ -270,19 +275,19 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket = socket.NewSocket(engio, socket.WithAuthTokenFn(func() string {
 		token, err := cr.GetAuthToken(ctx)
 		if err != nil {
-			logErrorf("Cannot get auth token: %v; exit.", err)
+			log.Errorf("Cannot get auth token: %v; exit.", err)
 			os.Exit(2)
 		}
 		return token
 	}))
 	cr.socket.OnBeforeConnect(func(*socket.Socket) {
-		logInfo("Preparing to connect to center server")
+		log.Info("Preparing to connect to center server")
 	})
 	cr.socket.OnConnect(func(*socket.Socket, string) {
-		logDebugf("shouldEnable is %v", cr.shouldEnable.Load())
+		log.Debugf("shouldEnable is %v", cr.shouldEnable.Load())
 		if cr.shouldEnable.Load() {
 			if err := cr.Enable(ctx); err != nil {
-				logErrorf("Cannot enable cluster: %v; exit.", err)
+				log.Errorf("Cannot enable cluster: %v; exit.", err)
 				os.Exit(0x08)
 			}
 		}
@@ -296,21 +301,21 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 			// Ignore if the error is because context cancelled
 			return
 		}
-		logErrorf("Socket.IO error: %v", err)
+		log.Errorf("Socket.IO error: %v", err)
 	})
 	cr.socket.OnMessage(func(event string, data []any) {
 		if event == "message" {
-			logInfof("[remote]: %v", data[0])
+			log.Infof("[remote]: %v", data[0])
 		}
 	})
-	logInfof("Dialing %s", engio.URL().String())
+	log.Infof("Dialing %s", engio.URL().String())
 	if err := engio.Dial(ctx); err != nil {
-		logErrorf("Dial error: %v", err)
+		log.Errorf("Dial error: %v", err)
 		return false
 	}
-	logInfo("Connecting to socket.io namespace")
+	log.Info("Connecting to socket.io namespace")
 	if err := cr.socket.Connect(""); err != nil {
-		logErrorf("Open namespace error: %v", err)
+		log.Errorf("Open namespace error: %v", err)
 		return false
 	}
 	return true
@@ -337,23 +342,23 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	defer cr.mux.Unlock()
 
 	if cr.enabled.Load() {
-		logDebug("Extra enable")
+		log.Debug("Extra enable")
 		return
 	}
 
 	if !cr.socket.IO().Connected() && config.Advanced.ExitWhenDisconnected {
-		logErrorf("Cluster disconnected from remote; exit.")
+		log.Errorf("Cluster disconnected from remote; exit.")
 		os.Exit(0x08)
 		return
 	}
 
 	cr.shouldEnable.Store(true)
 
-	logInfo("Sending enable packet")
+	log.Info("Sending enable packet")
 	resCh, err := cr.socket.EmitWithAck("enable", Map{
 		"host":         cr.host,
 		"port":         cr.publicPort,
-		"version":      ClusterVersion,
+		"version":      build.ClusterVersion,
 		"byoc":         cr.byoc,
 		"noFastEnable": config.Advanced.NoFastEnable,
 	})
@@ -369,14 +374,14 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	case data = <-resCh:
 		cancel()
 	}
-	logDebug("got enable ack:", data)
+	log.Debug("got enable ack:", data)
 	if ero := data[0]; ero != nil {
 		return fmt.Errorf("Enable failed: %v", ero)
 	}
 	if !data[1].(bool) {
 		return errors.New("Enable ack non true value")
 	}
-	logInfo("Cluster enabled")
+	log.Info("Cluster enabled")
 	cr.disabled = make(chan struct{}, 0)
 	cr.enabled.Store(true)
 	for _, ch := range cr.waitEnable {
@@ -392,15 +397,15 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		cancel()
 		if !ok {
 			if keepaliveCtx.Err() == nil {
-				logInfo("Reconnecting due to keepalive failed")
+				log.Info("Reconnecting due to keepalive failed")
 				cr.disable(ctx)
-				logInfo("Reconnecting ...")
+				log.Info("Reconnecting ...")
 				if !cr.Connect(ctx) {
-					logError("Cannot reconnect to server, exit.")
+					log.Error("Cannot reconnect to server, exit.")
 					os.Exit(1)
 				}
 				if err := cr.Enable(ctx); err != nil {
-					logError("Cannot enable cluster:", err, "; exit.")
+					log.Error("Cannot enable cluster:", err, "; exit.")
 					os.Exit(1)
 				}
 			}
@@ -419,10 +424,10 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		"bytes": hbts,
 	})
 	if e := cr.stats.Save(cr.dataDir); e != nil {
-		logError("Error when saving status:", e)
+		log.Error("Error when saving status:", e)
 	}
 	if err != nil {
-		logError("Error when keep-alive:", err)
+		log.Error("Error when keep-alive:", err)
 		return false
 	}
 	var data []any
@@ -432,10 +437,10 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 	case data = <-resCh:
 	}
 	if ero := data[0]; len(data) <= 1 || ero != nil {
-		logError("Keep-alive failed:", ero)
+		log.Error("Keep-alive failed:", ero)
 		return false
 	}
-	logInfo("Keep-alive success:", hits, bytesToUnit((float64)(hbts)), data[1])
+	log.Info("Keep-alive success:", hits, bytesToUnit((float64)(hbts)), data[1])
 	return true
 }
 
@@ -465,7 +470,7 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 	defer cr.mux.Unlock()
 
 	if !cr.enabled.Load() {
-		logDebug("Extra disable")
+		log.Debug("Extra disable")
 		return false
 	}
 	if cr.cancelKeepalive != nil {
@@ -475,7 +480,7 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 	if cr.socket == nil {
 		return false
 	}
-	logInfo("Disabling cluster")
+	log.Info("Disabling cluster")
 	if resCh, err := cr.socket.EmitWithAck("disable"); err == nil {
 		tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.Advanced.KeepaliveTimeout))
 		select {
@@ -483,24 +488,24 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 			cancel()
 		case data := <-resCh:
 			cancel()
-			logDebug("disable ack:", data)
+			log.Debug("disable ack:", data)
 			if ero := data[0]; ero != nil {
-				logErrorf("Disable failed: %v", ero)
+				log.Errorf("Disable failed: %v", ero)
 			} else if !data[1].(bool) {
-				logError("Disable failed: acked non true value")
+				log.Error("Disable failed: acked non true value")
 			} else {
 				ok = true
 			}
 		}
 	} else {
-		logErrorf("Disable failed: %v", err)
+		log.Errorf("Disable failed: %v", err)
 	}
 
 	cr.enabled.Store(false)
 	go cr.socket.Close()
 	cr.socket = nil
 	close(cr.disabled)
-	logWarn("Cluster disabled")
+	log.Warn("Cluster disabled")
 	return
 }
 
@@ -523,7 +528,7 @@ type CertKeyPair struct {
 }
 
 func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
-	logInfo("Requesting certificates, please wait ...")
+	log.Info("Requesting certificates, please wait ...")
 	resCh, err := cr.socket.EmitWithAck("request-cert")
 	if err != nil {
 		return
@@ -543,7 +548,7 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 		Cert: pair["cert"].(string),
 		Key:  pair["key"].(string),
 	}
-	logInfo("Certificate requested")
+	log.Info("Certificate requested")
 	return
 }
 
@@ -570,7 +575,7 @@ func (cr *Cluster) makeReqWithBody(
 	if err != nil {
 		return
 	}
-	req.Header.Set("User-Agent", ClusterUserAgent)
+	req.Header.Set("User-Agent", build.ClusterUserAgent)
 	return
 }
 
@@ -622,7 +627,7 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 		err = fmt.Errorf("Unexpected status code: %d %s Body:\n\t%s", res.StatusCode, res.Status, (string)(data))
 		return
 	}
-	logDebug("Parsing filelist body ...")
+	log.Debug("Parsing filelist body ...")
 	zr, err := zstd.NewReader(res.Body)
 	if err != nil {
 		return
@@ -658,7 +663,7 @@ func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, 
 }
 
 type syncStats struct {
-	slots  *BufSlots
+	slots  *limited.BufSlots
 	noOpen bool
 
 	totalSize          int64
@@ -671,9 +676,9 @@ type syncStats struct {
 }
 
 func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) bool {
-	logInfo("Preparing to sync files...")
+	log.Info("Preparing to sync files...")
 	if !cr.issync.CompareAndSwap(false, true) {
-		logWarn("Another sync task is running!")
+		log.Warn("Another sync task is running!")
 		return false
 	}
 
@@ -699,12 +704,12 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 type fileInfoWithTargets struct {
 	FileInfo
 	tgMux   sync.Mutex
-	targets []Storage
+	targets []storage.Storage
 }
 
 func (cr *Cluster) checkFileFor(
 	ctx context.Context,
-	storage Storage, files []FileInfo,
+	sto storage.Storage, files []FileInfo,
 	heavy bool,
 	missing *SyncMap[string, *fileInfoWithTargets],
 	pg *mpb.Progress,
@@ -715,33 +720,33 @@ func (cr *Cluster) checkFileFor(
 		if info, has := missing.GetOrSet(f.Hash, func() *fileInfoWithTargets {
 			return &fileInfoWithTargets{
 				FileInfo: f,
-				targets:  []Storage{storage},
+				targets:  []storage.Storage{sto},
 			}
 		}); has {
 			info.tgMux.Lock()
-			info.targets = append(info.targets, storage)
+			info.targets = append(info.targets, sto)
 			info.tgMux.Unlock()
 		}
 	}
 
-	logInfof("Start checking files for %s, heavy = %v", storage.String(), heavy)
+	log.Infof("Start checking files for %s, heavy = %v", sto.String(), heavy)
 
 	var (
 		checkingHashMux  sync.Mutex
 		checkingHash     string
 		lastCheckingHash string
-		slots            *BufSlots
+		slots            *limited.BufSlots
 	)
 
 	if heavy {
-		slots = NewBufSlots(runtime.GOMAXPROCS(0) * 2)
+		slots = limited.NewBufSlots(runtime.GOMAXPROCS(0) * 2)
 	}
 
 	bar := pg.AddBar(0,
 		mpb.BarRemoveOnComplete(),
 		mpb.PrependDecorators(
 			decor.Name("> Checking "),
-			decor.Name(storage.String()),
+			decor.Name(sto.String()),
 			decor.OnCondition(
 				decor.Any(func(decor.Statistics) string {
 					c, l := slots.Cap(), slots.Len()
@@ -775,8 +780,8 @@ func (cr *Cluster) checkFileFor(
 	{
 		start := time.Now()
 		var checkedMp [256]bool
-		storage.WalkDir(func(hash string, size int64) error {
-			if n := HexTo256(hash); !checkedMp[n] {
+		sto.WalkDir(func(hash string, size int64) error {
+			if n := utils.HexTo256(hash); !checkedMp[n] {
 				checkedMp[n] = true
 				now := time.Now()
 				bar.EwmaIncrement(now.Sub(start))
@@ -800,15 +805,15 @@ func (cr *Cluster) checkFileFor(
 			checkingHashMux.Unlock()
 		}
 		if f.Size == 0 {
-			logDebugf("Skipped empty file %s", hash)
+			log.Debugf("Skipped empty file %s", hash)
 		} else if size, ok := sizeMap[hash]; ok {
 			if size != f.Size {
-				logWarnf("Found modified file: size of %q is %d, expect %d", hash, size, f.Size)
+				log.Warnf("Found modified file: size of %q is %d, expect %d", hash, size, f.Size)
 				addMissing(f)
 			} else if heavy {
 				hashMethod, err := getHashMethod(len(hash))
 				if err != nil {
-					logErrorf("Unknown hash method for %q", hash)
+					log.Errorf("Unknown hash method for %q", hash)
 				} else {
 					_, buf, free := slots.Alloc(ctx)
 					if buf == nil {
@@ -817,17 +822,17 @@ func (cr *Cluster) checkFileFor(
 					go func(f FileInfo, buf []byte, free func()) {
 						defer free()
 						miss := true
-						r, err := storage.Open(hash)
+						r, err := sto.Open(hash)
 						if err != nil {
-							logErrorf("Could not open %q: %v", hash, err)
+							log.Errorf("Could not open %q: %v", hash, err)
 						} else {
 							hw := hashMethod.New()
 							_, err = io.CopyBuffer(hw, r, buf[:])
 							r.Close()
 							if err != nil {
-								logErrorf("Could not calculate hash for %s: %v", hash, err)
+								log.Errorf("Could not calculate hash for %s: %v", hash, err)
 							} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != hash {
-								logWarnf("Found modified file: hash of %s became %s", hash, hs)
+								log.Warnf("Found modified file: hash of %s became %s", hash, hs)
 							} else {
 								miss = false
 							}
@@ -841,7 +846,7 @@ func (cr *Cluster) checkFileFor(
 				}
 			}
 		} else {
-			logDebugf("Could not found file %q", hash)
+			log.Debugf("Could not found file %q", hash)
 			addMissing(f)
 		}
 		bar.EwmaIncrement(time.Since(start))
@@ -852,15 +857,15 @@ func (cr *Cluster) checkFileFor(
 	checkingHashMux.Unlock()
 
 	bar.SetTotal(-1, true)
-	logInfof("File check finished for %s, missing %d files", storage.String(), missingCount.Load())
+	log.Infof("File check finished for %s, missing %d files", sto.String(), missingCount.Load())
 	return
 }
 
 func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
 	pg := mpb.New(mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh(), mpb.WithWidth(140))
 	defer pg.Shutdown()
-	setLogOutput(pg)
-	defer setLogOutput(nil)
+	log.SetLogOutput(pg)
+	defer log.SetLogOutput(nil)
 
 	cr.syncProg.Store(0)
 	cr.syncTotal.Store(-1)
@@ -869,7 +874,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	done := make(chan struct{}, 0)
 
 	for _, s := range cr.storages {
-		go func(s Storage) {
+		go func(s storage.Storage) {
 			defer func() {
 				select {
 				case done <- struct{}{}:
@@ -883,14 +888,14 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		select {
 		case <-done:
 		case <-ctx.Done():
-			logWarn("File sync interrupted")
+			log.Warn("File sync interrupted")
 			return ctx.Err()
 		}
 	}
 
 	totalFiles := len(missingMap.m)
 	if totalFiles == 0 {
-		logInfo("All files were synchronized")
+		log.Info("All files were synchronized")
 		return nil
 	}
 
@@ -901,7 +906,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		return err
 	}
 	syncCfg := ccfg.Sync
-	logInfof("Sync config: %#v", syncCfg)
+	log.Infof("Sync config: %#v", syncCfg)
 
 	missing := make([]*fileInfoWithTargets, 0, len(missingMap.m))
 	for _, f := range missingMap.m {
@@ -911,7 +916,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	var stats syncStats
 	stats.pg = pg
 	stats.noOpen = config.Advanced.NoOpen || syncCfg.Source == "center"
-	stats.slots = NewBufSlots(syncCfg.Concurrency)
+	stats.slots = limited.NewBufSlots(syncCfg.Concurrency)
 	stats.totalFiles = totalFiles
 	for _, f := range missing {
 		stats.totalSize += f.Size
@@ -938,14 +943,14 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		),
 	)
 
-	logInfof("Starting sync files, count: %d, total: %s", totalFiles, bytesToUnit((float64)(stats.totalSize)))
+	log.Infof("Starting sync files, count: %d, total: %s", totalFiles, bytesToUnit((float64)(stats.totalSize)))
 	start := time.Now()
 
 	for _, f := range missing {
-		logDebugf("File %s is for %v", f.Hash, f.targets)
+		log.Debugf("File %s is for %v", f.Hash, f.targets)
 		pathRes, err := cr.fetchFile(ctx, &stats, f.FileInfo)
 		if err != nil {
-			logWarn("File sync interrupted")
+			log.Warn("File sync interrupted")
 			return err
 		}
 		go func(f *fileInfoWithTargets, pathRes <-chan string) {
@@ -974,12 +979,12 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 					defer srcFd.Close()
 					for _, target := range f.targets {
 						if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-							logErrorf("Could not seek file %q to start: %v", path, err)
+							log.Errorf("Could not seek file %q to start: %v", path, err)
 							continue
 						}
 						err := target.Create(f.Hash, srcFd)
 						if err != nil {
-							logErrorf("Could not create %s/%s: %v", target.String(), f.Hash, err)
+							log.Errorf("Could not create %s/%s: %v", target.String(), f.Hash, err)
 							continue
 						}
 					}
@@ -993,7 +998,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		select {
 		case <-done:
 		case <-ctx.Done():
-			logWarn("File sync interrupted")
+			log.Warn("File sync interrupted")
 			return ctx.Err()
 		}
 	}
@@ -1001,7 +1006,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	use := time.Since(start)
 	pg.Wait()
 
-	logInfof("All files were synchronized, use time: %v, %s/s", use, bytesToUnit((float64)(stats.totalSize)/use.Seconds()))
+	log.Infof("All files were synchronized, use time: %v, %s/s", use, bytesToUnit((float64)(stats.totalSize)/use.Seconds()))
 	return nil
 }
 
@@ -1011,27 +1016,27 @@ func (cr *Cluster) gc() {
 	}
 }
 
-func (cr *Cluster) gcFor(s Storage) {
-	logInfo("Starting garbage collector for", s.String())
+func (cr *Cluster) gcFor(s storage.Storage) {
+	log.Info("Starting garbage collector for", s.String())
 	err := s.WalkDir(func(hash string, _ int64) error {
 		if cr.issync.Load() {
 			return context.Canceled
 		}
 		if _, ok := cr.CachedFileSize(hash); !ok {
-			logInfo("Found outdated file:", hash)
+			log.Info("Found outdated file:", hash)
 			s.Remove(hash)
 		}
 		return nil
 	})
 	if err != nil {
 		if err == context.Canceled {
-			logWarn("Garbage collector interrupted at", s.String())
+			log.Warn("Garbage collector interrupted at", s.String())
 		} else {
-			logErrorf("Garbage collector error: %v", err)
+			log.Errorf("Garbage collector error: %v", err)
 		}
 		return
 	}
-	logInfo("Garbage collect finished for", s.String())
+	log.Info("Garbage collect finished for", s.String())
 }
 
 func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) (<-chan string, error) {
@@ -1090,7 +1095,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 				}); err == nil {
 					pathRes <- path
 					stats.okCount.Add(1)
-					logInfof("Downloaded %s [%s] %.2f%%", f.Path,
+					log.Infof("Downloaded %s [%s] %.2f%%", f.Path,
 						bytesToUnit((float64)(f.Size)),
 						(float64)(stats.totalBar.Current())/(float64)(stats.totalSize)*100)
 					return
@@ -1098,7 +1103,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 			}
 			bar.SetRefill(bar.Current())
 
-			logErrorf("Download error %s:\n\t%s", f.Path, err)
+			log.Errorf("Download error %s:\n\t%s", f.Path, err)
 			c := trycount.Add(1)
 			if c > maxRetryCount {
 				break
@@ -1150,7 +1155,7 @@ func (cr *Cluster) fetchFileWithBuf(
 		return
 	}
 	if res.StatusCode != http.StatusOK {
-		err = NewHTTPStatusErrorFromResponse(res)
+		err = utils.NewHTTPStatusErrorFromResponse(res)
 		return
 	}
 	switch ce := strings.ToLower(res.Header.Get("Content-Encoding")); ce {
@@ -1247,10 +1252,10 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		done <- err
 	}()
 
-	logInfof("Downloading %s from handler", hash)
+	log.Infof("Downloading %s from handler", hash)
 	defer func() {
 		if err != nil {
-			logErrorf("Could not download %s: %v", hash, err)
+			log.Errorf("Could not download %s: %v", hash, err)
 		}
 	}()
 
@@ -1272,11 +1277,11 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 
 	for _, target := range cr.storages {
 		if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-			logErrorf("Could not seek file %q: %v", path, err)
+			log.Errorf("Could not seek file %q: %v", path, err)
 			return
 		}
 		if err := target.Create(hash, srcFd); err != nil {
-			logErrorf("Could not create %q: %v", target.String(), err)
+			log.Errorf("Could not create %q: %v", target.String(), err)
 			continue
 		}
 	}

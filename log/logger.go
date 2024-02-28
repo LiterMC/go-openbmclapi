@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package log
 
 import (
 	"bytes"
@@ -26,19 +26,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-var NullLogger = log.New(DevNull, "", log.LstdFlags)
-
 var (
 	logdir    string = "logs"
+	logSlots  int    = 7
 	logfile   atomic.Pointer[os.File]
 	logStdout atomic.Pointer[io.Writer]
 
@@ -48,9 +47,48 @@ var (
 	accessLogFile     atomic.Pointer[os.File]
 
 	maxAccessLogFileSize int64 = 1024 * 1024 * 10 // 10MB
+	accessLogSlots       int   = 16
 )
 
-func setLogOutput(out io.Writer) {
+type Level int32
+
+const (
+	_ Level = iota
+	LevelTrace
+	LevelDebug
+	LevelInfo
+	LevelWarn
+	LevelError
+	LevelPanic
+
+	LevelMask = 0xff
+)
+
+const (
+	LogConsoleOnly Level = 1 << (8 + iota)
+	LogNotToFile
+)
+
+func (l Level) String() string {
+	switch l & LevelMask {
+	case LevelTrace:
+		return "TRAC"
+	case LevelDebug:
+		return "DBUG"
+	case LevelInfo:
+		return "INFO"
+	case LevelWarn:
+		return "WARN"
+	case LevelError:
+		return "ERRO"
+	case LevelPanic:
+		return "PANI"
+	default:
+		return "<Unknown logger.Level>"
+	}
+}
+
+func SetLogOutput(out io.Writer) {
 	if out == nil {
 		logStdout.Store(nil)
 	} else {
@@ -58,40 +96,26 @@ func setLogOutput(out io.Writer) {
 	}
 }
 
-type LogLevel int32
-
-const (
-	_ LogLevel = iota
-	LogLevelDebug
-	LogLevelInfo
-	LogLevelWarn
-	LogLevelError
-
-	LogLevelMask = 0xff
-)
-
-const (
-	LogConsoleOnly = 1 << (8 + iota)
-	LogNotToFile
-)
-
-func (l LogLevel) String() string {
-	switch l & LogLevelMask {
-	case LogLevelDebug:
-		return "DBUG"
-	case LogLevelInfo:
-		return "INFO"
-	case LogLevelWarn:
-		return "WARN"
-	case LogLevelError:
-		return "ERRO"
-	default:
-		return "<Unknown LogLevel>"
-	}
+func SetLogSlots(slots int) {
+	logSlots = slots
 }
 
-func logWrite(level LogLevel, buf []byte) {
-	if level&LogLevelMask <= LogLevelDebug && !config.Advanced.DebugLog {
+func SetAccessLogSlots(slots int) {
+	accessLogSlots = slots
+}
+
+var minimumLogLevel atomic.Int32
+
+func init() {
+	SetLevel(LevelInfo)
+}
+
+func SetLevel(l Level) {
+	minimumLogLevel.Store((int32)(l & LevelMask))
+}
+
+func logWrite(level Level, buf []byte) {
+	if level&LevelMask < (Level)(minimumLogLevel.Load()) {
 		return
 	}
 	{
@@ -109,17 +133,17 @@ func logWrite(level LogLevel, buf []byte) {
 	}
 }
 
-type LogListenerFn = func(ts int64, level LogLevel, log string)
+type LogListenerFn = func(ts int64, level Level, log string)
 
 type LogListener struct {
-	level LogLevel
+	level Level
 	cb    LogListenerFn
 }
 
 var logListenMux sync.RWMutex
 var logListeners []*LogListener
 
-func RegisterLogMonitor(level LogLevel, cb LogListenerFn) func() {
+func RegisterLogMonitor(level Level, cb LogListenerFn) func() {
 	l := &LogListener{
 		level: level,
 		cb:    cb,
@@ -148,17 +172,16 @@ func RegisterLogMonitor(level LogLevel, cb LogListenerFn) func() {
 	}
 }
 
-func callLogListeners(level LogLevel, ts int64, log string) {
+func callLogListeners(level Level, ts int64, log string) {
 	if level&LogConsoleOnly != 0 {
 		return
 	}
-	level &= LogLevelMask
 
 	logListenMux.RLock()
 	defer logListenMux.RUnlock()
 
 	for _, l := range logListeners {
-		if level >= l.level {
+		if level&LevelMask >= l.level {
 			l.cb(ts, level, log)
 		}
 	}
@@ -173,7 +196,7 @@ var logBufPool = sync.Pool{
 	},
 }
 
-func logXStr(level LogLevel, log string) {
+func logXStr(level Level, log string) {
 	now := time.Now()
 	lvl := level.String()
 
@@ -194,7 +217,7 @@ func logXStr(level LogLevel, log string) {
 	callLogListeners(level, now.UnixMilli(), log)
 }
 
-func logX(level LogLevel, args ...any) {
+func logX(level Level, args ...any) {
 	sa := make([]string, len(args))
 	for i, _ := range args {
 		sa[i] = fmt.Sprint(args[i])
@@ -203,41 +226,67 @@ func logX(level LogLevel, args ...any) {
 	logXStr(level, c)
 }
 
-func logXf(level LogLevel, format string, args ...any) {
+func logXf(level Level, format string, args ...any) {
 	c := fmt.Sprintf(format, args...)
 	logXStr(level, c)
 }
 
-func logDebug(args ...any) {
-	logX(LogLevelDebug, args...)
+func Debug(args ...any) {
+	logX(LevelDebug, args...)
 }
 
-func logDebugf(format string, args ...any) {
-	logXf(LogLevelDebug, format, args...)
+func Debugf(format string, args ...any) {
+	logXf(LevelDebug, format, args...)
 }
 
-func logInfo(args ...any) {
-	logX(LogLevelInfo, args...)
+func Info(args ...any) {
+	logX(LevelInfo, args...)
 }
 
-func logInfof(format string, args ...any) {
-	logXf(LogLevelInfo, format, args...)
+func Infof(format string, args ...any) {
+	logXf(LevelInfo, format, args...)
 }
 
-func logWarn(args ...any) {
-	logX(LogLevelWarn, args...)
+func Warn(args ...any) {
+	logX(LevelWarn, args...)
 }
 
-func logWarnf(format string, args ...any) {
-	logXf(LogLevelWarn, format, args...)
+func Warnf(format string, args ...any) {
+	logXf(LevelWarn, format, args...)
 }
 
-func logError(args ...any) {
-	logX(LogLevelError, args...)
+func Error(args ...any) {
+	logX(LevelError, args...)
 }
 
-func logErrorf(format string, args ...any) {
-	logXf(LogLevelError, format, args...)
+func Errorf(format string, args ...any) {
+	logXf(LevelError, format, args...)
+}
+
+func Panic(err any) {
+	logX(LevelPanic, err)
+	panic(err)
+}
+
+func Panicf(format string, args ...any) {
+	err := fmt.Errorf(format, args...)
+	logX(LevelPanic, err)
+	panic(err)
+}
+
+func RecordPanic() {
+	if err := recover(); err != nil {
+		stack := debug.Stack()
+		logXf(LevelPanic, "panic: %v\n%s", err, stack)
+		panic(err)
+	}
+}
+
+func RecoverPanic() {
+	if err := recover(); err != nil {
+		stack := debug.Stack()
+		logXf(LevelPanic, "panic: %v\n%s", err, stack)
+	}
 }
 
 func flushLogfile() {
@@ -247,7 +296,7 @@ func flushLogfile() {
 	lfile, err := os.OpenFile(filepath.Join(logdir, time.Now().Format("20060102-15.log")),
 		os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
-		logError("Cannot create new log file:", err)
+		Error("Cannot create new log file:", err)
 		return
 	}
 
@@ -263,7 +312,7 @@ func removeExpiredLogFiles(before string) {
 			n := f.Name()
 			if strings.HasSuffix(n, ".log") && n < before {
 				p := filepath.Join(logdir, n)
-				logDebugf("Remove expired log %q", p)
+				Debugf("Remove expired log %q", p)
 				os.Remove(p)
 			}
 		}
@@ -271,7 +320,7 @@ func removeExpiredLogFiles(before string) {
 }
 
 func moveAccessLogs(src string, n int) {
-	if n > config.AccessLogSlots {
+	if n > accessLogSlots {
 		os.Remove(src)
 		return
 	}
@@ -285,13 +334,13 @@ func moveAccessLogs(src string, n int) {
 	if n == 2 {
 		srcFd, err := os.Open(src)
 		if err != nil {
-			logErrorf("Cannot open log file at %s: %v", src, err)
+			Errorf("Cannot open log file at %s: %v", src, err)
 			return
 		}
 		defer srcFd.Close()
 		dstFd, err := os.Create(dst)
 		if err != nil {
-			logErrorf("Cannot create file at %s: %v", dst, err)
+			Errorf("Cannot create file at %s: %v", dst, err)
 			return
 		}
 		defer dstFd.Close()
@@ -299,12 +348,12 @@ func moveAccessLogs(src string, n int) {
 		defer w.Close()
 		_, err = io.Copy(w, srcFd)
 		if err != nil {
-			logErrorf("Cannot compress log file to %s: %v", dst, err)
+			Errorf("Cannot compress log file to %s: %v", dst, err)
 		}
 	} else {
 		err := os.Rename(src, dst)
 		if err != nil {
-			logErrorf("Cannot rename log file: %v", err)
+			Errorf("Cannot rename log file: %v", err)
 		}
 	}
 }
@@ -317,7 +366,7 @@ func flushAccessLogFile() {
 	)
 	if fd == nil {
 		if fd, err = os.OpenFile(accessLogFileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644); err != nil {
-			logErrorf("Cannot open log file at %s: %v", accessLogFileName, err)
+			Errorf("Cannot open log file at %s: %v", accessLogFileName, err)
 			return
 		}
 		changed = true
@@ -326,7 +375,7 @@ func flushAccessLogFile() {
 		fd.Close()
 		moveAccessLogs(accessLogFileName, 1)
 		if fd, err = os.OpenFile(accessLogFileName, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644); err != nil {
-			logErrorf("Cannot create log file at %s: %v", accessLogFileName, err)
+			Errorf("Cannot create log file at %s: %v", accessLogFileName, err)
 			return
 		}
 		changed = true
@@ -336,9 +385,9 @@ func flushAccessLogFile() {
 	}
 }
 
-func startFlushLogFile() {
+func StartFlushLogFile() {
 	flushLogfile()
-	if !config.NoAccessLog {
+	if accessLogSlots > 0 {
 		flushAccessLogFile()
 	}
 
@@ -350,8 +399,8 @@ func startFlushLogFile() {
 			case <-time.After(time.Duration(tma-time.Now().Unix()) * time.Second):
 				tma = (time.Now().Unix()/(60*60) + 1) * (60 * 60)
 				flushLogfile()
-				if config.LogSlots > 0 {
-					dur := -time.Hour * 24 * (time.Duration)(config.LogSlots)
+				if logSlots > 0 {
+					dur := -time.Hour * 24 * (time.Duration)(logSlots)
 					removeExpiredLogFiles(time.Now().Add(dur).Format("20060102"))
 				}
 			}
@@ -359,8 +408,8 @@ func startFlushLogFile() {
 	}()
 }
 
-func LogAccess(level LogLevel, data any) {
-	if config.NoAccessLog {
+func LogAccess(level Level, data any) {
+	if accessLogSlots < 0 {
 		return
 	}
 

@@ -33,6 +33,9 @@ import (
 
 	"runtime/pprof"
 	// "github.com/gorilla/websocket"
+
+	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/internal/build"
 )
 
 const (
@@ -89,7 +92,7 @@ func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 		if req.Method == http.MethodGet {
 			if tk := req.URL.Query().Get("_t"); tk != "" {
 				path := GetRequestRealPath(req)
-				logDebugf("Verifying API token at %s", path)
+				log.Debugf("Verifying API token at %s", path)
 				if id, err = cr.verifyAPIToken(cli, tk, path, req.URL.Query()); id != "" {
 					ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAPI)
 				}
@@ -159,7 +162,7 @@ func (cr *Cluster) apiV0Ping(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 	writeJson(rw, http.StatusOK, Map{
-		"version": BuildVersion,
+		"version": build.BuildVersion,
 		"time":    time.Now(),
 		"authed":  authed,
 	})
@@ -294,7 +297,7 @@ func (cr *Cluster) apiV0RequestToken(rw http.ResponseWriter, req *http.Request) 
 			"message": err.Error(),
 		})
 	}
-	logDebugf("payload: %#v", payload)
+	log.Debugf("payload: %#v", payload)
 	if payload.Path == "" || payload.Path[0] != '/' {
 		writeJson(rw, http.StatusBadRequest, Map{
 			"error":   "path is invalid",
@@ -330,7 +333,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 
 	conn, err := cr.wsUpgrader.Upgrade(rw, req, nil)
 	if err != nil {
-		logDebugf("[log.io]: Websocket upgrade error: %v", err)
+		log.Debugf("[log.io]: Websocket upgrade error: %v", err)
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -350,7 +353,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 			select {
 			case <-pongCh:
 			case <-time.After(time.Second * 75):
-				logError("[log.io]: Did not receive PONG from remote for 75s")
+				log.Error("[log.io]: Did not receive PONG from remote for 75s")
 				return
 			case <-ctx.Done():
 				return
@@ -394,7 +397,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	var level atomic.Int32
-	level.Store((int32)(LogLevelInfo))
+	level.Store((int32)(log.LevelInfo))
 
 	type logObj struct {
 		Type  string `json:"type"`
@@ -403,8 +406,8 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 		Log   string `json:"log"`
 	}
 	c := make(chan *logObj, 64)
-	unregister := RegisterLogMonitor(LogLevelDebug, func(ts int64, l LogLevel, log string) {
-		if (LogLevel)(level.Load()) > l {
+	unregister := log.RegisterLogMonitor(log.LevelDebug, func(ts int64, l log.Level, msg string) {
+		if (log.Level)(level.Load()) > l {
 			return
 		}
 		select {
@@ -412,7 +415,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 			Type:  "log",
 			Time:  ts,
 			Level: l.String(),
-			Log:   log,
+			Log:   msg,
 		}:
 		default:
 		}
@@ -434,7 +437,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 			}
 			switch typ {
 			case "pong":
-				logDebugf("[log.io]: received PONG from %s: %v", addr, data["data"])
+				log.Debugf("[log.io]: received PONG from %s: %v", addr, data["data"])
 				select {
 				case pongCh <- struct{}{}:
 				default:
@@ -444,13 +447,13 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 				if ok {
 					switch l {
 					case "DBUG":
-						level.Store((int32)(LogLevelDebug))
+						level.Store((int32)(log.LevelDebug))
 					case "INFO":
-						level.Store((int32)(LogLevelInfo))
+						level.Store((int32)(log.LevelInfo))
 					case "WARN":
-						level.Store((int32)(LogLevelWarn))
+						level.Store((int32)(log.LevelWarn))
 					case "ERRO":
-						level.Store((int32)(LogLevelError))
+						level.Store((int32)(log.LevelError))
 					default:
 						continue
 					}
@@ -458,7 +461,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 					case c <- &logObj{
 						Type:  "log",
 						Time:  time.Now().UnixMilli(),
-						Level: LogLevelInfo.String(),
+						Level: log.LevelInfo.String(),
 						Log:   "[dashboard]: Set log level to " + l + " for this log.io",
 					}:
 					default:
@@ -481,7 +484,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 				"type": "ping",
 				"data": time.Now().UnixMilli(),
 			}); err != nil {
-				logErrorf("[log.io]: Error when sending ping packet: %v", err)
+				log.Errorf("[log.io]: Error when sending ping packet: %v", err)
 				return
 			}
 		case <-ctx.Done():
@@ -522,7 +525,7 @@ func (cr *Cluster) apiV0Pprof(rw http.ResponseWriter, req *http.Request) {
 	}
 	rw.WriteHeader(http.StatusOK)
 	if debug == 1 {
-		fmt.Fprintf(rw, "version: %s (%s)\n", BuildVersion, ClusterVersion)
+		fmt.Fprintf(rw, "version: %s (%s)\n", build.BuildVersion, build.ClusterVersion)
 	}
 	p.WriteTo(rw, debug)
 }

@@ -27,6 +27,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 func cmdZipCache(args []string) {
@@ -75,7 +77,7 @@ func cmdZipCache(args []string) {
 	}
 	cacheDir := filepath.Join(baseDir, "cache")
 	fmt.Printf("Cache directory = %q\n", cacheDir)
-	err := walkCacheDir(cacheDir, func(hash string, _ int64) (_ error) {
+	err := utils.WalkCacheDir(cacheDir, func(hash string, _ int64) (_ error) {
 		path := filepath.Join(cacheDir, hash[0:2], hash)
 		if strings.HasSuffix(path, ".gz") {
 			return
@@ -176,7 +178,7 @@ func cmdUnzipCache(args []string) {
 	cacheDir := filepath.Join(baseDir, "cache")
 	fmt.Printf("Cache directory = %q\n", cacheDir)
 	var hashBuf [64]byte
-	err := walkCacheDir(cacheDir, func(hash string, _ int64) (_ error) {
+	err := utils.WalkCacheDir(cacheDir, func(hash string, _ int64) (_ error) {
 		path := filepath.Join(cacheDir, hash[0:2], hash)
 		target, ok := strings.CutSuffix(path, ".gz")
 		if !ok {

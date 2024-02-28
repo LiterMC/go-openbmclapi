@@ -16,7 +16,7 @@ mkdir -p "$outputdir"
 
 echo "Detected tag: $TAG"
 
-ldflags="-X 'main.BuildVersion=$TAG'"
+ldflags="-X 'github.com/LiterMC/go-openbmclapi/internal/build.BuildVersion=$TAG'"
 
 export CGO_ENABLED=0
 

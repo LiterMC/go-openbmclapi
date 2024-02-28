@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package storage
 
 import (
 	"context"
@@ -28,6 +28,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type Storage interface {
@@ -107,7 +109,7 @@ type StorageOption struct {
 func (o *StorageOption) UnmarshalYAML(n *yaml.Node) (err error) {
 	var opts struct {
 		BasicStorageOption `yaml:",inline"`
-		Data               RawYAML `yaml:"data"`
+		Data               utils.RawYAML `yaml:"data"`
 	}
 	if err = n.Decode(&opts); err != nil {
 		return

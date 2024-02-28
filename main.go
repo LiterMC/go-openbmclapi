@@ -90,12 +90,7 @@ func main() {
 	printShortLicense()
 	parseArgs()
 
-	defer func() {
-		if err := recover(); err != nil {
-			log.Error("Panic:", err)
-			panic(err)
-		}
-	}()
+	defer log.RecordPanic()
 
 	log.StartFlushLogFile()
 
@@ -176,6 +171,7 @@ START:
 	firstSyncDone := make(chan struct{}, 0)
 
 	go func(ctx context.Context) {
+		defer log.RecordPanic()
 		defer close(firstSyncDone)
 		log.Infof("Fetching file list")
 		fl, err := cluster.GetFileList(ctx)
@@ -222,6 +218,7 @@ START:
 	}(ctx)
 
 	go func(ctx context.Context) {
+		defer log.RecordPanic()
 		listener, err := net.Listen("tcp", clusterSvr.Addr)
 		if err != nil {
 			log.Errorf("Cannot listen on %s: %v", clusterSvr.Addr, err)

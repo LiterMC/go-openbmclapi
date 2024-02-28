@@ -137,6 +137,15 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 
 	handler = cr
 	{
+		next := handler
+		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+			defer log.RecoverPanic(func(any){
+				rw.WriteHeader(http.StatusInternalServerError)
+			})
+			next.ServeHTTP(rw, req)
+		})
+	}
+	{
 		type record struct {
 			used    float64
 			bytes   float64

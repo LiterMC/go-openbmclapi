@@ -282,10 +282,11 @@ func RecordPanic() {
 	}
 }
 
-func RecoverPanic() {
+func RecoverPanic(then func(err any)) {
 	if err := recover(); err != nil {
 		stack := debug.Stack()
-		logXf(LevelPanic, "panic: %v\n%s", err, stack)
+		logXf(LevelPanic, "[recover]: panic: %v\n%s", err, stack)
+		then(err)
 	}
 }
 

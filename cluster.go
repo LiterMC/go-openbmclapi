@@ -60,7 +60,8 @@ import (
 )
 
 type Cluster struct {
-	host          string
+	host          string   // not public host
+	publicHosts   []string // should not contains port, can be nil
 	publicPort    uint16
 	clusterId     string
 	clusterSecret string
@@ -215,6 +216,13 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	if cr.socket != nil {
 		log.Debug("Extra connect")
 		return true
+	}
+
+	log.Infof("Fetching authorization token ...")
+	_, err := cr.GetAuthToken(ctx)
+	if err != nil {
+		log.Errorf("Cannot get auth token: %v; exit.", err)
+		os.Exit(2)
 	}
 
 	engio, err := engine.NewSocket(engine.Options{

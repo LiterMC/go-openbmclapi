@@ -137,11 +137,42 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 
 	handler = cr
 	{
+		// recover panic and log it
 		next := handler
 		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-			defer log.RecoverPanic(func(any){
+			defer log.RecoverPanic(func(any) {
 				rw.WriteHeader(http.StatusInternalServerError)
 			})
+			next.ServeHTTP(rw, req)
+		})
+	}
+	if !config.Advanced.DoNotRedirectHTTPSToSecureHostname {
+		// rediect the client to the first public host if it is connecting with a unsecure host
+		next := handler
+		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+			host, _, err := net.SplitHostPort(req.Host)
+			if err != nil {
+				host = req.Host
+			}
+			if host != "" {
+				host = strings.ToLower(host)
+				ok := false
+				for _, h := range cr.publicHosts { // cr.publicHosts are already lower case
+					if host == h {
+						ok = true
+						break
+					}
+				}
+				if !ok {
+					u := *req.URL
+					u.Scheme = "https"
+					u.Host = net.JoinHostPort(cr.publicHosts[0], strconv.Itoa((int)(cr.publicPort)))
+					rw.Header().Set("Location", u.String())
+					rw.Header().Set("Content-Length", "0")
+					rw.WriteHeader(http.StatusFound)
+					return
+				}
+			}
 			next.ServeHTTP(rw, req)
 		})
 	}

@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -39,6 +40,7 @@ type httpTLSListener struct {
 	net.Listener
 	TLSConfig *tls.Config
 	hosts     []string
+	port      string
 
 	accepting  atomic.Bool
 	acceptedCh chan net.Conn
@@ -47,19 +49,12 @@ type httpTLSListener struct {
 
 var _ net.Listener = (*httpTLSListener)(nil)
 
-func newHttpTLSListener(l net.Listener, cfg *tls.Config, port uint16) net.Listener {
-	sport := strconv.Itoa((int)(port))
-	hosts := make([]string, 0, len(cfg.Certificates))
-	for _, cert := range cfg.Certificates {
-		if h, err := parseCertCommonName(cert.Certificate[0]); err == nil {
-			h = net.JoinHostPort(h, sport)
-			hosts = append(hosts, h)
-		}
-	}
+func newHttpTLSListener(l net.Listener, cfg *tls.Config, publicHosts []string, port uint16) net.Listener {
 	return &httpTLSListener{
 		Listener:   l,
 		TLSConfig:  cfg,
-		hosts:      hosts,
+		hosts:      publicHosts,
+		port:       strconv.Itoa((int)(port)),
 		acceptedCh: make(chan net.Conn, 1),
 		errCh:      make(chan error, 1),
 	}
@@ -67,6 +62,9 @@ func newHttpTLSListener(l net.Listener, cfg *tls.Config, port uint16) net.Listen
 
 // if maybeRedirectConn
 func (s *httpTLSListener) maybeRedirectConn(c *connHeadReader) (ishttp bool) {
+	if len(s.hosts) == 0 {
+		return false
+	}
 	var buf [4096]byte
 	i, n := 0, 0
 READ_HEAD:
@@ -108,11 +106,25 @@ READ_HEAD:
 	if err != nil {
 		return true
 	}
-	if len(s.hosts) == 0 {
-		return false
+	host, _, err := net.SplitHostPort(req.Host)
+	if err != nil {
+		host = req.Host
+	}
+	inhosts := false
+	if host != "" {
+		host = strings.ToLower(host)
+		for _, h := range s.hosts {
+			if h == host {
+				inhosts = true
+				break
+			}
+		}
 	}
 	u.Scheme = "https"
-	u.Host = s.hosts[0]
+	if !inhosts {
+		host = s.hosts[0]
+	}
+	u.Host = net.JoinHostPort(host, s.port)
 	resp := &http.Response{
 		StatusCode: http.StatusPermanentRedirect,
 		ProtoMajor: major,

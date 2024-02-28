@@ -231,7 +231,7 @@ START:
 		}
 
 		var tlsConfig *tls.Config
-		var publicHost string
+		var publicHosts []string
 		if config.UseCert {
 			if len(config.Certificates) == 0 {
 				log.Error("No certificates was set in the config")
@@ -270,10 +270,19 @@ START:
 			log.Infof("Requested certificate for %s", certHost)
 		}
 		certCount := 0
+		publicHost := ""
 		if tlsConfig != nil {
 			certCount = len(tlsConfig.Certificates)
-			publicHost, _ = parseCertCommonName(tlsConfig.Certificates[0].Certificate[0])
-			listener = newHttpTLSListener(listener, tlsConfig, publicPort)
+			for _, cert := range tlsConfig.Certificates {
+				if h, err := parseCertCommonName(cert.Certificate[0]); err == nil {
+					if publicHost == "" {
+						publicHost = h
+					}
+					publicHosts = append(publicHosts, strings.ToLower(h))
+				}
+			}
+			cluster.publicHosts = publicHosts
+			listener = newHttpTLSListener(listener, tlsConfig, publicHosts, publicPort)
 		}
 		go func(listener net.Listener) {
 			defer listener.Close()
@@ -286,6 +295,12 @@ START:
 			publicHost = config.PublicHost
 		}
 		log.Infof("Server public at https://%s:%d (%s) with %d certificates", publicHost, publicPort, clusterSvr.Addr, certCount)
+		if len(publicHosts) > 0 {
+			log.Infof("Alternative hostnames")
+			for _, h := range publicHosts[1:] {
+				log.Infof("\t- https://%s:%d", h, publicPort)
+			}
+		}
 
 		log.Infof("Waiting for the first sync ...")
 		select {

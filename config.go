@@ -49,6 +49,8 @@ type AdvancedConfig struct {
 	ExitWhenDisconnected bool `yaml:"exit-when-disconnected"`
 	NoFastEnable         bool `yaml:"no-fast-enable"`
 	WaitBeforeEnable     int  `yaml:"wait-before-enable"`
+
+	DoNotRedirectHTTPSToSecureHostname bool `yaml:"do-NOT-redirect-https-to-SECURE-hostname"`
 }
 
 type CertificateConfig struct {

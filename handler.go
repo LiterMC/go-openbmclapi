@@ -132,24 +132,21 @@ func (r *accessRecord) String() string {
 	return buf.String()
 }
 
-func (cr *Cluster) GetHandler() (handler http.Handler) {
+func (cr *Cluster) GetHandler() http.Handler {
 	cr.handlerAPIv0 = http.StripPrefix("/api/v0", cr.cliIdHandle(cr.initAPIv0()))
 
-	handler = cr
-	{
-		// recover panic and log it
-		next := handler
-		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-			defer log.RecoverPanic(func(any) {
-				rw.WriteHeader(http.StatusInternalServerError)
-			})
-			next.ServeHTTP(rw, req)
+	handler := NewHttpMiddleWareHandler(cr)
+	// recover panic and log it
+	handler.Use(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+		defer log.RecoverPanic(func(any) {
+			rw.WriteHeader(http.StatusInternalServerError)
 		})
-	}
+		next.ServeHTTP(rw, req)
+	})
+
 	if !config.Advanced.DoNotRedirectHTTPSToSecureHostname {
 		// rediect the client to the first public host if it is connecting with a unsecure host
-		next := handler
-		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+		handler.Use(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
 			host, _, err := net.SplitHostPort(req.Host)
 			if err != nil {
 				host = req.Host
@@ -176,138 +173,141 @@ func (cr *Cluster) GetHandler() (handler http.Handler) {
 			next.ServeHTTP(rw, req)
 		})
 	}
-	{
-		type record struct {
-			used    float64
-			bytes   float64
-			ua      string
-			isRange bool
-		}
-		recordCh := make(chan record, 1024)
 
-		next := handler
-		handler = (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-			ua := req.UserAgent()
-			var addr string
-			if config.TrustedXForwardedFor {
-				// X-Forwarded-For: <client>, <proxy1>, <proxy2>
-				adr, _ := split(req.Header.Get("X-Forwarded-For"), ',')
-				addr = strings.TrimSpace(adr)
-			}
-			if addr == "" {
-				addr, _, _ = net.SplitHostPort(req.RemoteAddr)
-			}
-			srw := &statusResponseWriter{ResponseWriter: rw}
-			start := time.Now()
+	handler.Use(cr.getRecordMiddleWare())
+	return handler
+}
 
-			log.LogAccess(log.LevelDebug, &preAccessRecord{
-				Type:   "pre-access",
-				Time:   start,
-				Addr:   addr,
-				Method: req.Method,
-				URI:    req.RequestURI,
-				UA:     ua,
-			})
+func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
+	type record struct {
+		used    float64
+		bytes   float64
+		ua      string
+		isRange bool
+	}
+	recordCh := make(chan record, 1024)
 
-			extraInfoMap := make(map[string]any)
-			ctx := req.Context()
-			ctx = context.WithValue(ctx, RealAddrCtxKey, addr)
-			ctx = context.WithValue(ctx, RealPathCtxKey, req.URL.Path)
-			ctx = context.WithValue(ctx, AccessLogExtraCtxKey, extraInfoMap)
-			req = req.WithContext(ctx)
-			next.ServeHTTP(srw, req)
+	go func() {
+		<-cr.WaitForEnable()
+		disabled := cr.Disabled()
 
-			used := time.Since(start)
-			accRec := &accessRecord{
-				Type:    "access",
-				Status:  srw.status,
-				Used:    used,
-				Content: srw.wrote,
-				Addr:    addr,
-				Proto:   req.Proto,
-				Method:  req.Method,
-				URI:     req.RequestURI,
-				UA:      ua,
-			}
-			if len(extraInfoMap) > 0 {
-				accRec.Extra = extraInfoMap
-			}
-			log.LogAccess(log.LevelInfo, accRec)
+		updateTicker := time.NewTicker(time.Minute)
+		defer updateTicker.Stop()
 
-			if srw.status < 200 && 400 <= srw.status {
-				return
-			}
-			if !strings.HasPrefix(req.URL.Path, "/download/") {
-				return
-			}
-			var rec record
-			rec.used = used.Seconds()
-			rec.bytes = (float64)(srw.wrote)
-			ua, _ = split(ua, ' ')
-			rec.ua, _ = split(ua, '/')
-			rec.isRange = extraInfoMap["skip-ua-count"] != nil
+		var (
+			total      int
+			totalUsed  float64
+			totalBytes float64
+			uas        = make(map[string]int, 10)
+		)
+		for {
 			select {
-			case recordCh <- rec:
-			default:
-			}
-		})
-		go func() {
-			<-cr.WaitForEnable()
-			disabled := cr.Disabled()
+			case <-updateTicker.C:
+				cr.stats.mux.Lock()
 
-			updateTicker := time.NewTicker(time.Minute)
-			defer updateTicker.Stop()
+				log.Infof("Served %d requests, total responsed body = %s, total used CPU time = %.2fs",
+					total, bytesToUnit(totalBytes), totalUsed)
+				for ua, v := range uas {
+					if ua == "" {
+						ua = "[Unknown]"
+					}
+					cr.stats.Accesses[ua] += v
+				}
 
-			var (
-				total      int
-				totalUsed  float64
-				totalBytes float64
-				uas        = make(map[string]int, 10)
-			)
-			for {
+				total = 0
+				totalUsed = 0
+				totalBytes = 0
+				clear(uas)
+
+				cr.stats.mux.Unlock()
+			case rec := <-recordCh:
+				total++
+				totalUsed += rec.used
+				totalBytes += rec.bytes
+				if !rec.isRange {
+					uas[rec.ua]++
+				}
+			case <-disabled:
+				total = 0
+				totalUsed = 0
+				totalBytes = 0
+				clear(uas)
+
 				select {
-				case <-updateTicker.C:
-					cr.stats.mux.Lock()
-
-					log.Infof("Served %d requests, total responsed body = %s, total used CPU time = %.2fs",
-						total, bytesToUnit(totalBytes), totalUsed)
-					for ua, v := range uas {
-						if ua == "" {
-							ua = "[Unknown]"
-						}
-						cr.stats.Accesses[ua] += v
-					}
-
-					total = 0
-					totalUsed = 0
-					totalBytes = 0
-					clear(uas)
-
-					cr.stats.mux.Unlock()
-				case rec := <-recordCh:
-					total++
-					totalUsed += rec.used
-					totalBytes += rec.bytes
-					if !rec.isRange {
-						uas[rec.ua]++
-					}
-				case <-disabled:
-					total = 0
-					totalUsed = 0
-					totalBytes = 0
-					clear(uas)
-
-					select {
-					case <-cr.WaitForEnable():
-						disabled = cr.Disabled()
-					case <-time.After(time.Hour):
-						return
-					}
+				case <-cr.WaitForEnable():
+					disabled = cr.Disabled()
+				case <-time.After(time.Hour):
+					return
 				}
 			}
-		}()
+		}
+	}()
+
+	return func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+		ua := req.UserAgent()
+		var addr string
+		if config.TrustedXForwardedFor {
+			// X-Forwarded-For: <client>, <proxy1>, <proxy2>
+			adr, _ := split(req.Header.Get("X-Forwarded-For"), ',')
+			addr = strings.TrimSpace(adr)
+		}
+		if addr == "" {
+			addr, _, _ = net.SplitHostPort(req.RemoteAddr)
+		}
+		srw := &statusResponseWriter{ResponseWriter: rw}
+		start := time.Now()
+
+		log.LogAccess(log.LevelDebug, &preAccessRecord{
+			Type:   "pre-access",
+			Time:   start,
+			Addr:   addr,
+			Method: req.Method,
+			URI:    req.RequestURI,
+			UA:     ua,
+		})
+
+		extraInfoMap := make(map[string]any)
+		ctx := req.Context()
+		ctx = context.WithValue(ctx, RealAddrCtxKey, addr)
+		ctx = context.WithValue(ctx, RealPathCtxKey, req.URL.Path)
+		ctx = context.WithValue(ctx, AccessLogExtraCtxKey, extraInfoMap)
+		req = req.WithContext(ctx)
+		next.ServeHTTP(srw, req)
+
+		used := time.Since(start)
+		accRec := &accessRecord{
+			Type:    "access",
+			Status:  srw.status,
+			Used:    used,
+			Content: srw.wrote,
+			Addr:    addr,
+			Proto:   req.Proto,
+			Method:  req.Method,
+			URI:     req.RequestURI,
+			UA:      ua,
+		}
+		if len(extraInfoMap) > 0 {
+			accRec.Extra = extraInfoMap
+		}
+		log.LogAccess(log.LevelInfo, accRec)
+
+		if srw.status < 200 && 400 <= srw.status {
+			return
+		}
+		if !strings.HasPrefix(req.URL.Path, "/download/") {
+			return
+		}
+		var rec record
+		rec.used = used.Seconds()
+		rec.bytes = (float64)(srw.wrote)
+		ua, _ = split(ua, ' ')
+		rec.ua, _ = split(ua, '/')
+		rec.isRange = extraInfoMap["skip-ua-count"] != nil
+		select {
+		case recordCh <- rec:
+		default:
+		}
 	}
-	return
 }
 
 var emptyHashes = func() (hashes map[string]struct{}) {
@@ -494,4 +494,48 @@ func parseRangeFirstStart(rg string) (start int64, ok bool) {
 		return 0, false
 	}
 	return start, true
+}
+
+type MiddleWareFunc func(rw http.ResponseWriter, req *http.Request, next http.Handler)
+
+type httpMiddleWareHandler struct {
+	final   http.Handler
+	middles []MiddleWareFunc
+}
+
+func NewHttpMiddleWareHandler(final http.Handler) *httpMiddleWareHandler {
+	return &httpMiddleWareHandler{
+		final: final,
+	}
+}
+
+func (m *httpMiddleWareHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	i := 0
+	var getNext func() http.Handler
+	getNext = func() http.Handler {
+		j := i
+		if j > len(m.middles) {
+			// unreachable
+			panic("httpMiddleWareHandler: called getNext too much times")
+		}
+		i++
+		if j == len(m.middles) {
+			return m.final
+		}
+		mid := m.middles[j]
+
+		called := false
+		return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+			if called {
+				panic("httpMiddleWareHandler: Called next function twice")
+			}
+			called = true
+			mid(rw, req, getNext())
+		})
+	}
+	getNext()(rw, req)
+}
+
+func (m *httpMiddleWareHandler) Use(fns ...MiddleWareFunc) {
+	m.middles = append(m.middles, fns...)
 }

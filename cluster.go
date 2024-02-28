@@ -346,7 +346,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 
-	if !cr.socket.IO().Connected() && config.Advanced.ExitWhenDisconnected {
+	if cr.socket != nil && !cr.socket.IO().Connected() && config.Advanced.ExitWhenDisconnected {
 		log.Errorf("Cluster disconnected from remote; exit.")
 		os.Exit(0x08)
 		return

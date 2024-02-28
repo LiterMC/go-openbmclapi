@@ -19,15 +19,21 @@
 
 package database
 
-// Addon is a type of database that always add/set/query data but rarely to remove them
+// AddonDB is a type of database that always add/set/query data but rarely to remove them
 // It's designed to save bmclapi path -> hash index
-type Addon struct {
+type AddonDB struct {
 	dbPath string
 }
 
-type Path2HashIndex struct {
+// Each record will be saved like
+// 1 byte valid flag
+// string : 2 bytes string length + string chunks in 256 bytes
+// The record length must be able to multiply by 256
+type Path2HashRecord struct {
 	Path string
 	Hash string
 }
 
-func NewAddonDB()
+func NewAddonDB() *AddonDB {
+	//
+}

@@ -30,7 +30,7 @@ coverage
 # runtime
 /test
 /pems
-/cache
+/_cache
 /data
 /logs
 /.tmp
@@ -42,3 +42,6 @@ coverage
 /build
 /build-all.sh
 /vendor
+
+# workspace
+go.work

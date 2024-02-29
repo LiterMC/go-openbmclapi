@@ -134,6 +134,7 @@ func (r *accessRecord) String() string {
 
 func (cr *Cluster) GetHandler() http.Handler {
 	cr.handlerAPIv0 = http.StripPrefix("/api/v0", cr.cliIdHandle(cr.initAPIv0()))
+	cr.hijackHandler = http.StripPrefix("/bmclapi", cr.hijackProxy)
 
 	handler := NewHttpMiddleWareHandler(cr)
 	// recover panic and log it
@@ -399,11 +400,16 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	case rawpath == "/" || rawpath == "/dashboard":
 		http.Redirect(rw, req, "/dashboard/", http.StatusFound)
 		return
+	case strings.HasPrefix(rawpath, "/bmclapi/"):
+		cr.hijackHandler.ServeHTTP(rw, req)
+		return
 	}
 	http.NotFound(rw, req)
 }
 
 func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, hash string) {
+	rw.Header().Set("X-Bmclapi-Hash", hash)
+
 	if _, ok := emptyHashes[hash]; ok {
 		name := req.URL.Query().Get("name")
 		rw.Header().Set("ETag", `"`+hash+`"`)
@@ -413,7 +419,6 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		if name != "" {
 			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 		}
-		rw.Header().Set("X-Bmclapi-Hash", hash)
 		rw.WriteHeader(http.StatusOK)
 		cr.hits.Add(1)
 		// cr.hbts.Add(0) // no need to add zero
@@ -452,8 +457,10 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			return false
 		}
 		if sz >= 0 {
-			cr.hits.Add(1)
-			cr.hbts.Add(sz)
+			if req.Context().Value("go-openbmclapi.handler.no.record.for.keepalive") == true {
+				cr.hits.Add(1)
+				cr.hbts.Add(sz)
+			}
 		}
 		return true
 	})

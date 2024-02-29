@@ -24,6 +24,7 @@ import (
 	"crypto"
 	crand "crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
@@ -276,6 +277,12 @@ func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, has bool) {
 		m.m[k] = v
 	}
 	return
+}
+
+func comparePasswd(p1, p2 string) bool {
+	a := sha256.Sum256(([]byte)(p1))
+	b := sha256.Sum256(([]byte)(p2))
+	return subtle.ConstantTimeCompare(a[:], b[:]) == 0
 }
 
 // return a URL encoded base64 string

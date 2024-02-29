@@ -36,6 +36,11 @@ import (
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
+type UserItem struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
 type AdvancedConfig struct {
 	DebugLog             bool `yaml:"debug-log"`
 	SocketIOLog          bool `yaml:"socket-io-log"`
@@ -62,6 +67,12 @@ type ServeLimitConfig struct {
 	Enable     bool `yaml:"enable"`
 	MaxConn    int  `yaml:"max-conn"`
 	UploadRate int  `yaml:"upload-rate"`
+}
+
+type HijackConfig struct {
+	Enable      bool       `yaml:"enable"`
+	RequireAuth bool       `yaml:"require-auth"`
+	AuthUsers   []UserItem `yaml:"auth-users"`
 }
 
 type CacheConfig struct {
@@ -127,6 +138,7 @@ type Config struct {
 	Cache        CacheConfig                    `yaml:"cache"`
 	ServeLimit   ServeLimitConfig               `yaml:"serve-limit"`
 	Dashboard    DashboardConfig                `yaml:"dashboard"`
+	Hijack       HijackConfig                   `yaml:"hijack"`
 	Storages     []storage.StorageOption        `yaml:"storages"`
 	WebdavUsers  map[string]*storage.WebDavUser `yaml:"webdav-users"`
 	Advanced     AdvancedConfig                 `yaml:"advanced"`
@@ -177,6 +189,17 @@ var defaultConfig = Config{
 		PwaName:      "GoOpenBmclApi Dashboard",
 		PwaShortName: "GOBA Dash",
 		PwaDesc:      "Go-Openbmclapi Internal Dashboard",
+	},
+
+	Hijack: HijackConfig{
+		Enable:      false,
+		RequireAuth: false,
+		AuthUsers: []UserItem{
+			{
+				Username: "example-username",
+				Password: "example-password",
+			},
+		},
 	},
 
 	Storages: nil,

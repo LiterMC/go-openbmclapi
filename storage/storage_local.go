@@ -176,7 +176,6 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		if name != "" {
 			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 		}
-		rw.Header().Set("X-Bmclapi-Hash", hash)
 		http.ServeContent(rw, req, name, time.Time{}, counter)
 		return counter.N, nil
 	}
@@ -217,7 +216,6 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 	if name != "" {
 		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 	}
-	rw.Header().Set("X-Bmclapi-Hash", hash)
 	if size > 0 {
 		rw.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	}

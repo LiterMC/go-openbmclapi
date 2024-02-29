@@ -24,8 +24,8 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
+
+	"github.com/LiterMC/go-openbmclapi/database"
 )
 
 func getDialerWithDNS(dnsaddr string) *net.Dialer {
@@ -40,39 +40,52 @@ func getDialerWithDNS(dnsaddr string) *net.Dialer {
 	}
 }
 
+type downloadHandlerFn = func(rw http.ResponseWriter, req *http.Request, hash string)
+
 type HjProxy struct {
-	dialer *net.Dialer
-	path   string
-	client *http.Client
+	client          *http.Client
+	fileMap         database.DB
+	downloadHandler downloadHandlerFn
 }
 
-func NewHjProxy(dialer *net.Dialer, path string) (h *HjProxy) {
+func NewHjProxy(client *http.Client, fileMap database.DB, downloadHandler downloadHandlerFn) (h *HjProxy) {
 	return &HjProxy{
-		dialer: dialer,
-		path:   path,
-		client: &http.Client{
-			Transport: &http.Transport{
-				DialContext: dialer.DialContext,
-			},
-		},
+		client:          client,
+		fileMap:         fileMap,
+		downloadHandler: downloadHandler,
 	}
 }
 
 const hijackingHost = "bmclapi2.bangbang93.com"
 
 func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if req.Method == http.MethodGet || req.Method == http.MethodHead {
-		target := filepath.Join(h.path, filepath.Clean(filepath.FromSlash(req.URL.Path)))
-		fd, err := os.Open(target)
-		if err == nil {
-			defer fd.Close()
-			if stat, err := fd.Stat(); err == nil {
-				if !stat.IsDir() {
-					modTime := stat.ModTime()
-					http.ServeContent(rw, req, filepath.Base(target), modTime, fd)
+	if !config.Hijack.Enable {
+		http.Error(rw, "Hijack is disabled in the config", http.StatusServiceUnavailable)
+		return
+	}
+	if config.Hijack.RequireAuth {
+		needAuth := true
+		user, passwd, ok := req.BasicAuth()
+		if ok {
+			for _, u := range config.Hijack.AuthUsers {
+				if u.Username == user && comparePasswd(u.Password, passwd) {
+					needAuth = false
 					return
 				}
 			}
+		}
+		if needAuth {
+			rw.Header().Set("WWW-Authenticate", `Basic realm="Login to access hijacked bmclapi", charset="UTF-8"`)
+			http.Error(rw, "403 Unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+	if req.Method == http.MethodGet || req.Method == http.MethodHead {
+		if rec, err := h.fileMap.Get(req.URL.Path); err == nil {
+			ctx := req.Context()
+			ctx = context.WithValue(ctx, "go-openbmclapi.handler.no.record.for.keepalive", true)
+			h.downloadHandler(rw, req.WithContext(ctx), rec.Hash)
+			return
 		}
 	}
 

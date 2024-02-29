@@ -52,6 +52,7 @@ import (
 	"github.com/vbauerster/mpb/v8/decor"
 
 	gocache "github.com/LiterMC/go-openbmclapi/cache"
+	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
@@ -77,6 +78,7 @@ type Cluster struct {
 	storageTotalWeight uint
 	cache              gocache.Cache
 	apiHmacKey         []byte
+	hijackProxy        *HjProxy
 
 	stats     Stats
 	hits      atomic.Int32
@@ -95,8 +97,9 @@ type Cluster struct {
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
 	downloading     map[string]chan error
-	fileMux         sync.RWMutex
+	filesetMux      sync.RWMutex
 	fileset         map[string]int64
+	fileMapDB       database.DB
 	authTokenMux    sync.RWMutex
 	authToken       *ClusterToken
 
@@ -105,9 +108,10 @@ type Cluster struct {
 	bufSlots  *limited.BufSlots
 	tokens    *TokenStorage
 
-	wsUpgrader   *websocket.Upgrader
-	handlerAPIv0 http.Handler
-	handlerAPIv1 http.Handler
+	wsUpgrader    *websocket.Upgrader
+	handlerAPIv0  http.Handler
+	handlerAPIv1  http.Handler
+	hijackHandler http.Handler
 }
 
 func NewCluster(
@@ -188,11 +192,18 @@ func NewCluster(
 }
 
 func (cr *Cluster) Init(ctx context.Context) (err error) {
+	cr.fileMapDB = database.NewMemoryDB()
+
+	if config.Hijack.Enable {
+		cr.hijackProxy = NewHjProxy(cr.client, cr.fileMapDB, cr.handleDownload)
+	}
+
 	// Init storages
 	vctx := context.WithValue(ctx, storage.ClusterCacheCtxKey, cr.cache)
 	for _, s := range cr.storages {
 		s.Init(vctx)
 	}
+
 	// create data folder
 	os.MkdirAll(cr.dataDir, 0755)
 	// read old stats
@@ -522,8 +533,8 @@ func (cr *Cluster) Disabled() <-chan struct{} {
 }
 
 func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
-	cr.fileMux.RLock()
-	defer cr.fileMux.RUnlock()
+	cr.filesetMux.RLock()
+	defer cr.filesetMux.RUnlock()
 	size, ok = cr.fileset[hash]
 	return
 }
@@ -693,10 +704,17 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		fileset := make(map[string]int64, len(files))
 		for _, f := range files {
 			fileset[f.Hash] = f.Size
+			if config.Hijack.Enable && !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
+				cr.fileMapDB.Set(database.Record{
+					Path: f.Path,
+					Hash: f.Hash,
+					Size: f.Size,
+				})
+			}
 		}
-		cr.fileMux.Lock()
+		cr.filesetMux.Lock()
 		cr.fileset = fileset
-		cr.fileMux.Unlock()
+		cr.filesetMux.Unlock()
 	}
 	cr.issync.Store(false)
 
@@ -1292,8 +1310,8 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		}
 	}
 
-	cr.fileMux.Lock()
+	cr.filesetMux.Lock()
 	cr.fileset[hash] = size
-	cr.fileMux.Unlock()
+	cr.filesetMux.Unlock()
 	return
 }

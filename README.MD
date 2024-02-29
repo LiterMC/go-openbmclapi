@@ -13,6 +13,7 @@ Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 
 ## 特性
 
+- 支持代理 BMCLAPI 请求, 并使用本地缓存加速请求
 - 使用协程/多线程, 超高的文件同步速度
 - 不依赖大量的三方包, 体积小巧
 - 静态文件, 无需配置任何依赖

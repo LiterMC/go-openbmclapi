@@ -27,6 +27,12 @@ dashboard:
   pwa-name: GoOpenBmclApi Dashboard
   pwa-short_name: GOBA Dash
   pwa-description: Go-Openbmclapi Internal Dashboard
+hijack:
+  enable: false
+  require-auth: false
+  auth-users:
+    - username: example-username
+      password: example-password
 storages:
   - type: local
     id: local-storage-0

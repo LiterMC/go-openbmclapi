@@ -172,6 +172,17 @@ dashboard:
   # PWA 描述
   pwa-description: Go-Openbmclapi Internal Dashboard
 
+# BMCLAPI 代理, 会处理所有文件下载请求, 并将其他请求转发到 BMCLAPI 主服务器
+hijack: # 注: 虽然名字是叫(hijack)劫持, 但其实它就是个代理
+  # 是否启用代理. 代理会在 /bmclapi/ 子路径下开启服务.
+  enable: false
+  # 是否需要登录才能访问
+  require-auth: true
+  # 用户名密码对
+  auth-users:
+    - username: example-username
+      password: example-password # ❌ 请不要保持该密码 ❌
+
 # 子存储节点列表
 # 注意: measure 测量请求总是以第一个存储为准
 storages:

@@ -533,7 +533,7 @@ func (m *httpMiddleWareHandler) ServeHTTP(rw http.ResponseWriter, req *http.Requ
 			mid(rw, req, getNext())
 		})
 	}
-	getNext()(rw, req)
+	getNext().ServeHTTP(rw, req)
 }
 
 func (m *httpMiddleWareHandler) Use(fns ...MiddleWareFunc) {

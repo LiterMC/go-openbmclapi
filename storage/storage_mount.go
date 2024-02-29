@@ -93,19 +93,19 @@ func (s *MountStorage) Init(ctx context.Context) (err error) {
 	}
 	if err := os.MkdirAll(s.opt.Path, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 		log.Errorf("Cannot create mirror folder %q: %v", s.opt.Path, err)
-		os.Exit(2)
+		return err
 	}
 
 	measureDir := filepath.Join(s.opt.Path, "measure")
 	if err := os.Mkdir(measureDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
 		log.Errorf("Cannot create mirror folder %q: %v", measureDir, err)
-		os.Exit(2)
+		return err
 	}
 	if s.opt.PreGenMeasures {
 		log.Info("Creating measure files")
 		for i := 1; i <= 200; i++ {
 			if err := s.createMeasureFile(i); err != nil {
-				os.Exit(2)
+				return err
 			}
 		}
 		log.Info("Measure files created")

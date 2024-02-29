@@ -19,11 +19,22 @@
 
 package database
 
-// AddonDB is a type of database that always add/set/query data but rarely to remove them
+import (
+	"bufio"
+	"errors"
+	"os"
+	"sync"
+)
+
+var ErrNotFound = errors.New("Record not found")
+
+// AddonDB is a type of database that always set/query data but rarely to add/remove them
 // It's designed to save bmclapi path -> hash index
 type AddonDB struct {
 	mux sync.RWMutex
-	fd *os.File
+	fd  *os.File
+
+	cache []path2HashRecord
 }
 
 // Each record will be saved like
@@ -46,11 +57,69 @@ func OpenAddonDB(path string) (db *AddonDB, err error) {
 	return
 }
 
-func (db *AddonDB)Set(path string, hash string)(err error){
-	//
+func (db *AddonDB) searchRLocked(path string) (i int, exact bool) {
+	i = sort.Search(db.cache, func(i int) bool {
+		return db.cache[i].Path >= path
+	})
+	exact = db.cache[i].Path == path
+	return
 }
 
-func (db *AddonDB)decodeRecord()(err error){
+func (db *AddonDB) Get(path string) (hash string, err error) {
+	db.mux.RLock()
+	defer db.mux.RUnlock()
+
+	i, exact := searchRLocked(path)
+	if exact {
+		return db.cache[i].Hash, nil
+	}
+	return "", ErrNotFound
+}
+
+func (db *AddonDB) Set(path string, hash string) (err error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	i, exact := searchRLocked(path)
+	if exact {
+		db.cache[i].Hash = hash
+	} else {
+		db.cache = append(db.cache[:i+1], db.cache[i:]...)
+		db.cache[i] = path2HashRecord{
+			Path: path,
+			hash: hash,
+		}
+	}
+	// TOOD: save data
+	return nil
+}
+
+func (db *AddonDB) Remove(path string) (err error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	i, exact := searchRLocked(path)
+	if !exact {
+		return ErrNotFound
+	}
+	copy(db.cache[:i], db.cache[i+1:])
+	db.cache = db.cache[:len(db.cache)-1]
+	// TOOD: save data
+	return nil
+}
+
+func (db *AddonDB) readRecordsLocked() (err error) {
 	var buf [256]byte
-	db.fd.Read(buf)
+	if _, err = db.fd.Seek(0, io.SeekStart); err != nil {
+		return
+	}
+	br := bufio.NewReader(db.fd)
+	if _, err = br.Read(buf[:4]); err != nil {
+		return
+	}
+	buf[:4]
+}
+
+func (db *AddonDB) writeRecordsLocked() (err error) {
+	var buf [256]byte
 }

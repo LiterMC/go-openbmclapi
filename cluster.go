@@ -222,7 +222,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	_, err := cr.GetAuthToken(ctx)
 	if err != nil {
 		log.Errorf("Cannot get auth token: %v; exit.", err)
-		os.Exit(2)
+		osExit(2)
 	}
 
 	engio, err := engine.NewSocket(engine.Options{
@@ -236,7 +236,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	})
 	if err != nil {
 		log.Errorf("Could not parse Engine.IO options: %v; exit.", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	cr.reconnectCount = 0
@@ -263,7 +263,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		if config.Advanced.ExitWhenDisconnected {
 			if cr.shouldEnable.Load() {
 				log.Errorf("Cluster disconnected from remote; exit.")
-				os.Exit(0x08)
+				osExit(0x08)
 			}
 		}
 		go cr.disconnected()
@@ -275,7 +275,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		if cr.reconnectCount >= maxReconnectCount {
 			if cr.shouldEnable.Load() {
 				log.Errorf("Cluster failed to connect too much times; exit.")
-				os.Exit(0x08)
+				osExit(0x08)
 			}
 		}
 	})
@@ -284,7 +284,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		token, err := cr.GetAuthToken(ctx)
 		if err != nil {
 			log.Errorf("Cannot get auth token: %v; exit.", err)
-			os.Exit(2)
+			osExit(2)
 		}
 		return token
 	}))
@@ -296,7 +296,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		if cr.shouldEnable.Load() {
 			if err := cr.Enable(ctx); err != nil {
 				log.Errorf("Cannot enable cluster: %v; exit.", err)
-				os.Exit(0x08)
+				osExit(0x08)
 			}
 		}
 		cr.reconnectCount = 0
@@ -356,7 +356,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 	if cr.socket != nil && !cr.socket.IO().Connected() && config.Advanced.ExitWhenDisconnected {
 		log.Errorf("Cluster disconnected from remote; exit.")
-		os.Exit(0x08)
+		osExit(0x08)
 		return
 	}
 
@@ -410,11 +410,11 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 				log.Info("Reconnecting ...")
 				if !cr.Connect(ctx) {
 					log.Error("Cannot reconnect to server, exit.")
-					os.Exit(1)
+					osExit(1)
 				}
 				if err := cr.Enable(ctx); err != nil {
 					log.Error("Cannot enable cluster:", err, "; exit.")
-					os.Exit(1)
+					osExit(1)
 				}
 			}
 		}

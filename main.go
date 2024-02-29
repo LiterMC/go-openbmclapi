@@ -31,6 +31,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -86,13 +87,40 @@ func parseArgs() {
 	}
 }
 
+var exitCh = make(chan int, 1)
+
+func osExit(n int) {
+	select {
+	case exitCh <- n:
+	default:
+	}
+	runtime.Goexit()
+}
+
 func main() {
 	printShortLicense()
 	parseArgs()
 
+	exitCode := -1
+	defer func() {
+		if exitCode >= 0 {
+			os.Exit(exitCode)
+		}
+		select {
+		case code := <-exitCh:
+			os.Exit(code)
+		default:
+			os.Exit(0)
+		}
+	}()
 	defer log.RecordPanic()
-
 	log.StartFlushLogFile()
+
+	// override the osExit inside main function
+	osExit := func(n int) {
+		exitCode = n
+		runtime.Goexit()
+	}
 
 	bgctx := context.Background()
 
@@ -130,7 +158,7 @@ START:
 
 	if config.ClusterId == defaultConfig.ClusterId || config.ClusterSecret == defaultConfig.ClusterSecret {
 		log.Error("Please set cluster-id and cluster-secret in config.yaml before start!")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	cache := config.Cache.newCache()
@@ -150,11 +178,11 @@ START:
 	)
 	if err := cluster.Init(ctx); err != nil {
 		log.Error("Cannot init cluster:", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if !cluster.Connect(ctx) {
-		os.Exit(1)
+		osExit(1)
 	}
 
 	log.Debugf("Receiving signals")
@@ -181,7 +209,7 @@ START:
 				return
 			}
 			if !config.Advanced.SkipFirstSync {
-				os.Exit(1)
+				osExit(1)
 			}
 		}
 		checkCount := -1
@@ -222,7 +250,7 @@ START:
 		listener, err := net.Listen("tcp", clusterSvr.Addr)
 		if err != nil {
 			log.Errorf("Cannot listen on %s: %v", clusterSvr.Addr, err)
-			os.Exit(1)
+			osExit(1)
 		}
 		if config.ServeLimit.Enable {
 			limted := limited.NewLimitedListener(listener, config.ServeLimit.MaxConn, 0, config.ServeLimit.UploadRate*1024)
@@ -235,7 +263,7 @@ START:
 		if config.UseCert {
 			if len(config.Certificates) == 0 {
 				log.Error("No certificates was set in the config")
-				os.Exit(1)
+				osExit(1)
 			}
 			tlsConfig = new(tls.Config)
 			tlsConfig.Certificates = make([]tls.Certificate, len(config.Certificates))
@@ -244,7 +272,7 @@ START:
 				tlsConfig.Certificates[i], err = tls.LoadX509KeyPair(c.Cert, c.Key)
 				if err != nil {
 					log.Errorf("Cannot parse certificate key pair[%d]: %v", i, err)
-					os.Exit(1)
+					osExit(1)
 				}
 			}
 		}
@@ -254,7 +282,7 @@ START:
 			cancel()
 			if err != nil {
 				log.Error("Error when requesting certificate key pair:", err)
-				os.Exit(1)
+				osExit(1)
 			}
 			if tlsConfig == nil {
 				tlsConfig = new(tls.Config)
@@ -263,7 +291,7 @@ START:
 			cert, err = tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
 			if err != nil {
 				log.Error("Cannot parse requested certificate key pair:", err)
-				os.Exit(1)
+				osExit(1)
 			}
 			tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
 			certHost, _ := parseCertCommonName(cert.Certificate[0])
@@ -288,7 +316,7 @@ START:
 			defer listener.Close()
 			if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 				log.Error("Error on server:", err)
-				os.Exit(1)
+				osExit(1)
 			}
 		}(listener)
 		if publicHost == "" {
@@ -319,12 +347,15 @@ START:
 
 		if err := cluster.Enable(ctx); err != nil {
 			log.Error("Cannot enable cluster:", err)
-			os.Exit(1)
+			osExit(1)
 		}
 	}(ctx)
 
 SELECT_SIGNAL:
 	select {
+	case code := <-exitCh:
+		exitCode = code
+		return
 	case s := <-signalCh:
 		if s == syscall.SIGQUIT {
 			// avaliable commands see <https://pkg.go.dev/runtime/pprof#Profile>

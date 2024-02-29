@@ -316,7 +316,7 @@ func readConfig() (config Config) {
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Error("Cannot read config:", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		log.Error("Config file not exists, create one")
 		notexists = true
@@ -324,7 +324,7 @@ func readConfig() (config Config) {
 		migrateConfig(data, &config)
 		if err = yaml.Unmarshal(data, &config); err != nil {
 			log.Error("Cannot parse config:", err)
-			os.Exit(1)
+			osExit(1)
 		}
 		if len(config.Storages) == 0 {
 			config.Storages = []storage.StorageOption{
@@ -355,7 +355,7 @@ func readConfig() (config Config) {
 			}
 			if j, ok := ids[s.Id]; ok {
 				log.Errorf("Duplicated storage id %q at [%d] and [%d], please edit the config.", s.Id, i, j)
-				os.Exit(1)
+				osExit(1)
 			}
 			ids[s.Id] = i
 		}
@@ -368,7 +368,7 @@ func readConfig() (config Config) {
 				user, ok := config.WebdavUsers[alias]
 				if !ok {
 					log.Errorf("Web dav user %q does not exists", alias)
-					os.Exit(1)
+					osExit(1)
 				}
 				opt.AliasUser = user
 				var end *url.URL
@@ -395,15 +395,15 @@ func readConfig() (config Config) {
 	encoder.SetIndent(2)
 	if err = encoder.Encode(config); err != nil {
 		log.Error("Cannot encode config:", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	if err = os.WriteFile(configPath, buf.Bytes(), 0600); err != nil {
 		log.Error("Cannot write config:", err)
-		os.Exit(1)
+		osExit(1)
 	}
 	if notexists {
 		log.Error("Config file created, please edit it and start the program again")
-		os.Exit(0xff)
+		osExit(0xff)
 	}
 
 	if os.Getenv("DEBUG") == "true" {

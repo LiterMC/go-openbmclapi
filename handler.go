@@ -40,6 +40,13 @@ import (
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
+func init() {
+	// ignore TLS handshake error
+	log.AddStdLogFilter(func(line []byte) bool {
+		return bytes.HasPrefix(line, ([]byte)("http: TLS handshake error"))
+	})
+}
+
 type statusResponseWriter struct {
 	http.ResponseWriter
 	status int

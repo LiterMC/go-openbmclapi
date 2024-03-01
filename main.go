@@ -221,6 +221,11 @@ START:
 
 		if !config.Advanced.SkipFirstSync {
 			cluster.SyncFiles(ctx, fl, false)
+
+			if !config.Advanced.NoGC {
+				go cluster.Gc()
+			}
+
 			if ctx.Err() != nil {
 				return
 			}
@@ -242,6 +247,9 @@ START:
 			}
 			checkCount = (checkCount + 1) % heavyCheckInterval
 			cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
+			if !config.Advanced.NoGC && !config.OnlyGcWhenStart {
+				go cluster.Gc()
+			}
 		}, (time.Duration)(config.SyncInterval)*time.Minute)
 	}(ctx)
 

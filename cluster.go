@@ -719,10 +719,6 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	}
 	cr.issync.Store(false)
 
-	if !config.Advanced.NoGC {
-		go cr.gc()
-	}
-
 	return true
 }
 
@@ -1035,7 +1031,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	return nil
 }
 
-func (cr *Cluster) gc() {
+func (cr *Cluster) Gc() {
 	for _, s := range cr.storages {
 		cr.gcFor(s)
 	}

@@ -10,6 +10,7 @@ port: 4000
 cluster-id: ${CLUSTER_ID}
 cluster-secret: ${CLUSTER_SECRET}
 sync-interval: 10
+only-gc-when-start: false
 download-max-conn: 16
 certificates:
   - cert: /path/to/cert.pem

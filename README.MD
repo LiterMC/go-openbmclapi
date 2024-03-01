@@ -126,6 +126,8 @@ cluster-id: ${CLUSTER_ID}
 cluster-secret: ${CLUSTER_SECRET}
 # 文件同步间隔 (分钟)
 sync-interval: 10
+# 仅在程序开始时清理文件
+only-gc-when-start: false
 # 同步文件时最多打开的连接数量. 注意: 该选项目前没用
 download-max-conn: 64
 

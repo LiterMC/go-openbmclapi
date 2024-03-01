@@ -132,6 +132,7 @@ type Config struct {
 	ClusterId            string `yaml:"cluster-id"`
 	ClusterSecret        string `yaml:"cluster-secret"`
 	SyncInterval         int    `yaml:"sync-interval"`
+	OnlyGcWhenStart      bool   `yaml:"only-gc-when-start"`
 	DownloadMaxConn      int    `yaml:"download-max-conn"`
 
 	Certificates []CertificateConfig            `yaml:"certificates"`
@@ -164,6 +165,7 @@ var defaultConfig = Config{
 	ClusterId:            "${CLUSTER_ID}",
 	ClusterSecret:        "${CLUSTER_SECRET}",
 	SyncInterval:         10,
+	OnlyGcWhenStart:      false,
 	DownloadMaxConn:      16,
 
 	Certificates: []CertificateConfig{

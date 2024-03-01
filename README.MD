@@ -41,6 +41,9 @@ A: 服务端启动时会输出 `https://<public-host>:<public-port>`, 访问这�
 Q: 检查文件的时候过慢怎么办?  
 A: 如果您确定你的存储稳定, 可以去编辑 `config.yaml`. 将 `no-heavy-check` 选项设为 `true` 即可
 
+Q: 程序无法运行 / 直接退出怎么办?  
+A: 请将运行目录下 `logs` 文件夹内最新的日志上传到 [Github Issue](https://github.com/LiterMC/go-openbmclapi/issues/new)
+
 ## 安装
 
 ### 无依赖直接运行

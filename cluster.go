@@ -1308,7 +1308,9 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	}
 
 	cr.filesetMux.Lock()
-	cr.fileset[hash] = size
+	if cr.fileset != nil {
+		cr.fileset[hash] = size
+	}
 	cr.filesetMux.Unlock()
 	return
 }

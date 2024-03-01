@@ -80,12 +80,12 @@ type Cluster struct {
 	apiHmacKey         []byte
 	hijackProxy        *HjProxy
 
-	stats     Stats
-	hits      atomic.Int32
-	hbts      atomic.Int64
-	issync    atomic.Bool
-	syncProg  atomic.Int64
-	syncTotal atomic.Int64
+	stats          Stats
+	hits, statHits atomic.Int32
+	hbts, statHbts atomic.Int64
+	issync         atomic.Bool
+	syncProg       atomic.Int64
+	syncTotal      atomic.Int64
 
 	mux             sync.RWMutex
 	enabled         atomic.Bool
@@ -436,7 +436,8 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 // KeepAlive will fresh hits & hit bytes data and send the keep-alive packet
 func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 	hits, hbts := cr.hits.Swap(0), cr.hbts.Swap(0)
-	cr.stats.AddHits(hits, hbts)
+	hits2, hbts2 := cr.statHits.Swap(0), cr.statHbts.Swap(0)
+	cr.stats.AddHits(hits+hits2, hbts+hbts2)
 	resCh, err := cr.socket.EmitWithAck("keep-alive", Map{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits":  hits,

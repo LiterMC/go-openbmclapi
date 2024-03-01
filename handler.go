@@ -408,6 +408,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, hash string) {
+	keepaliveRec := req.Context().Value("go-openbmclapi.handler.no.record.for.keepalive") != true
 	rw.Header().Set("X-Bmclapi-Hash", hash)
 
 	if _, ok := emptyHashes[hash]; ok {
@@ -420,8 +421,12 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 		}
 		rw.WriteHeader(http.StatusOK)
-		cr.hits.Add(1)
-		// cr.hbts.Add(0) // no need to add zero
+		if keepaliveRec {
+			cr.hits.Add(1)
+			// cr.hbts.Add(0) // no need to add zero
+		} else {
+			cr.statHits.Add(1)
+		}
 		return
 	}
 
@@ -457,9 +462,12 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			return false
 		}
 		if sz >= 0 {
-			if req.Context().Value("go-openbmclapi.handler.no.record.for.keepalive") == true {
+			if keepaliveRec {
 				cr.hits.Add(1)
 				cr.hbts.Add(sz)
+			} else {
+				cr.statHits.Add(1)
+				cr.statHbts.Add(sz)
 			}
 		}
 		return true

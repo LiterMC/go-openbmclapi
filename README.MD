@@ -45,7 +45,7 @@ A: 如果您确定你的存储稳定, 可以去编辑 `config.yaml`. 将 `no-hea
 
 ### 无依赖直接运行
 
-1. 从 github release 找到**适合您服务器平台**的程序并下载到节点服务器上
+1. 从 [Github Release](https://github.com/LiterMC/go-openbmclapi/releases/latest) 找到**适合您服务器平台**的程序并下载到节点服务器上
 2. 配置配置文件, 可以直接使用与bangbang93的openbmclapi相同的环境变量配置, 也可以从`config.yaml`进行配置 _(下文有讲)_
 3. 运行程序
 

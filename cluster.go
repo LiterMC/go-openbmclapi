@@ -883,15 +883,12 @@ func (cr *Cluster) checkFileFor(
 	return
 }
 
-func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
-	pg := mpb.New(mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh(), mpb.WithWidth(140))
-	defer pg.Shutdown()
-	log.SetLogOutput(pg)
-	defer log.SetLogOutput(nil)
-
-	cr.syncProg.Store(0)
-	cr.syncTotal.Store(-1)
-
+func (cr *Cluster) CheckFiles(
+	ctx context.Context,
+	files []FileInfo,
+	heavyCheck bool,
+	pg *mpb.Progress,
+) (map[string]*fileInfoWithTargets, error) {
 	missingMap := NewSyncMap[string, *fileInfoWithTargets]()
 	done := make(chan struct{}, 0)
 
@@ -911,11 +908,54 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		case <-done:
 		case <-ctx.Done():
 			log.Warn("File sync interrupted")
-			return ctx.Err()
+			return nil, ctx.Err()
+		}
+	}
+	return missingMap.m, nil
+}
+
+func (cr *Cluster) SetFilesetByExists(ctx context.Context, files []FileInfo) error {
+	pg := mpb.New(mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh(), mpb.WithWidth(140))
+	defer pg.Shutdown()
+	log.SetLogOutput(pg)
+	defer log.SetLogOutput(nil)
+
+	missingMap, err := cr.CheckFiles(ctx, files, false, pg)
+	if err != nil {
+		return err
+	}
+	fileset := make(map[string]int64, len(files))
+	stoCount := len(cr.storages)
+	for _, f := range files {
+		if t, ok := missingMap[f.Hash]; !ok || len(t.targets) < stoCount {
+			fileset[f.Hash] = f.Size
 		}
 	}
 
-	totalFiles := len(missingMap.m)
+	cr.mux.Lock()
+	cr.fileset = fileset
+	cr.mux.Unlock()
+	return nil
+}
+
+func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
+	pg := mpb.New(mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh(), mpb.WithWidth(140))
+	defer pg.Shutdown()
+	log.SetLogOutput(pg)
+	defer log.SetLogOutput(nil)
+
+	cr.syncProg.Store(0)
+	cr.syncTotal.Store(-1)
+
+	missingMap, err := cr.CheckFiles(ctx, files, heavyCheck, pg)
+	if err != nil {
+		return err
+	}
+	missing := make([]*fileInfoWithTargets, 0, len(missingMap))
+	for _, f := range missingMap {
+		missing = append(missing, f)
+	}
+	totalFiles := len(missing)
 	if totalFiles == 0 {
 		log.Info("All files were synchronized")
 		return nil
@@ -930,10 +970,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	syncCfg := ccfg.Sync
 	log.Infof("Sync config: %#v", syncCfg)
 
-	missing := make([]*fileInfoWithTargets, 0, len(missingMap.m))
-	for _, f := range missingMap.m {
-		missing = append(missing, f)
-	}
+	done := make(chan struct{}, 0)
 
 	var stats syncStats
 	stats.pg = pg

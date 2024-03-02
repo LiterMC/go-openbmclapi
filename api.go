@@ -520,6 +520,10 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 				return
 			}
 		}
+		// release objects
+		for i, _ := range batchMsg {
+			batchMsg[i] = nil
+		}
 		batchMsg = batchMsg[:0]
 	case <-pingTicker.C:
 		if err := conn.WriteJSON(Map{

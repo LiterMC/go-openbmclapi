@@ -16,7 +16,7 @@ var logInc = 0
 var focusLastLog = true
 var justSplicedLog = false
 
-function pushLog(log: Log) {
+function pushLog(log: Log): void {
 	log._inc = logInc = (logInc + 1) % 65536
 	logs.push(log)
 	const minI = logs.length - MAX_LOG_LENGTH

@@ -234,14 +234,10 @@ START:
 			if ctx.Err() != nil {
 				return
 			}
-		} else {
-			fileset := make(map[string]int64, len(fl))
-			for _, f := range fl {
-				fileset[f.Hash] = f.Size
+		} else if fl != nil {
+			if err := cluster.SetFilesetByExists(ctx, fl); err != nil {
+				return
 			}
-			cluster.mux.Lock()
-			cluster.fileset = fileset
-			cluster.mux.Unlock()
 		}
 		createInterval(ctx, func() {
 			log.Infof("Fetching file list")

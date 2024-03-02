@@ -1262,54 +1262,65 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		Size: -1,
 	}
 	done, ok := cr.lockDownloading(hash)
-	if ok {
-		select {
-		case err = <-done:
-		case <-cr.Disabled():
-			err = context.Canceled
-		}
-		return
-	}
-	defer func() {
-		done <- err
-	}()
+	if !ok {
+		go func(){
+			defer func() {
+				done <- err
+			}()
 
-	log.Infof("Downloading %s from handler", hash)
-	defer func() {
-		if err != nil {
-			log.Errorf("Could not download %s: %v", hash, err)
-		}
-	}()
+			log.Infof("Downloading %s from handler", hash)
+			defer func() {
+				if err != nil {
+					log.Errorf("Could not download %s: %v", hash, err)
+				}
+			}()
 
-	path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, true, nil)
-	if err != nil {
-		return
-	}
-	defer os.Remove(path)
-	var srcFd *os.File
-	if srcFd, err = os.Open(path); err != nil {
-		return
-	}
-	defer srcFd.Close()
-	var stat os.FileInfo
-	if stat, err = srcFd.Stat(); err != nil {
-		return
-	}
-	size := stat.Size()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go func(){
+				select {
+				case <-cr.Disabled():
+					cancel()
+				case <-ctx.Done():
+				}
+			}()
 
-	for _, target := range cr.storages {
-		if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-			log.Errorf("Could not seek file %q: %v", path, err)
-			return
-		}
-		if err := target.Create(hash, srcFd); err != nil {
-			log.Errorf("Could not create %q: %v", target.String(), err)
-			continue
-		}
-	}
+			path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, true, nil)
+			if err != nil {
+				return
+			}
+			defer os.Remove(path)
+			var srcFd *os.File
+			if srcFd, err = os.Open(path); err != nil {
+				return
+			}
+			defer srcFd.Close()
+			var stat os.FileInfo
+			if stat, err = srcFd.Stat(); err != nil {
+				return
+			}
+			size := stat.Size()
 
-	cr.filesetMux.Lock()
-	cr.fileset[hash] = size
-	cr.filesetMux.Unlock()
+			for _, target := range cr.storages {
+				if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
+					log.Errorf("Could not seek file %q: %v", path, err)
+					return
+				}
+				if err := target.Create(hash, srcFd); err != nil {
+					log.Errorf("Could not create %q: %v", target.String(), err)
+					continue
+				}
+			}
+
+			cr.filesetMux.Lock()
+			cr.fileset[hash] = size
+			cr.filesetMux.Unlock()
+		}()
+	}
+	select {
+	case err = <-done:
+	case <-cr.Disabled():
+		err = context.Canceled
+	}
 	return
 }

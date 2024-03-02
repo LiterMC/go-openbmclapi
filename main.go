@@ -336,8 +336,8 @@ START:
 			publicHost = config.PublicHost
 		}
 		log.Infof("Server public at https://%s:%d (%s) with %d certificates", publicHost, publicPort, clusterSvr.Addr, certCount)
-		if len(publicHosts) > 0 {
-			log.Infof("Alternative hostnames")
+		if len(publicHosts) > 1 {
+			log.Infof("Alternative hostnames:")
 			for _, h := range publicHosts[1:] {
 				log.Infof("\t- https://%s:%d", h, publicPort)
 			}

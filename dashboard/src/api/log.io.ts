@@ -2,6 +2,8 @@ interface BasicMsg {
 	type: string
 }
 
+type BatchMsg = BasicMsg[]
+
 interface PingMsg {
 	type: 'ping'
 	data?: any
@@ -33,8 +35,14 @@ export class LogIO {
 	private setWs(ws: WebSocket): void {
 		ws.addEventListener('close', () => this.onClose())
 		ws.addEventListener('message', (msg) => {
-			const res = JSON.parse(msg.data) as BasicMsg
-			this.onMessage(res)
+			const res = JSON.parse(msg.data) as BasicMsg | BatchMsg
+			if (Array.isArray(res)) {
+				for (const r of res) {
+					this.onMessage(r)
+				}
+			} else {
+				this.onMessage(res)
+			}
 		})
 		this.ws = ws
 	}

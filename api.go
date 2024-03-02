@@ -407,7 +407,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 	}
 	c := make(chan *logObj, 64)
 	unregister := log.RegisterLogMonitor(log.LevelDebug, func(ts int64, l log.Level, msg string) {
-		if (log.Level)(level.Load()) > l {
+		if (log.Level)(level.Load()) > l&log.LevelMask {
 			return
 		}
 		select {
@@ -471,25 +471,66 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	pingTimer := time.NewTicker(time.Second * 45)
-	defer pingTimer.Stop()
-	for {
-		select {
-		case v := <-c:
-			if err := conn.WriteJSON(v); err != nil {
+	sendMsgCh := make(chan any, 64)
+	go func() {
+		for {
+			select {
+			case v := <-c:
+				select {
+				case sendMsgCh <- v:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
 				return
 			}
-		case <-pingTimer.C:
-			if err := conn.WriteJSON(Map{
-				"type": "ping",
-				"data": time.Now().UnixMilli(),
-			}); err != nil {
-				log.Errorf("[log.io]: Error when sending ping packet: %v", err)
+		}
+	}()
+
+	pingTicker := time.NewTicker(time.Second * 45)
+	defer pingTicker.Stop()
+	forceSendTimer := time.NewTimer(0)
+	defer forceSendTimer.Stop()
+
+	batchMsg := make([]any, 0, 64)
+	select {
+	case v := <-sendMsgCh:
+		batchMsg = append(batchMsg, v)
+		if !forceSendTimer.Stop() {
+			<-forceSendTimer.C
+		}
+		forceSendTimer.Reset(time.Second)
+	WAIT_MORE:
+		for {
+			select {
+			case v := <-sendMsgCh:
+				batchMsg = append(batchMsg, v)
+			case <-time.After(time.Millisecond * 20):
+				break WAIT_MORE
+			case <-forceSendTimer.C:
+				break WAIT_MORE
+			}
+		}
+		if len(batchMsg) == 1 {
+			if err := conn.WriteJSON(batchMsg[0]); err != nil {
 				return
 			}
-		case <-ctx.Done():
+		} else {
+			if err := conn.WriteJSON(batchMsg); err != nil {
+				return
+			}
+		}
+		batchMsg = batchMsg[:0]
+	case <-pingTicker.C:
+		if err := conn.WriteJSON(Map{
+			"type": "ping",
+			"data": time.Now().UnixMilli(),
+		}); err != nil {
+			log.Errorf("[log.io]: Error when sending ping packet: %v", err)
 			return
 		}
+	case <-ctx.Done():
+		return
 	}
 }
 

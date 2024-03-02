@@ -115,6 +115,11 @@ func main() {
 	}()
 	defer log.RecordPanic()
 	log.StartFlushLogFile()
+	if config.Advanced.DebugLog {
+		log.SetLevel(log.LevelDebug)
+	} else {
+		log.SetLevel(log.LevelInfo)
+	}
 
 	// override the osExit inside main function
 	osExit := func(n int) {

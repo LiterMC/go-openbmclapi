@@ -154,7 +154,7 @@ func NewCluster(
 		cache:       cache,
 
 		disabled: make(chan struct{}, 0),
-		fileset: make(map[string]int64, 0),
+		fileset:  make(map[string]int64, 0),
 
 		downloading: make(map[string]chan error),
 

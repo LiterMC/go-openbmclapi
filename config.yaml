@@ -49,7 +49,6 @@ webdav-users:
 advanced:
   debug-log: false
   socket-io-log: false
-  noopen: false
   no-heavy-check: false
   no-gc: false
   heavy-check-interval: 120

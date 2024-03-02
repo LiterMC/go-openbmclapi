@@ -44,7 +44,6 @@ type UserItem struct {
 type AdvancedConfig struct {
 	DebugLog             bool `yaml:"debug-log"`
 	SocketIOLog          bool `yaml:"socket-io-log"`
-	NoOpen               bool `yaml:"noopen"`
 	NoHeavyCheck         bool `yaml:"no-heavy-check"`
 	NoGC                 bool `yaml:"no-gc"`
 	HeavyCheckInterval   int  `yaml:"heavy-check-interval"`
@@ -210,7 +209,6 @@ var defaultConfig = Config{
 
 	Advanced: AdvancedConfig{
 		DebugLog:             false,
-		NoOpen:               false,
 		NoHeavyCheck:         false,
 		NoGC:                 false,
 		HeavyCheckInterval:   120,
@@ -319,9 +317,6 @@ func migrateConfig(data []byte, config *Config) {
 	}
 	if v, ok := oldConfig["exit-when-disconnected"].(bool); ok {
 		config.Advanced.ExitWhenDisconnected = v
-	}
-	if v, ok := oldConfig["noopen"].(bool); ok {
-		config.Advanced.NoOpen = v
 	}
 	if v, ok := oldConfig["no-heavy-check"].(bool); ok {
 		config.Advanced.NoHeavyCheck = v
@@ -459,12 +454,6 @@ func readConfig() (config Config) {
 	}
 	if byoc := os.Getenv("CLUSTER_BYOC"); byoc != "" {
 		config.Byoc = byoc == "true"
-	}
-	switch noopen := os.Getenv("FORCE_NOOPEN"); noopen {
-	case "true":
-		config.Advanced.NoOpen = true
-	case "false":
-		config.Advanced.NoOpen = false
 	}
 	return
 }

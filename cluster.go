@@ -937,7 +937,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 
 	var stats syncStats
 	stats.pg = pg
-	stats.noOpen = config.Advanced.NoOpen || syncCfg.Source == "center"
+	stats.noOpen = syncCfg.Source == "center"
 	stats.slots = limited.NewBufSlots(syncCfg.Concurrency)
 	stats.totalFiles = totalFiles
 	for _, f := range missing {

@@ -263,8 +263,6 @@ advanced:
   debug-log: false
   # 是否记录 socket.io 流的日志 (仅在打开 debug-log 后才会输出到标准输出)
   socket-io-log: false
-  # 是否仅从主服务器下载文件
-  noopen: false
   # 跳过文件哈希值校验
   no-heavy-check: true
   # 不删除未使用的文件对象 **注意⚠️: 该选项打开后磁盘使用率会随时间增长**

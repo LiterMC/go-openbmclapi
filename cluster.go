@@ -1263,7 +1263,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	}
 	done, ok := cr.lockDownloading(hash)
 	if !ok {
-		go func(){
+		go func() {
 			defer func() {
 				done <- err
 			}()
@@ -1276,14 +1276,22 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 			}()
 
 			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			go func(){
-				select {
-				case <-cr.Disabled():
-					cancel()
-				case <-ctx.Done():
+			go func() {
+				if cr.enabled.Load() {
+					select {
+					case <-cr.Disabled():
+						cancel()
+					case <-ctx.Done():
+					}
+				} else {
+					select {
+					case <-cr.WaitForEnable():
+						cancel()
+					case <-ctx.Done():
+					}
 				}
 			}()
+			defer cancel()
 
 			path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, true, nil)
 			if err != nil {
@@ -1319,6 +1327,8 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	}
 	select {
 	case err = <-done:
+	case <-ctx.Done():
+		err = ctx.Err()
 	case <-cr.Disabled():
 		err = context.Canceled
 	}

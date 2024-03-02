@@ -154,6 +154,7 @@ func NewCluster(
 		cache:       cache,
 
 		disabled: make(chan struct{}, 0),
+		fileset: make(map[string]int64, 0),
 
 		downloading: make(map[string]chan error),
 
@@ -1308,9 +1309,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	}
 
 	cr.filesetMux.Lock()
-	if cr.fileset != nil {
-		cr.fileset[hash] = size
-	}
+	cr.fileset[hash] = size
 	cr.filesetMux.Unlock()
 	return
 }

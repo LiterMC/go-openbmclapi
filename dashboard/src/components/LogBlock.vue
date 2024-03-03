@@ -20,6 +20,7 @@ var justSplicedLog = false
 var logDelayWatcher: Promise<void> | null = null
 
 var scrollYTarget: number | null = null
+var scrolling = false
 
 function registerAnimationFrame(callback: (dt: number) => void | boolean): () => boolean {
 	var n: ReturnType<typeof window.requestAnimationFrame> | null = null
@@ -45,18 +46,26 @@ function registerAnimationFrame(callback: (dt: number) => void | boolean): () =>
 }
 
 function activeScroller(): void {
+	if (scrolling) {
+		return
+	}
+	scrolling = true
+
 	const MIN_SCROLL_SPEED = 100 // 100px per second
 	registerAnimationFrame((dt: number): boolean => {
 		if (!focusLastLog || !scrollYTarget || document.hidden || !box.value) {
+			scrolling = false
 			return false
 		}
 		const diff = scrollYTarget - (box.value.scrollTop + box.value.clientHeight)
 		const minDist = (dt / 1000) * MIN_SCROLL_SPEED
 		if (diff <= minDist) {
 			box.value.scrollTop = scrollYTarget - box.value.clientHeight
+			scrolling = false
 			return false
 		}
-		box.value.scrollTop = scrollYTarget - box.value.clientHeight - diff * 0.9
+		box.value.scrollTop =
+			scrollYTarget - box.value.clientHeight - diff + Math.max(diff * 0.1, minDist)
 		return true
 	})
 }
@@ -64,9 +73,15 @@ function activeScroller(): void {
 function pushLog(log: Log): void {
 	log._inc = logInc = (logInc + 1) % 65536
 	logs.push(log)
+	justSplicedLog = true
+	if (justSplicedLogCleaner) {
+		window.cancelAnimationFrame(justSplicedLogCleaner)
+		justSplicedLogCleaner = null
+	}
 
 	if (!logDelayWatcher) {
 		logDelayWatcher = nextTick().then(() => {
+			logDelayWatcher = null
 			if (document.hidden || !box.value) {
 				return
 			}
@@ -81,6 +96,7 @@ function pushLog(log: Log): void {
 }
 
 var boxLastPosTop = 0
+var justSplicedLogCleaner: ReturnType<typeof window.requestAnimationFrame> | null = null
 
 function onScrollBox(): void {
 	if (document.hidden || !box.value) {
@@ -90,7 +106,12 @@ function onScrollBox(): void {
 	boxLastPosTop = box.value.scrollTop
 	if (scrolledY < 0) {
 		if (justSplicedLog) {
-			justSplicedLog = false
+			if (!justSplicedLogCleaner) {
+				justSplicedLogCleaner = window.requestAnimationFrame(() => {
+					justSplicedLogCleaner = null
+					justSplicedLog = false
+				})
+			}
 		} else {
 			focusLastLog = false
 		}
@@ -101,10 +122,8 @@ function onVisibilityChange(): void {
 	if (document.hidden || !box.value || !focusLastLog) {
 		return
 	}
-	box.value.scroll({
-		top: box.value.scrollHeight,
-		behavior: 'smooth',
-	})
+	scrollYTarget = box.value.scrollHeight
+	activeScroller()
 }
 
 function formatDate(date: Date): string {

@@ -49,14 +49,6 @@ var closedCh = func() <-chan struct{} {
 	return ch
 }()
 
-func split(str string, b byte) (l, r string) {
-	i := strings.IndexByte(str, b)
-	if i >= 0 {
-		return str[:i], str[i+1:]
-	}
-	return str, ""
-}
-
 func createInterval(ctx context.Context, do func(), delay time.Duration) {
 	go func() {
 		ticker := time.NewTicker(delay)
@@ -77,13 +69,6 @@ func createInterval(ctx context.Context, do func(), delay time.Duration) {
 		}
 	}()
 	return
-}
-
-func httpToWs(origin string) string {
-	if strings.HasPrefix(origin, "http") {
-		return "ws" + origin[4:]
-	}
-	return origin
 }
 
 const byteUnits = "KMGTPE"

@@ -257,7 +257,7 @@ func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
 		var addr string
 		if config.TrustedXForwardedFor {
 			// X-Forwarded-For: <client>, <proxy1>, <proxy2>
-			adr, _ := split(req.Header.Get("X-Forwarded-For"), ',')
+			adr, _, _ := strings.Cut(req.Header.Get("X-Forwarded-For"), ",")
 			addr = strings.TrimSpace(adr)
 		}
 		if addr == "" {
@@ -309,8 +309,8 @@ func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
 		var rec record
 		rec.used = used.Seconds()
 		rec.bytes = (float64)(srw.wrote)
-		ua, _ = split(ua, ' ')
-		rec.ua, _ = split(ua, '/')
+		ua, _, _ = strings.Cut(ua, " ")
+		rec.ua, _, _ = strings.Cut(ua, "/")
 		rec.isRange = extraInfoMap["skip-ua-count"] != nil
 		select {
 		case recordCh <- rec:
@@ -391,7 +391,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 		return
 	case strings.HasPrefix(rawpath, "/api/"):
-		version, _ := split(rawpath[len("/api/"):], '/')
+		version, _, _ := strings.Cut(rawpath[len("/api/"):], "/")
 		switch version {
 		case "v0":
 			cr.handlerAPIv0.ServeHTTP(rw, req)

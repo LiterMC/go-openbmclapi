@@ -306,7 +306,7 @@ onMounted(() => {
 			</div>
 		</div>
 		<div class="log-box">
-			<template v-if="true || token">
+			<template v-if="token">
 				<nav class="pprof-nav">
 					<Button
 						severity="warning"

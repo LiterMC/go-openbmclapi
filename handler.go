@@ -462,10 +462,11 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 	var sto storage.Storage
 	forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
 		sto = cr.storages[i]
-		log.Debugf("[handler]: Checking file on Storage [%d] %s ...", i, sto.String())
+		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.String())
 
 		sz, er := sto.ServeDownload(rw, req, hash, size)
 		if er != nil {
+			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.String(). er)
 			err = er
 			return false
 		}

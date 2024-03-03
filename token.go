@@ -30,6 +30,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -60,7 +61,7 @@ func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
 
 func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err error) {
 	log.Infof("Fetching authorization token ...")
-	defer func(){
+	defer func() {
 		if err != nil {
 			log.Errorf("Cannot fetch authorization token: %v", err)
 		} else {

@@ -214,8 +214,13 @@ async function connectLogIO(tk: string): Promise<void> {
 }
 
 onMounted(() => {
-	onTokenChanged(token.value)
-	watch(token, onTokenChanged)
+	// onTokenChanged(token.value)
+	// watch(token, onTokenChanged)
+	logBlk.value?.pushLog({
+		time: Date.now(),
+		lvl: 'WARN',
+		log: '[dashboard]: test',
+	})
 })
 </script>
 
@@ -306,7 +311,7 @@ onMounted(() => {
 			</div>
 		</div>
 		<div class="log-box">
-			<template v-if="token">
+			<template v-if="true||token">
 				<nav class="pprof-nav">
 					<Button
 						severity="warning"

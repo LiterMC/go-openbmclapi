@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, reactive, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, nextTick, getCurrentInstance, onMounted, onBeforeUnmount } from 'vue'
+import { RingBuffer } from '@/utils/ring'
 
 interface Log {
 	_inc?: number
@@ -8,21 +9,75 @@ interface Log {
 	log: string
 }
 
+const MAX_LOG_LENGTH = 1024 * 2
+
 const box = ref<HTMLElement>()
-const logs = reactive<Log[]>([])
-const MAX_LOG_LENGTH = 1024 * 4
+const logs = reactive(RingBuffer.create<Log>(MAX_LOG_LENGTH))
 
 var logInc = 0
 var focusLastLog = true
 var justSplicedLog = false
+var logDelayWatcher: Promise<void> | null = null
+
+var scrollYTarget: number | null = null
+
+function registerAnimationFrame(callback: (dt: number) => void | boolean): () => boolean {
+	var n: ReturnType<typeof window.requestAnimationFrame> | null = null
+	var last: number = document.timeline.currentTime as number
+	const step = (ts: number) => {
+		n = null
+		const dt = ts - last
+		last = ts
+		if (callback(dt) === false) {
+			return
+		}
+		n = window.requestAnimationFrame(step)
+	}
+	n = window.requestAnimationFrame(step)
+	return () => {
+		if (n === null) {
+			return true
+		}
+		window.cancelAnimationFrame(n)
+		n = null
+		return false
+	}
+}
+
+function activeScroller(): void {
+	const MIN_SCROLL_SPEED = 100 // 100px per second
+	registerAnimationFrame((dt: number): boolean => {
+		if (!focusLastLog || !scrollYTarget || document.hidden || !box.value) {
+			return false
+		}
+		const diff = scrollYTarget - (box.value.scrollTop + box.value.clientHeight)
+		const minDist = dt / 1000 * MIN_SCROLL_SPEED
+		if (diff <= minDist) {
+			box.value.scrollTop = scrollYTarget - box.value.clientHeight
+			return false
+		}
+		box.value.scrollTop = scrollYTarget - box.value.clientHeight - (diff * 0.9)
+		return true
+	})
+}
 
 function pushLog(log: Log): void {
 	log._inc = logInc = (logInc + 1) % 65536
 	logs.push(log)
-	const minI = logs.length - MAX_LOG_LENGTH
-	if (minI > 0) {
-		logs.splice(0, minI)
-		justSplicedLog = true
+	console.log('push log:', logs)
+
+	if (!logDelayWatcher) {
+		logDelayWatcher = nextTick().then(() => {
+			if (document.hidden || !box.value) {
+				return
+			}
+			const diff = box.value.scrollHeight - (box.value.scrollTop + box.value.clientHeight)
+			focusLastLog ||= diff < 5
+			if (focusLastLog && !document.hidden) {
+				scrollYTarget = box.value.scrollHeight
+				activeScroller()
+			}
+		})
 	}
 }
 
@@ -52,21 +107,6 @@ function onVisibilityChange(): void {
 		behavior: 'smooth',
 	})
 }
-
-watch(logs, async (logs: Log[]) => {
-	if (document.hidden || !box.value) {
-		return
-	}
-	const diff = box.value.scrollHeight - (box.value.scrollTop + box.value.clientHeight)
-	focusLastLog ||= diff < 5
-	if (focusLastLog && !document.hidden) {
-		await nextTick()
-		box.value.scroll({
-			top: box.value.scrollHeight,
-			behavior: diff < box.value.clientHeight ? 'smooth' : 'auto',
-		})
-	}
-})
 
 function formatDate(date: Date): string {
 	const pad2 = (n: number) => n.toString().padStart(2, '0')

@@ -208,7 +208,7 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	}
 	log.Debugf("Putting %q", target)
 
-	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, r)
+	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, io.NopCloser(r))
 	if err != nil {
 		return err
 	}

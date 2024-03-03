@@ -1037,12 +1037,12 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 					defer srcFd.Close()
 					for _, target := range f.targets {
 						if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-							log.Errorf("Could not seek file %q to start: %v", path, err)
+							log.Errorf("Cannot seek file %q to start: %v", path, err)
 							continue
 						}
 						err := target.Create(f.Hash, srcFd)
 						if err != nil {
-							log.Errorf("Could not create %s/%s: %v", target.String(), f.Hash, err)
+							log.Errorf("Cannot create %s/%s: %v", target.String(), f.Hash, err)
 							continue
 						}
 					}
@@ -1350,11 +1350,11 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 
 			for _, target := range cr.storages {
 				if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-					log.Errorf("Could not seek file %q: %v", path, err)
+					log.Errorf("Cannot seek file %q: %v", path, err)
 					return
 				}
 				if err := target.Create(hash, srcFd); err != nil {
-					log.Errorf("Could not create %q: %v", target.String(), err)
+					log.Errorf("Cannot create %q: %v", target.String(), err)
 					continue
 				}
 			}

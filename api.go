@@ -429,6 +429,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 		for {
 			clear(data)
 			if err := conn.ReadJSON(&data); err != nil {
+				log.Errorf("[log.io]: Cannot read from peer:", err)
 				return
 			}
 			typ, ok := data["type"].(string)
@@ -493,48 +494,50 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 	defer forceSendTimer.Stop()
 
 	batchMsg := make([]any, 0, 64)
-	select {
-	case v := <-sendMsgCh:
-		batchMsg = append(batchMsg, v)
-		if !forceSendTimer.Stop() {
-			<-forceSendTimer.C
-		}
-		forceSendTimer.Reset(time.Second)
-	WAIT_MORE:
-		for {
-			select {
-			case v := <-sendMsgCh:
-				batchMsg = append(batchMsg, v)
-			case <-time.After(time.Millisecond * 20):
-				break WAIT_MORE
-			case <-forceSendTimer.C:
-				break WAIT_MORE
+	for {
+		select {
+		case v := <-sendMsgCh:
+			batchMsg = append(batchMsg, v)
+			if !forceSendTimer.Stop() {
+				<-forceSendTimer.C
 			}
-		}
-		if len(batchMsg) == 1 {
-			if err := conn.WriteJSON(batchMsg[0]); err != nil {
+			forceSendTimer.Reset(time.Second)
+		WAIT_MORE:
+			for {
+				select {
+				case v := <-sendMsgCh:
+					batchMsg = append(batchMsg, v)
+				case <-time.After(time.Millisecond * 20):
+					break WAIT_MORE
+				case <-forceSendTimer.C:
+					break WAIT_MORE
+				}
+			}
+			if len(batchMsg) == 1 {
+				if err := conn.WriteJSON(batchMsg[0]); err != nil {
+					return
+				}
+			} else {
+				if err := conn.WriteJSON(batchMsg); err != nil {
+					return
+				}
+			}
+			// release objects
+			for i, _ := range batchMsg {
+				batchMsg[i] = nil
+			}
+			batchMsg = batchMsg[:0]
+		case <-pingTicker.C:
+			if err := conn.WriteJSON(Map{
+				"type": "ping",
+				"data": time.Now().UnixMilli(),
+			}); err != nil {
+				log.Errorf("[log.io]: Error when sending ping packet: %v", err)
 				return
 			}
-		} else {
-			if err := conn.WriteJSON(batchMsg); err != nil {
-				return
-			}
-		}
-		// release objects
-		for i, _ := range batchMsg {
-			batchMsg[i] = nil
-		}
-		batchMsg = batchMsg[:0]
-	case <-pingTicker.C:
-		if err := conn.WriteJSON(Map{
-			"type": "ping",
-			"data": time.Now().UnixMilli(),
-		}); err != nil {
-			log.Errorf("[log.io]: Error when sending ping packet: %v", err)
+		case <-ctx.Done():
 			return
 		}
-	case <-ctx.Done():
-		return
 	}
 }
 

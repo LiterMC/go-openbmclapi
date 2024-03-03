@@ -125,9 +125,7 @@ export class LogIO {
 	}
 
 	static async dial(token: string): Promise<LogIO> {
-		const wsTarget = `${httpToWs(window.location.protocol)}//${
-			window.location.host
-		}/api/v0/log.io?level=debug`
+		const wsTarget = `${httpToWs(window.location.protocol)}//${window.location.host}/api/v0/log.io`
 		const ws = new WebSocket(wsTarget)
 
 		var connTimeout: ReturnType<typeof setTimeout>

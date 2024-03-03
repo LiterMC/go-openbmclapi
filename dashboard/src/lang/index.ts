@@ -66,7 +66,7 @@ export function setLang(lang: Lang | string): Lang | null {
 }
 
 export function tr(key: string, ...values: unknown[]): string {
-	console.debug('translating:', key)
+	// console.debug('translating:', key)
 	const item = currentLang.value
 	let cur: string | LangMap | null = currentTr.value
 	if (!cur || (key && typeof cur === 'string')) {

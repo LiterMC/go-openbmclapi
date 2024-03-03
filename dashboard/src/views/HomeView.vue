@@ -200,11 +200,11 @@ async function connectLogIO(tk: string): Promise<void> {
 			log: '[dashboard]: Disconnected from remote server',
 		})
 		logIO = null
-		window.requestAnimationFrame(() => {
+		setTimeout(() => {
 			if (!logIO && token.value) {
 				connectLogIO(token.value)
 			}
-		})
+		}, 100)
 	})
 	logIO.addLogListener((msg: LogMsg) => {
 		if (logDebugLevel.value || msg.lvl !== 'DBUG') {
@@ -306,7 +306,7 @@ onMounted(() => {
 			</div>
 		</div>
 		<div class="log-box">
-			<template v-if="token">
+			<template v-if="true || token">
 				<nav class="pprof-nav">
 					<Button
 						severity="warning"

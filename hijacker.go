@@ -99,7 +99,7 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	u.Host = hijackingHost
 	req2, err := http.NewRequestWithContext(req.Context(), req.Method, u.String(), req.Body)
 	if err != nil {
-		http.Error(rw, err.Error(), http.StatusBadGateway)
+		http.Error(rw, "remote: " + err.Error(), http.StatusBadGateway)
 		return
 	}
 	for k, v := range req.Header {
@@ -107,7 +107,7 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	res, err := h.client.Do(req2)
 	if err != nil {
-		http.Error(rw, err.Error(), http.StatusBadGateway)
+		http.Error(rw, "remote: " + err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer res.Body.Close()

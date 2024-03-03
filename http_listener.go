@@ -60,8 +60,21 @@ func newHttpTLSListener(l net.Listener, cfg *tls.Config, publicHosts []string, p
 	}
 }
 
-// if maybeRedirectConn
-func (s *httpTLSListener) maybeRedirectConn(c *connHeadReader) (ishttp bool) {
+func (s *httpTLSListener) Close() (err error) {
+	err = s.Listener.Close()
+	select {
+	case conn := <-s.acceptedCh:
+		conn.Close()
+	default:
+	}
+	select {
+	case <-s.errCh:
+	default:
+	}
+	return
+}
+
+func (s *httpTLSListener) maybeHTTPConn(c *connHeadReader) (ishttp bool) {
 	if len(s.hosts) == 0 {
 		return false
 	}
@@ -90,52 +103,14 @@ READ_HEAD:
 	if len(method) == 0 || len(uurl) == 0 || len(proto) == 0 {
 		return false
 	}
-	major, minor, ok := http.ParseHTTPVersion((string)(proto))
+	_, _, ok := http.ParseHTTPVersion((string)(proto))
 	if !ok {
 		return false
 	}
-	u, err := url.Parse((string)(uurl))
+	_, err := url.ParseRequestURI((string)(uurl))
 	if err != nil {
 		return false
 	}
-	if major != 1 {
-		// maybe we should response a 505 here?
-		return false
-	}
-	req, err := http.ReadRequest(bufio.NewReader(c))
-	if err != nil {
-		return true
-	}
-	host, _, err := net.SplitHostPort(req.Host)
-	if err != nil {
-		host = req.Host
-	}
-	inhosts := false
-	if host != "" {
-		host = strings.ToLower(host)
-		for _, h := range s.hosts {
-			if h == host {
-				inhosts = true
-				break
-			}
-		}
-	}
-	u.Scheme = "https"
-	if !inhosts {
-		host = s.hosts[0]
-	}
-	u.Host = net.JoinHostPort(host, s.port)
-	resp := &http.Response{
-		StatusCode: http.StatusPermanentRedirect,
-		ProtoMajor: major,
-		ProtoMinor: minor,
-		Request:    req,
-		Header: http.Header{
-			"Location":     {u.String()},
-			"X-Powered-By": {HeaderXPoweredBy},
-		},
-	}
-	resp.Write(c)
 	return true
 }
 
@@ -150,28 +125,58 @@ func (s *httpTLSListener) accepter() {
 		go s.accepter()
 		hr := &connHeadReader{Conn: conn}
 		hr.SetReadDeadline(time.Now().Add(time.Second * 5))
-		if !s.maybeRedirectConn(hr) {
-			hr.SetReadDeadline(time.Time{})
-			// if it's not a http connection, try it with tls and return
+		ishttp := s.maybeHTTPConn(hr)
+		hr.SetReadDeadline(time.Time{})
+		if !ishttp {
+			// if it's not a http connection, it must be a tls connection
 			s.acceptedCh <- tls.Server(hr, s.TLSConfig)
 			return
 		}
-		hr.Close()
+		go s.serveHTTP(hr)
 	}
 }
 
-func (s *httpTLSListener) Close() (err error) {
-	err = s.Listener.Close()
-	select {
-	case conn := <-s.acceptedCh:
-		conn.Close()
-	default:
+func (s *httpTLSListener) serveHTTP(conn net.Conn) {
+	defer conn.Close()
+
+	conn.SetReadDeadline(time.Now().Add(time.Second * 15))
+	req, err := http.ReadRequest(bufio.NewReader(conn))
+	if err != nil {
+		return
 	}
-	select {
-	case <-s.errCh:
-	default:
+	conn.SetReadDeadline(time.Time{})
+	host, _, err := net.SplitHostPort(req.Host)
+	if err != nil {
+		host = req.Host
 	}
-	return
+	inhosts := false
+	if host != "" {
+		host = strings.ToLower(host)
+		for _, h := range s.hosts {
+			if h == host {
+				inhosts = true
+				break
+			}
+		}
+	}
+	u := *req.URL
+	u.Scheme = "https"
+	if !inhosts {
+		host = s.hosts[0]
+	}
+	u.Host = net.JoinHostPort(host, s.port)
+	resp := &http.Response{
+		StatusCode: http.StatusPermanentRedirect,
+		ProtoMajor: req.ProtoMajor,
+		ProtoMinor: req.ProtoMinor,
+		Request:    req,
+		Header: http.Header{
+			"Location":     {u.String()},
+			"X-Powered-By": {HeaderXPoweredBy},
+		},
+	}
+	conn.SetWriteDeadline(time.Now().Add(time.Second * 15))
+	resp.Write(conn)
 }
 
 func (s *httpTLSListener) Accept() (conn net.Conn, err error) {

@@ -85,9 +85,7 @@ function pushLog(log: Log): void {
 			if (document.hidden || !box.value) {
 				return
 			}
-			const diff = box.value.scrollHeight - (box.value.scrollTop + box.value.clientHeight)
-			focusLastLog ||= diff < 5
-			if (focusLastLog && !document.hidden) {
+			if (focusLastLog) {
 				scrollYTarget = box.value.scrollHeight
 				activeScroller()
 			}
@@ -114,6 +112,11 @@ function onScrollBox(): void {
 			}
 		} else {
 			focusLastLog = false
+		}
+	} else {
+		const diff = box.value.scrollHeight - (box.value.scrollTop + box.value.clientHeight)
+		if (diff <= 5) {
+			focusLastLog = true
 		}
 	}
 }

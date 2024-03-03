@@ -39,23 +39,19 @@ func SplitCSV(line string) (values map[string]float32) {
 	return
 }
 
+const byteUnits = "KMGTPE"
+
 func BytesToUnit(size float64) string {
 	if size < 1000 {
 		return fmt.Sprintf("%dB", (int)(size))
 	}
-	size /= 1024
-	unit := "KB"
-	if size >= 1000 {
+	var unit rune
+	for _, u := range byteUnits {
+		unit = u
 		size /= 1024
-		unit = "MB"
-		if size >= 1000 {
-			size /= 1024
-			unit = "GB"
-			if size >= 1000 {
-				size /= 1024
-				unit = "TB"
-			}
+		if size < 1000 {
+			break
 		}
 	}
-	return fmt.Sprintf("%.1f%s", size, unit)
+	return fmt.Sprintf("%.1f%sB", size, string(unit))
 }

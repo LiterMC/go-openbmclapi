@@ -172,6 +172,9 @@ func NewCluster(
 	}
 	close(cr.disabled)
 
+	if cr.maxConn <= 0 {
+		panic("download-max-conn must be a positive integer")
+	}
 	cr.bufSlots = limited.NewBufSlots(cr.maxConn)
 
 	{
@@ -460,7 +463,7 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		log.Error("Keep-alive failed:", ero)
 		return false
 	}
-	log.Info("Keep-alive success:", hits, bytesToUnit((float64)(hbts)), data[1])
+	log.Info("Keep-alive success:", hits, utils.BytesToUnit((float64)(hbts)), data[1])
 	return true
 }
 
@@ -732,7 +735,7 @@ func (cr *Cluster) checkFileFor(
 	ctx context.Context,
 	sto storage.Storage, files []FileInfo,
 	heavy bool,
-	missing *SyncMap[string, *fileInfoWithTargets],
+	missing *utils.SyncMap[string, *fileInfoWithTargets],
 	pg *mpb.Progress,
 ) {
 	var missingCount atomic.Int32
@@ -888,7 +891,7 @@ func (cr *Cluster) CheckFiles(
 	heavyCheck bool,
 	pg *mpb.Progress,
 ) (map[string]*fileInfoWithTargets, error) {
-	missingMap := NewSyncMap[string, *fileInfoWithTargets]()
+	missingMap := utils.NewSyncMap[string, *fileInfoWithTargets]()
 	done := make(chan struct{}, 0)
 
 	for _, s := range cr.storages {
@@ -910,7 +913,7 @@ func (cr *Cluster) CheckFiles(
 			return nil, ctx.Err()
 		}
 	}
-	return missingMap.m, nil
+	return missingMap.RawMap(), nil
 }
 
 func (cr *Cluster) SetFilesetByExists(ctx context.Context, files []FileInfo) error {
@@ -1001,7 +1004,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		),
 	)
 
-	log.Infof("Starting sync files, count: %d, total: %s", totalFiles, bytesToUnit((float64)(stats.totalSize)))
+	log.Infof("Starting sync files, count: %d, total: %s", totalFiles, utils.BytesToUnit((float64)(stats.totalSize)))
 	start := time.Now()
 
 	for _, f := range missing {
@@ -1064,7 +1067,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	use := time.Since(start)
 	pg.Wait()
 
-	log.Infof("All files were synchronized, use time: %v, %s/s", use, bytesToUnit((float64)(stats.totalSize)/use.Seconds()))
+	log.Infof("All files were synchronized, use time: %v, %s/s", use, utils.BytesToUnit((float64)(stats.totalSize)/use.Seconds()))
 	return nil
 }
 
@@ -1154,7 +1157,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 					pathRes <- path
 					stats.okCount.Add(1)
 					log.Infof("Downloaded %s [%s] %.2f%%", f.Path,
-						bytesToUnit((float64)(f.Size)),
+						utils.BytesToUnit((float64)(f.Size)),
 						(float64)(stats.totalBar.Current())/(float64)(stats.totalSize)*100)
 					return
 				}
@@ -1288,13 +1291,6 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		return
 	}
 
-	var buf []byte
-	_, buf, free := cr.allocBuf(ctx)
-	if buf == nil {
-		return ctx.Err()
-	}
-	defer free()
-
 	f := FileInfo{
 		Path: "/openbmclapi/download/" + hash,
 		Hash: hash,
@@ -1303,6 +1299,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	done, ok := cr.lockDownloading(hash)
 	if !ok {
 		go func() {
+			var err error
 			defer func() {
 				done <- err
 			}()
@@ -1331,6 +1328,14 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 				}
 			}()
 			defer cancel()
+
+			var buf []byte
+			_, buf, free := cr.allocBuf(ctx)
+			if buf == nil {
+				err = ctx.Err()
+				return
+			}
+			defer free()
 
 			path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, true, nil)
 			if err != nil {

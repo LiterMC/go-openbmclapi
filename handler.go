@@ -128,7 +128,7 @@ func (r *accessRecord) String() string {
 	}
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "Serve %3d | %12v | %7s | %-15s | %s | %-4s %s | %q",
-		r.Status, used, bytesToUnit((float64)(r.Content)),
+		r.Status, used, utils.BytesToUnit((float64)(r.Content)),
 		r.Addr, r.Proto,
 		r.Method, r.URI, r.UA)
 	if len(r.Extra) > 0 {
@@ -215,7 +215,7 @@ func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
 				cr.stats.mux.Lock()
 
 				log.Infof("Served %d requests, total responsed body = %s, total used CPU time = %.2fs",
-					total, bytesToUnit(totalBytes), totalUsed)
+					total, utils.BytesToUnit(totalBytes), totalUsed)
 				for ua, v := range uas {
 					if ua == "" {
 						ua = "[Unknown]"
@@ -360,6 +360,12 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		if !cr.shouldEnable.Load() {
+			// do not serve file if cluster is not enabled yet
+			http.Error(rw, "Cluster is not enabled yet", http.StatusServiceUnavailable)
+			return
+		}
+
 		log.Debugf("Handling download %s", hash)
 		cr.handleDownload(rw, req, hash)
 		return
@@ -435,12 +441,6 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		} else {
 			cr.statHits.Add(1)
 		}
-		return
-	}
-
-	if !cr.shouldEnable.Load() {
-		// do not serve file if cluster is not enabled yet
-		http.Error(rw, "Cluster is not enabled yet", http.StatusServiceUnavailable)
 		return
 	}
 

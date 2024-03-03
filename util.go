@@ -39,7 +39,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -71,23 +70,6 @@ func createInterval(ctx context.Context, do func(), delay time.Duration) {
 	return
 }
 
-const byteUnits = "KMGTPE"
-
-func bytesToUnit(size float64) string {
-	if size < 1000 {
-		return fmt.Sprintf("%dB", (int)(size))
-	}
-	var unit rune
-	for _, u := range byteUnits {
-		unit = u
-		size /= 1024
-		if size < 1000 {
-			break
-		}
-	}
-	return fmt.Sprintf("%.1f%sB", size, string(unit))
-}
-
 func getHashMethod(l int) (hashMethod crypto.Hash, err error) {
 	switch l {
 	case 32:
@@ -108,12 +90,12 @@ func parseCertCommonName(body []byte) (string, error) {
 	return cert.Subject.CommonName, nil
 }
 
-var rd = func() chan int {
-	ch := make(chan int, 64)
+var rd = func() chan int32 {
+	ch := make(chan int32, 64)
 	r := rand.New(rand.NewSource(time.Now().Unix()))
 	go func() {
 		for {
-			ch <- r.Int()
+			ch <- r.Int31()
 		}
 	}()
 	return ch
@@ -121,7 +103,7 @@ var rd = func() chan int {
 
 func randIntn(n int) int {
 	rn := <-rd
-	return rn % n
+	return (int)(rn) % n
 }
 
 func forEachFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {
@@ -213,59 +195,6 @@ func checkQuerySign(hash string, secret string, query url.Values) bool {
 	return time.Now().UnixMilli() < before
 }
 
-type SyncMap[K comparable, V any] struct {
-	l sync.RWMutex
-	m map[K]V
-}
-
-func NewSyncMap[K comparable, V any]() *SyncMap[K, V] {
-	return &SyncMap[K, V]{
-		m: make(map[K]V),
-	}
-}
-
-func (m *SyncMap[K, V]) Len() int {
-	m.l.RLock()
-	defer m.l.RUnlock()
-	return len(m.m)
-}
-
-func (m *SyncMap[K, V]) Set(k K, v V) {
-	m.l.Lock()
-	defer m.l.Unlock()
-	m.m[k] = v
-}
-
-func (m *SyncMap[K, V]) Get(k K) V {
-	m.l.RLock()
-	defer m.l.RUnlock()
-	return m.m[k]
-}
-
-func (m *SyncMap[K, V]) Has(k K) bool {
-	m.l.RLock()
-	defer m.l.RUnlock()
-	_, ok := m.m[k]
-	return ok
-}
-
-func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, has bool) {
-	m.l.RLock()
-	v, has = m.m[k]
-	m.l.RUnlock()
-	if has {
-		return
-	}
-	m.l.Lock()
-	defer m.l.Unlock()
-	v, has = m.m[k]
-	if !has {
-		v = setter()
-		m.m[k] = v
-	}
-	return
-}
-
 func comparePasswd(p1, p2 string) bool {
 	a := sha256.Sum256(([]byte)(p1))
 	b := sha256.Sum256(([]byte)(p2))
@@ -341,6 +270,7 @@ func (e *RedirectError) Error() string {
 	if len(e.Redirects) == 0 {
 		return e.Err.Error()
 	}
+
 	var b strings.Builder
 	b.WriteString("Redirect from:\n\t")
 	for _, r := range e.Redirects {

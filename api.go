@@ -429,7 +429,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 		for {
 			clear(data)
 			if err := conn.ReadJSON(&data); err != nil {
-				log.Errorf("[log.io]: Cannot read from peer:", err)
+				log.Errorf("[log.io]: Cannot read from peer: %v", err)
 				return
 			}
 			typ, ok := data["type"].(string)

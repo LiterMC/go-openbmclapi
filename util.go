@@ -32,9 +32,11 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -326,4 +328,45 @@ func loadOrCreateHmacKey(dataDir string) (key []byte, err error) {
 		return
 	}
 	return
+}
+
+type RedirectError struct {
+	Redirects []*url.URL
+	Err       error
+}
+
+func ErrorFromRedirect(err error, resp *http.Response) *RedirectError {
+	redirects := make([]*url.URL, 0, 4)
+	for resp.Request != nil {
+		redirects = append(redirects, resp.Request.URL)
+		resp = resp.Request.Response
+	}
+	if len(redirects) > 1 {
+		slices.Reverse(redirects)
+	} else {
+		redirects = nil
+	}
+	return &RedirectError{
+		Redirects: redirects,
+		Err:       err,
+	}
+}
+
+func (e *RedirectError) Error() string {
+	if len(e.Redirects) == 0 {
+		return e.Err.Error()
+	}
+	var b strings.Builder
+	b.WriteString("Redirect from:\n\t")
+	for _, r := range e.Redirects {
+		b.WriteString("- ")
+		b.WriteString(r.String())
+		b.WriteString("\n\t")
+	}
+	b.WriteString(e.Err.Error())
+	return b.String()
+}
+
+func (e *RedirectError) Unwrap() error {
+	return e.Err
 }

@@ -1213,7 +1213,7 @@ func (cr *Cluster) fetchFileWithBuf(
 		return
 	}
 	if res.StatusCode != http.StatusOK {
-		err = utils.NewHTTPStatusErrorFromResponse(res)
+		err = ErrorFromRedirect(utils.NewHTTPStatusErrorFromResponse(res), res)
 		return
 	}
 	switch ce := strings.ToLower(res.Header.Get("Content-Encoding")); ce {
@@ -1221,14 +1221,16 @@ func (cr *Cluster) fetchFileWithBuf(
 		r = res.Body
 	case "gzip":
 		if r, err = gzip.NewReader(res.Body); err != nil {
+			err = ErrorFromRedirect(err, res)
 			return
 		}
 	case "deflate":
 		if r, err = zlib.NewReader(res.Body); err != nil {
+			err = ErrorFromRedirect(err, res)
 			return
 		}
 	default:
-		err = fmt.Errorf("Unexpected Content-Encoding %q", ce)
+		err = ErrorFromRedirect(fmt.Errorf("Unexpected Content-Encoding %q", ce), res)
 		return
 	}
 	if wrapper != nil {
@@ -1251,6 +1253,7 @@ func (cr *Cluster) fetchFileWithBuf(
 	stat, err2 := fd.Stat()
 	fd.Close()
 	if err != nil {
+		err = ErrorFromRedirect(err, res)
 		return
 	}
 	if err2 != nil {
@@ -1258,10 +1261,10 @@ func (cr *Cluster) fetchFileWithBuf(
 		return
 	}
 	if t := stat.Size(); f.Size >= 0 && t != f.Size {
-		err = fmt.Errorf("File size wrong, got %d, expect %d", t, f.Size)
+		err = ErrorFromRedirect(fmt.Errorf("File size wrong, got %d, expect %d", t, f.Size), res)
 		return
 	} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
-		err = fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash)
+		err = ErrorFromRedirect(fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash), res)
 		return
 	}
 	return

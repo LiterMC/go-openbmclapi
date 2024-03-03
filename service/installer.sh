@@ -1,11 +1,43 @@
 #!/bin/bash
 
-if [ $(id -u) -ne 0 ]; then
-	echo -e "\e[31mERROR: Not root user\e[0m"
-	exit 1
+# if [ $(id -u) -ne 0 ]; then
+# 	echo -e "\e[31mERROR: Not root user\e[0m"
+# 	exit 1
+# fi
+
+ARGS=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+  	-m|--mirror)
+			shift
+			MIRROR_PREFIX=$1
+			;;
+		-t|--tag)
+			shift
+			LATEST_TAG=$1
+			;;
+		-*)
+			echo -e "\e[31mERROR: Unknown option $1\e[0m"
+			exit 1
+			;;
+		*)
+			ARGS+=("$1")
+			;;
+	esac
+	shift
+done
+
+if [ ${#ARGS[@]} -ge 1 ]; then
+	LATEST_TAG="${ARGS[0]}"
+fi
+
+if [ -n "$MIRROR_PREFIX" ] && [[ "$MIRROR_PREFIX" != */ ]]; then
+	MIRROR_PREFIX="${MIRROR_PREFIX}/"
 fi
 
 echo "MIRROR_PREFIX=${MIRROR_PREFIX}"
+echo "LATEST_TAG=${LATEST_TAG}"
 
 REPO='LiterMC/go-openbmclapi'
 RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"

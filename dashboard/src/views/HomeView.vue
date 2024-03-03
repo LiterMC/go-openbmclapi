@@ -43,8 +43,8 @@ var logIO: LogIO | null = null
 watch(
 	() => [data.value, error.value],
 	() => {
-		if (!error.value && !(requestingLogIO || logIO)) {
-			onTokenChanged(token.value)
+		if (!error.value && !(requestingLogIO || logIO) && token.value) {
+			connectLogIO(token.value)
 		}
 	},
 )
@@ -146,9 +146,6 @@ async function requestPprof(lookup: PprofLookups, view?: boolean): Promise<void>
 }
 
 async function onTokenChanged(tk: string | null): Promise<void> {
-	if (requestingLogIO) {
-		return
-	}
 	if (logIO) {
 		logIO.close()
 		logIO = null
@@ -156,12 +153,20 @@ async function onTokenChanged(tk: string | null): Promise<void> {
 	if (!tk) {
 		return
 	}
+	return connectLogIO(tk)
+}
+
+async function connectLogIO(tk: string): Promise<void> {
+	if (requestingLogIO || logIO) {
+		return
+	}
+	requestingLogIO = true
+
 	logBlk.value?.pushLog({
 		time: Date.now(),
 		lvl: 'INFO',
 		log: '[dashboard]: Connecting to remote server ...',
 	})
-	requestingLogIO = true
 	logIO = await LogIO.dial(tk).catch((err) => {
 		console.error('Cannot connect to log.io:', err)
 		logBlk.value?.pushLog({
@@ -172,6 +177,7 @@ async function onTokenChanged(tk: string | null): Promise<void> {
 		return null
 	})
 	requestingLogIO = false
+
 	if (!logIO) {
 		return
 	}
@@ -195,8 +201,8 @@ async function onTokenChanged(tk: string | null): Promise<void> {
 		})
 		logIO = null
 		window.requestAnimationFrame(() => {
-			if (!logIO) {
-				onTokenChanged(token.value)
+			if (!logIO && token.value) {
+				connectLogIO(token.value)
 			}
 		})
 	})

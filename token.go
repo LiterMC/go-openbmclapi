@@ -59,6 +59,14 @@ func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
 }
 
 func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err error) {
+	log.Infof("Fetching authorization token ...")
+	defer func(){
+		if err != nil {
+			log.Errorf("Cannot fetch authorization token: %v", err)
+		} else {
+			log.Infof("Authorization token fetched")
+		}
+	}()
 	req, err := cr.makeReq(ctx, http.MethodGet, "/openbmclapi-agent/challenge", url.Values{
 		"clusterId": {cr.clusterId},
 	})

@@ -230,7 +230,6 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		return true
 	}
 
-	log.Infof("Fetching authorization token ...")
 	_, err := cr.GetAuthToken(ctx)
 	if err != nil {
 		log.Errorf("Cannot get auth token: %v; exit.", err)

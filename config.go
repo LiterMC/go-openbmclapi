@@ -69,9 +69,11 @@ type ServeLimitConfig struct {
 }
 
 type HijackConfig struct {
-	Enable      bool       `yaml:"enable"`
-	RequireAuth bool       `yaml:"require-auth"`
-	AuthUsers   []UserItem `yaml:"auth-users"`
+	Enable           bool       `yaml:"enable"`
+	EnableLocalCache bool       `yaml:"enable-local-cache"`
+	LocalCachePath   string     `yaml:"local-cache-path"`
+	RequireAuth      bool       `yaml:"require-auth"`
+	AuthUsers        []UserItem `yaml:"auth-users"`
 }
 
 type CacheConfig struct {
@@ -193,8 +195,10 @@ var defaultConfig = Config{
 	},
 
 	Hijack: HijackConfig{
-		Enable:      false,
-		RequireAuth: false,
+		Enable:           false,
+		RequireAuth:      false,
+		EnableLocalCache: false,
+		LocalCachePath:   "hijack_cache",
 		AuthUsers: []UserItem{
 			{
 				Username: "example-username",

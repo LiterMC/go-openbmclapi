@@ -322,7 +322,7 @@ type RedirectError struct {
 
 func ErrorFromRedirect(err error, resp *http.Response) *RedirectError {
 	redirects := make([]*url.URL, 0, 4)
-	for resp.Request != nil {
+	for resp != nil && resp.Request != nil {
 		redirects = append(redirects, resp.Request.URL)
 		resp = resp.Request.Response
 	}

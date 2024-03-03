@@ -466,7 +466,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 
 		sz, er := sto.ServeDownload(rw, req, hash, size)
 		if er != nil {
-			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.String(). er)
+			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.String(), er)
 			err = er
 			return false
 		}

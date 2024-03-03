@@ -49,8 +49,13 @@ type HjProxy struct {
 }
 
 func NewHjProxy(client *http.Client, fileMap database.DB, downloadHandler downloadHandlerFn) (h *HjProxy) {
+	cli := new(http.Client)
+	*cli = *client
+	cli.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	return &HjProxy{
-		client:          client,
+		client:          cli,
 		fileMap:         fileMap,
 		downloadHandler: downloadHandler,
 	}
@@ -110,5 +115,8 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		rw.Header()[k] = v
 	}
 	rw.WriteHeader(res.StatusCode)
+	if res.StatusCode == http.StatusOK && config.Hijack.EnableLocalCache {
+		// TODO: cache response
+	}
 	io.Copy(rw, res.Body)
 }

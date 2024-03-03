@@ -68,7 +68,8 @@ A: 请将运行目录下 `logs` 文件夹内最新的日志上传到 [Github Iss
 
    国内对 Github 的支持较差, 可以使用 ghproxy 等镜像站运行脚本, 本例中使用了 [crashmc.com](https://crashmc.com) 提供的 CDN:
    ```sh
-   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh | sudo bash -s --mirror https://cdn.crashmc.com/
+  MIRROR_PREFIX=https://cdn.crashmc.com/
+   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh | sudo bash -s --mirror "${MIRROR_PREFIX}"
    ```
 
    如果需要下载指定版本, 只需设置 `-t|--tag` 标志即可

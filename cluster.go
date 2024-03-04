@@ -196,10 +196,20 @@ func NewCluster(
 }
 
 func (cr *Cluster) Init(ctx context.Context) (err error) {
-	cr.fileMapDB = database.NewMemoryDB()
+	// create data folder
+	os.MkdirAll(cr.dataDir, 0755)
+
+	if config.Database.Driver == "memory" {
+		cr.fileMapDB = database.NewMemoryDB()
+	} else if cr.fileMapDB, err = database.NewSqlDB(config.Database.Driver, config.Database.DSN); err != nil {
+		return
+	}
 
 	if config.Hijack.Enable {
 		cr.hijackProxy = NewHjProxy(cr.client, cr.fileMapDB, cr.handleDownload)
+		if config.Hijack.EnableLocalCache {
+			os.MkdirAll(config.Hijack.LocalCachePath, 0755)
+		}
 	}
 
 	// Init storages
@@ -208,8 +218,6 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 		s.Init(vctx)
 	}
 
-	// create data folder
-	os.MkdirAll(cr.dataDir, 0755)
 	// read old stats
 	if err := cr.stats.Load(cr.dataDir); err != nil {
 		log.Errorf("Could not load stats: %v", err)
@@ -697,30 +705,31 @@ type syncStats struct {
 }
 
 func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) bool {
-	log.Info("Preparing to sync files...")
+	log.Infof("Preparing to sync files, len(filelist) = %d ...", len(files))
 	if !cr.issync.CompareAndSwap(false, true) {
 		log.Warn("Another sync task is running!")
 		return false
 	}
+	defer cr.issync.Store(false)
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Hash < files[j].Hash })
-	if cr.syncFiles(ctx, files, heavyCheck) == nil {
-		fileset := make(map[string]int64, len(files))
-		for _, f := range files {
-			fileset[f.Hash] = f.Size
-			if config.Hijack.Enable && !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
-				cr.fileMapDB.Set(database.Record{
-					Path: f.Path,
-					Hash: f.Hash,
-					Size: f.Size,
-				})
-			}
-		}
-		cr.filesetMux.Lock()
-		cr.fileset = fileset
-		cr.filesetMux.Unlock()
+	if cr.syncFiles(ctx, files, heavyCheck) != nil {
+		return false
 	}
-	cr.issync.Store(false)
+	fileset := make(map[string]int64, len(files))
+	for _, f := range files {
+		fileset[f.Hash] = f.Size
+		if config.Hijack.Enable && !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
+			cr.fileMapDB.Set(database.Record{
+				Path: f.Path,
+				Hash: f.Hash,
+				Size: f.Size,
+			})
+		}
+	}
+	cr.filesetMux.Lock()
+	cr.fileset = fileset
+	cr.filesetMux.Unlock()
 
 	return true
 }

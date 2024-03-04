@@ -23,7 +23,65 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 )
+
+type SyncMap[K comparable, V any] struct {
+	l sync.RWMutex
+	m map[K]V
+}
+
+func NewSyncMap[K comparable, V any]() *SyncMap[K, V] {
+	return &SyncMap[K, V]{
+		m: make(map[K]V),
+	}
+}
+
+func (m *SyncMap[K, V]) Len() int {
+	m.l.RLock()
+	defer m.l.RUnlock()
+	return len(m.m)
+}
+
+func (m *SyncMap[K, V]) RawMap() map[K]V {
+	return m.m
+}
+
+func (m *SyncMap[K, V]) Set(k K, v V) {
+	m.l.Lock()
+	defer m.l.Unlock()
+	m.m[k] = v
+}
+
+func (m *SyncMap[K, V]) Get(k K) V {
+	m.l.RLock()
+	defer m.l.RUnlock()
+	return m.m[k]
+}
+
+func (m *SyncMap[K, V]) Has(k K) bool {
+	m.l.RLock()
+	defer m.l.RUnlock()
+	_, ok := m.m[k]
+	return ok
+}
+
+func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, has bool) {
+	m.l.RLock()
+	v, has = m.m[k]
+	m.l.RUnlock()
+	if has {
+		return
+	}
+	m.l.Lock()
+	defer m.l.Unlock()
+	v, has = m.m[k]
+	if !has {
+		v = setter()
+		m.m[k] = v
+	}
+	return
+}
 
 func WalkCacheDir(cacheDir string, walker func(hash string, size int64) (err error)) (err error) {
 	for _, dir := range Hex256 {

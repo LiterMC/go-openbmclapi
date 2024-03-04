@@ -17,38 +17,8 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package utils_test
+package database
 
 import (
-	"testing"
-
-	. "github.com/LiterMC/go-openbmclapi/utils"
+	_ "github.com/glebarez/go-sqlite"
 )
-
-func TestIsHex(t *testing.T) {
-	var data = []struct {
-		S string
-		B bool
-	}{
-		{"", false},
-		{"0", false},
-		{"00", true},
-		{"000", false},
-		{"0f", true},
-		{"f0", true},
-		{"af", true},
-		{"fa", true},
-		{"ff", true},
-		{"aa", true},
-		{"11", true},
-		{"fg", false},
-		{"58fe4669c65dbde8e0d58afb83e21620", true},
-		{"1cad5d7f9ed285a04784429ab2a4615d5c59ea88", true},
-	}
-	for _, d := range data {
-		ok := IsHex(d.S)
-		if ok != d.B {
-			t.Errorf("IsHex(%q) returned %v, but expected %v", d.S, ok, d.B)
-		}
-	}
-}

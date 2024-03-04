@@ -68,6 +68,11 @@ type ServeLimitConfig struct {
 	UploadRate int  `yaml:"upload-rate"`
 }
 
+type DatabaseConfig struct {
+	Driver string `yaml:"driver"`
+	DSN    string `yaml:"data-source-name"`
+}
+
 type HijackConfig struct {
 	Enable           bool       `yaml:"enable"`
 	EnableLocalCache bool       `yaml:"enable-local-cache"`
@@ -140,6 +145,7 @@ type Config struct {
 	Cache        CacheConfig                    `yaml:"cache"`
 	ServeLimit   ServeLimitConfig               `yaml:"serve-limit"`
 	Dashboard    DashboardConfig                `yaml:"dashboard"`
+	Database     DatabaseConfig                 `yaml:"database"`
 	Hijack       HijackConfig                   `yaml:"hijack"`
 	Storages     []storage.StorageOption        `yaml:"storages"`
 	WebdavUsers  map[string]*storage.WebDavUser `yaml:"webdav-users"`
@@ -192,6 +198,11 @@ var defaultConfig = Config{
 		PwaName:      "GoOpenBmclApi Dashboard",
 		PwaShortName: "GOBA Dash",
 		PwaDesc:      "Go-Openbmclapi Internal Dashboard",
+	},
+
+	Database: DatabaseConfig{
+		Driver: "sqlite",
+		DSN:    "files.db",
 	},
 
 	Hijack: HijackConfig{

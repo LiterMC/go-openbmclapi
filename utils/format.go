@@ -55,3 +55,27 @@ func BytesToUnit(size float64) string {
 	}
 	return fmt.Sprintf("%.1f%sB", size, string(unit))
 }
+
+func ParseCacheControl(str string) (exp int64, ok bool) {
+	for _, v := range strings.Split(strings.ToLower(str), ",") {
+		v = strings.TrimSpace(v)
+		switch v {
+		case "private":
+			fallthrough
+		case "no-store":
+			return 0, false
+		case "no-cache":
+			exp = 0
+		default:
+			if maxAge, is := strings.CutPrefix(v, "max-age="); is {
+				n, err := strconv.ParseInt(maxAge, 10, 64)
+				if err != nil {
+					return
+				}
+				exp = n
+			}
+		}
+	}
+	ok = true
+	return
+}

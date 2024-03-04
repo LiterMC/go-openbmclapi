@@ -28,8 +28,13 @@ dashboard:
   pwa-name: GoOpenBmclApi Dashboard
   pwa-short_name: GOBA Dash
   pwa-description: Go-Openbmclapi Internal Dashboard
+database:
+  driver: sqlite
+  data-source-name: files.db
 hijack:
   enable: false
+  enable-local-cache: false
+  local-cache-path: hijack_cache
   require-auth: false
   auth-users:
     - username: example-username

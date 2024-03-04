@@ -41,10 +41,6 @@ type LocalStorageOption struct {
 	Compressor Compressor `yaml:"compressor"`
 }
 
-func (opt *LocalStorageOption) TmpPath() string {
-	return filepath.Join(opt.CachePath, ".tmp")
-}
-
 type LocalStorage struct {
 	opt LocalStorageOption
 }
@@ -71,12 +67,6 @@ func (s *LocalStorage) SetOptions(newOpts any) {
 }
 
 func (s *LocalStorage) Init(context.Context) (err error) {
-	tmpDir := s.opt.TmpPath()
-	os.RemoveAll(tmpDir)
-	// should be 0755 here because Windows permission issue
-	if err = os.MkdirAll(tmpDir, 0755); err != nil {
-		return
-	}
 	if err = initCache(s.opt.CachePath); err != nil {
 		return
 	}

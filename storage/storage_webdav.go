@@ -156,6 +156,10 @@ func webdavIsHTTPError(err error, code int) bool {
 const ClusterCacheCtxKey = "go-openbmclapi.cluster.cache"
 
 func (s *WebDavStorage) Init(ctx context.Context) (err error) {
+	if s.opt.GetEndPoint() == "" {
+		return errors.New("Webdav endpoint cannot be empty")
+	}
+
 	if cache, ok := ctx.Value(ClusterCacheCtxKey).(gocache.Cache); ok && cache != nil {
 		s.cache = gocache.NewCacheWithNamespace(cache, fmt.Sprintf("redirect-cache@%s;%s@", s.opt.GetUsername(), s.opt.GetEndPoint()))
 	} else {
@@ -179,6 +183,10 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 
 	s.cli = gowebdav.NewClient(s.opt.GetEndPoint(), s.opt.GetUsername(), s.opt.GetPassword())
 	s.cli.SetHeader("User-Agent", build.ClusterUserAgentFull)
+
+	if _, err = s.cli.ReadDir(""); err != nil {
+		return
+	}
 
 	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {

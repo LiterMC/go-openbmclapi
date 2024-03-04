@@ -164,19 +164,33 @@ func (cr *Cluster) GetHandler() http.Handler {
 				host = strings.ToLower(host)
 				ok := false
 				for _, h := range cr.publicHosts { // cr.publicHosts are already lower case
-					if host == h {
+					if h, ok := strings.CutPrefix(h, "*."); ok {
+						if strings.HasSuffix(host, h) {
+							ok = true
+							break
+						}
+					} else if host == h {
 						ok = true
 						break
 					}
 				}
 				if !ok {
-					u := *req.URL
-					u.Scheme = "https"
-					u.Host = net.JoinHostPort(cr.publicHosts[0], strconv.Itoa((int)(cr.publicPort)))
-					rw.Header().Set("Location", u.String())
-					rw.Header().Set("Content-Length", "0")
-					rw.WriteHeader(http.StatusFound)
-					return
+					host := ""
+					for _, h := range cr.publicHosts {
+						if !strings.HasSuffix(h, "*.") {
+							host = h
+							break
+						}
+					}
+					if host != "" {
+						u := *req.URL
+						u.Scheme = "https"
+						u.Host = net.JoinHostPort(host, strconv.Itoa((int)(cr.publicPort)))
+						rw.Header().Set("Location", u.String())
+						rw.Header().Set("Content-Length", "0")
+						rw.WriteHeader(http.StatusFound)
+						return
+					}
 				}
 			}
 			next.ServeHTTP(rw, req)

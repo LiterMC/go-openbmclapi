@@ -153,7 +153,12 @@ func (s *httpTLSListener) serveHTTP(conn net.Conn) {
 	if host != "" {
 		host = strings.ToLower(host)
 		for _, h := range s.hosts {
-			if h == host {
+			if h, ok := strings.CutPrefix(h, "*."); ok {
+				if strings.HasSuffix(host, h) {
+					inhosts = true
+					break
+				}
+			} else if h == host {
 				inhosts = true
 				break
 			}
@@ -162,7 +167,16 @@ func (s *httpTLSListener) serveHTTP(conn net.Conn) {
 	u := *req.URL
 	u.Scheme = "https"
 	if !inhosts {
-		host = s.hosts[0]
+		for _, h := range s.hosts {
+			if !strings.HasSuffix(h, "*.") {
+				host = h
+				break
+			}
+		}
+	}
+	if host == "" {
+		// we have nowhere to redirect
+		return
 	}
 	u.Host = net.JoinHostPort(host, s.port)
 	resp := &http.Response{

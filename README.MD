@@ -1,5 +1,9 @@
 
-# Go OpenBmclAPI
+Go OpenBmclAPI
+[![License](https://img.shields.io/github/license/LiterMC/go-openbmclapi)](https://github.com/LiterMC/go-openbmclapi/blob/master/LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/LiterMC/go-openbmclapi/build-tag.yml)](https://github.com/LiterMC/go-openbmclapi/actions)
+[![Downloads](https://img.shields.io/github/downloads/LiterMC/go-openbmclapi/total)](https://github.com/LiterMC/go-openbmclapi/releases)
+==============
 
 Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 

@@ -184,6 +184,15 @@ dashboard:
   # PWA 描述
   pwa-description: Go-Openbmclapi Internal Dashboard
 
+# 数据库
+database:
+  # 数据库驱动, 可选值有:
+  # - memory # 内存数据库, 无持久化, 不需 DSN
+  # - sqlite # sqlite 文件存储. DSN 为文件路径
+  driver: sqlite
+  # 数据库的 DSN. 请参考上文
+  data-source-name: files.db
+
 # BMCLAPI 代理, 会处理所有文件下载请求, 并将其他请求转发到 BMCLAPI 主服务器
 hijack: # 注: 虽然名字是叫(hijack)劫持, 但其实它就是个代理
   # 是否启用代理. 代理会在 /bmclapi/ 子路径下开启服务.

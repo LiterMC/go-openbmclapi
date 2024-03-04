@@ -19,7 +19,7 @@ Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 
 - 支持代理 BMCLAPI 请求, 并使用本地缓存加速请求
 - 使用协程/多线程, 超高的文件同步速度
-- 不依赖大量的三方包, 体积小巧
+- ~~不依赖大量的三方包, 体积小巧~~
 - 静态文件, 无需配置任何依赖
 - 得益于 Golang 强大的跨平台编译器, 支持大部分主流平台/处理器
 - 内置一个统计面板
@@ -43,7 +43,7 @@ A: 服务端启动时会输出 `https://<public-host>:<public-port>`, 访问这�
    > 注: 面板与 openbmclapi 下载服务共用一个端口, 并非单独配置
 
 Q: 检查文件的时候过慢怎么办?  
-A: 如果您确定你的存储稳定, 可以去编辑 `config.yaml`. 将 `no-heavy-check` 选项设为 `true` 即可
+A: 如果您确定您的存储稳定, 将 `config.yaml` 下的 `no-heavy-check` 选项设为 `true` 即可
 
 Q: 程序无法运行 / 直接退出怎么办?  
 A: 请将运行目录下 `logs` 文件夹内最新的日志上传到 [Github Issue](https://github.com/LiterMC/go-openbmclapi/issues/new)
@@ -90,9 +90,9 @@ A: 请将运行目录下 `logs` 文件夹内最新的日志上传到 [Github Iss
 
 ### 从源代码运行
 
-1. 下载本仓库 _(可以使用`git clone https://github.com/LiterMC/go-openbmclapi.git`)_
-2. 确保您的服务器上装有 `go 1.21+` 以及 `node & npm`
-3. cd进入本仓库
+1. 确保您的服务器上装有 `go 1.21+` 以及 `node & npm`
+2. 下载本仓库 _(可以使用`git clone https://github.com/LiterMC/go-openbmclapi.git`)_
+3. cd 进入本仓库
 4. 配置配置文件或环境变量
 5. 使用 `go generate . && go run .` 运行本程序
 
@@ -143,6 +143,8 @@ sync-interval: 10
 only-gc-when-start: false
 # 同步文件时最多打开的连接数量. 注意: 该选项目前没用
 download-max-conn: 64
+# 连接主控的最大重试数, 0 表示不重试, -1 表示无限制
+max-reconnect-count: 10
 
 # 证书列表. 仅当 use-cert 为 true 时才会加载. 不受 byoc 影响
 certificates:

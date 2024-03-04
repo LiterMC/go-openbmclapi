@@ -96,7 +96,7 @@ type Cluster struct {
 	socket          *socket.Socket
 	cancelKeepalive context.CancelFunc
 	downloadMux     sync.Mutex
-	downloading     map[string]chan error
+	downloading     map[string]chan error // TODO: use struct { sync.Mutex; error } rather than chan error
 	filesetMux      sync.RWMutex
 	fileset         map[string]int64
 	fileMapDB       database.DB
@@ -282,7 +282,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		if err != nil {
 			log.Warnf("Engine.IO disconnected: %v", err)
 		}
-		if config.Advanced.ExitWhenDisconnected {
+		if config.MaxReconnectCount == 0 {
 			if cr.shouldEnable.Load() {
 				log.Errorf("Cluster disconnected from remote; exit.")
 				osExit(0x08)
@@ -291,10 +291,9 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		go cr.disconnected()
 	})
 	engio.OnDialError(func(_ *engine.Socket, err error) {
-		const maxReconnectCount = 8
 		cr.reconnectCount++
-		log.Errorf("Failed to connect to the center server (%d/%d): %v", cr.reconnectCount, maxReconnectCount, err)
-		if cr.reconnectCount >= maxReconnectCount {
+		log.Errorf("Failed to connect to the center server (%d/%d): %v", cr.reconnectCount, config.MaxReconnectCount, err)
+		if config.MaxReconnectCount < 0 || cr.reconnectCount >= config.MaxReconnectCount {
 			if cr.shouldEnable.Load() {
 				log.Errorf("Cluster failed to connect too much times; exit.")
 				osExit(0x08)
@@ -311,7 +310,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		return token
 	}))
 	cr.socket.OnBeforeConnect(func(*socket.Socket) {
-		log.Info("Preparing to connect to center server")
+		log.Infof("Preparing to connect to center server (%d/%d)", cr.reconnectCount, config.MaxReconnectCount)
 	})
 	cr.socket.OnConnect(func(*socket.Socket, string) {
 		log.Debugf("shouldEnable is %v", cr.shouldEnable.Load())
@@ -376,7 +375,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return
 	}
 
-	if cr.socket != nil && !cr.socket.IO().Connected() && config.Advanced.ExitWhenDisconnected {
+	if cr.socket != nil && !cr.socket.IO().Connected() && config.MaxReconnectCount == 0 {
 		log.Errorf("Cluster disconnected from remote; exit.")
 		osExit(0x08)
 		return
@@ -1311,6 +1310,11 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 			var err error
 			defer func() {
 				done <- err
+				close(done)
+
+				cr.downloadMux.Lock()
+				defer cr.downloadMux.Unlock()
+				delete(cr.downloading, hash)
 			}()
 
 			log.Infof("Downloading %s from handler", hash)

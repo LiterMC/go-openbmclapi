@@ -97,7 +97,9 @@ func hjResponseWithCache(rw http.ResponseWriter, req *http.Request, c *cacheStat
 		return false
 	}
 	defer fd.Close()
-	rw.Header().Set("Cache-Control", "public, max-age="+strconv.FormatInt(age, 10))
+	if age > 0 {
+		rw.Header().Set("Cache-Control", "public, max-age="+strconv.FormatInt(age, 10))
+	}
 	http.ServeContent(rw, req, path.Base(req.URL.Path), stat.ModTime(), fd)
 	return true
 }

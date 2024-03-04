@@ -12,6 +12,7 @@ cluster-secret: ${CLUSTER_SECRET}
 sync-interval: 10
 only-gc-when-start: false
 download-max-conn: 16
+max-reconnect-count: 10
 certificates:
   - cert: /path/to/cert.pem
     key: /path/to/key.pem
@@ -60,7 +61,6 @@ advanced:
   keepalive-timeout: 10
   skip-first-sync: false
   skip-signature-check: false
-  exit-when-disconnected: false
   no-fast-enable: false
   wait-before-enable: 0
   do-NOT-redirect-https-to-SECURE-hostname: false

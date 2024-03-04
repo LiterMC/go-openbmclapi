@@ -42,17 +42,16 @@ type UserItem struct {
 }
 
 type AdvancedConfig struct {
-	DebugLog             bool `yaml:"debug-log"`
-	SocketIOLog          bool `yaml:"socket-io-log"`
-	NoHeavyCheck         bool `yaml:"no-heavy-check"`
-	NoGC                 bool `yaml:"no-gc"`
-	HeavyCheckInterval   int  `yaml:"heavy-check-interval"`
-	KeepaliveTimeout     int  `yaml:"keepalive-timeout"`
-	SkipFirstSync        bool `yaml:"skip-first-sync"`
-	SkipSignatureCheck   bool `yaml:"skip-signature-check"`
-	ExitWhenDisconnected bool `yaml:"exit-when-disconnected"`
-	NoFastEnable         bool `yaml:"no-fast-enable"`
-	WaitBeforeEnable     int  `yaml:"wait-before-enable"`
+	DebugLog           bool `yaml:"debug-log"`
+	SocketIOLog        bool `yaml:"socket-io-log"`
+	NoHeavyCheck       bool `yaml:"no-heavy-check"`
+	NoGC               bool `yaml:"no-gc"`
+	HeavyCheckInterval int  `yaml:"heavy-check-interval"`
+	KeepaliveTimeout   int  `yaml:"keepalive-timeout"`
+	SkipFirstSync      bool `yaml:"skip-first-sync"`
+	SkipSignatureCheck bool `yaml:"skip-signature-check"`
+	NoFastEnable       bool `yaml:"no-fast-enable"`
+	WaitBeforeEnable   int  `yaml:"wait-before-enable"`
 
 	DoNotRedirectHTTPSToSecureHostname bool `yaml:"do-NOT-redirect-https-to-SECURE-hostname"`
 }
@@ -140,6 +139,7 @@ type Config struct {
 	SyncInterval         int    `yaml:"sync-interval"`
 	OnlyGcWhenStart      bool   `yaml:"only-gc-when-start"`
 	DownloadMaxConn      int    `yaml:"download-max-conn"`
+	MaxReconnectCount    int    `yaml:"max-reconnect-count"`
 
 	Certificates []CertificateConfig            `yaml:"certificates"`
 	Cache        CacheConfig                    `yaml:"cache"`
@@ -174,6 +174,7 @@ var defaultConfig = Config{
 	SyncInterval:         10,
 	OnlyGcWhenStart:      false,
 	DownloadMaxConn:      16,
+	MaxReconnectCount:    10,
 
 	Certificates: []CertificateConfig{
 		{
@@ -223,15 +224,14 @@ var defaultConfig = Config{
 	WebdavUsers: map[string]*storage.WebDavUser{},
 
 	Advanced: AdvancedConfig{
-		DebugLog:             false,
-		NoHeavyCheck:         false,
-		NoGC:                 false,
-		HeavyCheckInterval:   120,
-		KeepaliveTimeout:     10,
-		SkipFirstSync:        false,
-		ExitWhenDisconnected: false,
-		NoFastEnable:         false,
-		WaitBeforeEnable:     0,
+		DebugLog:           false,
+		NoHeavyCheck:       false,
+		NoGC:               false,
+		HeavyCheckInterval: 120,
+		KeepaliveTimeout:   10,
+		SkipFirstSync:      false,
+		NoFastEnable:       false,
+		WaitBeforeEnable:   0,
 	},
 }
 
@@ -241,97 +241,8 @@ func migrateConfig(data []byte, config *Config) {
 		return
 	}
 
-	// if nohttps, ok := oldConfig["nohttps"].(bool); ok {
-	// 	config.Byoc = nohttps
-	// }
-	// if v, ok := oldConfig["record_serve_info"].(bool); ok {
-	// 	config.RecordServeInfo = v
-	// }
-	// if v, ok := oldConfig["no_heavy_check"].(bool); ok {
-	// 	config.NoHeavyCheck = v
-	// }
-	// if v, ok := oldConfig["public_host"].(string); ok {
-	// 	config.PublicHost = v
-	// }
-	// if v, ok := oldConfig["public_port"].(int); ok {
-	// 	config.PublicPort = (uint16)(v)
-	// }
-	// if v, ok := oldConfig["cluster_id"].(string); ok {
-	// 	config.ClusterId = v
-	// }
-	// if v, ok := oldConfig["cluster_secret"].(string); ok {
-	// 	config.ClusterSecret = v
-	// }
-	// if v, ok := oldConfig["sync_interval"].(int); ok {
-	// 	config.SyncInterval = v
-	// }
-	// if v, ok := oldConfig["keepalive_timeout"].(int); ok {
-	// 	config.KeepaliveTimeout = v
-	// }
-	// if v, ok := oldConfig["download_max_conn"].(int); ok {
-	// 	config.DownloadMaxConn = v
-	// }
-	// if limit, ok := oldConfig["serve_limit"].(map[string]any); ok {
-	// 	var sl ServeLimitConfig
-	// 	if sl.Enable, ok = limit["enable"].(bool); !ok {
-	// 		goto SKIP_SERVE_LIMIT
-	// 	}
-	// 	if sl.MaxConn, ok = limit["max_conn"].(int); !ok {
-	// 		goto SKIP_SERVE_LIMIT
-	// 	}
-	// 	if sl.UploadRate, ok = limit["upload_rate"].(int); !ok {
-	// 		goto SKIP_SERVE_LIMIT
-	// 	}
-	// 	config.ServeLimit = sl
-	// SKIP_SERVE_LIMIT:
-	// }
-
-	// if oss, ok := oldConfig["oss"].(map[string]any); ok && oss["enable"] == true {
-	// 	var storages []StorageOption
-	// 	logInfo("Migrate old oss config to latest format")
-	// 	if list, ok := oss["list"].([]any); ok {
-	// 		for _, v := range list {
-	// 			if item, ok := v.(map[string]any); ok {
-	// 				var (
-	// 					stItem   StorageOption
-	// 					mountOpt = new(MountStorageOption)
-	// 				)
-	// 				stItem.Type = StorageMount
-	// 				folderPath, ok := item["folder_path"].(string)
-	// 				if !ok {
-	// 					continue
-	// 				}
-	// 				mountOpt.Path = folderPath
-	// 				redirectBase, ok := item["redirect_base"].(string)
-	// 				if !ok {
-	// 					continue
-	// 				}
-	// 				mountOpt.RedirectBase = redirectBase
-	// 				preGenMeasures, ok := item["pre-create-measures"].(bool)
-	// 				if ok {
-	// 					mountOpt.PreGenMeasures = preGenMeasures
-	// 				}
-	// 				weight, ok := item["possibility"].(int)
-	// 				if !ok {
-	// 					weight = 100
-	// 				}
-	// 				stItem.Weight = (uint)(weight)
-	// 				stItem.Data = mountOpt
-	// 				storages = append(storages, stItem)
-	// 			}
-	// 		}
-	// 	}
-	// 	config.Storages = storages
-	// }
-
 	if v, ok := oldConfig["debug"].(bool); ok {
 		config.Advanced.DebugLog = v
-	}
-	if v, ok := oldConfig["skip-first-sync"].(bool); ok {
-		config.Advanced.SkipFirstSync = v
-	}
-	if v, ok := oldConfig["exit-when-disconnected"].(bool); ok {
-		config.Advanced.ExitWhenDisconnected = v
 	}
 	if v, ok := oldConfig["no-heavy-check"].(bool); ok {
 		config.Advanced.NoHeavyCheck = v

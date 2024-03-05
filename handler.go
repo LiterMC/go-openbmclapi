@@ -162,19 +162,19 @@ func (cr *Cluster) GetHandler() http.Handler {
 			}
 			if host != "" && len(cr.publicHosts) > 0 {
 				host = strings.ToLower(host)
-				ok := false
+				needRed := true
 				for _, h := range cr.publicHosts { // cr.publicHosts are already lower case
 					if h, ok := strings.CutPrefix(h, "*."); ok {
 						if strings.HasSuffix(host, h) {
-							ok = true
+							needRed = false
 							break
 						}
 					} else if host == h {
-						ok = true
+						needRed = false
 						break
 					}
 				}
-				if !ok {
+				if needRed {
 					host := ""
 					for _, h := range cr.publicHosts {
 						if !strings.HasSuffix(h, "*.") {

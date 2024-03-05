@@ -35,6 +35,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"os/exec"
 
 	"runtime/pprof"
 
@@ -115,6 +116,8 @@ func main() {
 			log.Errorf("Program exiting with code %d", exitCode)
 			log.Error("Please read https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq before report your issue")
 			if runtime.GOOS == "windows" {
+				log.Warnf("Detected that you are in windows environment, we are helping you to open the browser")
+				exec.Command("explorer", "https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq").Start()
 				time.Sleep(time.Hour)
 			}
 		}

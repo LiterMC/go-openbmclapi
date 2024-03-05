@@ -87,7 +87,9 @@ type httpCacheWrapper struct {
 }
 
 func (c httpCacheWrapper) Set(key string, value []byte) {
-	c.c.SetBytes(key, value, CacheOpt{})
+	c.c.SetBytes(key, value, CacheOpt{
+		Expiration: time.Hour,
+	})
 }
 
 func (c httpCacheWrapper) Get(key string) (value []byte, ok bool) {

@@ -203,6 +203,10 @@ database:
 hijack: # 注: 虽然名字是叫(hijack)劫持, 但其实它就是个代理
   # 是否启用代理. 代理会在 /bmclapi/ 子路径下开启服务.
   enable: false
+  # 是否启用本地缓存 (这样就可以离线访问访问过的端点了)
+  enable-local-cache: false
+  # 本地缓存保存位置
+  local-cache-path: hijack_cache
   # 是否需要登录才能访问
   require-auth: true
   # 用户名密码对

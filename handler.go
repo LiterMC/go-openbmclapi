@@ -186,6 +186,9 @@ func (cr *Cluster) GetHandler() http.Handler {
 						u := *req.URL
 						u.Scheme = "https"
 						u.Host = net.JoinHostPort(host, strconv.Itoa((int)(cr.publicPort)))
+
+						logDebugf("Redirecting from %s to %s", req.Host, u.String())
+
 						rw.Header().Set("Location", u.String())
 						rw.Header().Set("Content-Length", "0")
 						rw.WriteHeader(http.StatusFound)

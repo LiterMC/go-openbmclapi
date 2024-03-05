@@ -103,14 +103,20 @@ func main() {
 
 	exitCode := -1
 	defer func() {
-		if exitCode >= 0 {
-			os.Exit(exitCode)
+		code := exitCode
+		if code < 0 {
+			select {
+			case code = <-exitCh:
+			default:
+				code = 0
+			}
 		}
-		select {
-		case code := <-exitCh:
-			os.Exit(code)
-		default:
-			os.Exit(0)
+		if code != 0 {
+			log.Errorf("Program exiting with code %d", exitCode)
+			log.Error("Please read https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq before report your issue")
+			if runtime.GOOS == "windows" {
+				time.Sleep(time.Hour)
+			}
 		}
 	}()
 	defer log.RecordPanic()

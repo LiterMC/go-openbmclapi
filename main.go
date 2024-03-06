@@ -129,7 +129,8 @@ func main() {
 			log.Error(Tr("error.exit.please.read.faq"))
 			if runtime.GOOS == "windows" && !config.Advanced.DoNotOpenFAQOnWindows {
 				log.Warn(Tr("warn.exit.detected.windows.open.browser"))
-				exec.Command("explorer", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq").Start()
+				cmd := exec.Command("cmd", "/C", "start", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq")
+				cmd.Start()
 				time.Sleep(time.Hour)
 			}
 		}

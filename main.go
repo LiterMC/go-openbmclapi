@@ -40,8 +40,12 @@ import (
 	"runtime/pprof"
 
 	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/lang"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
+
+	_ "github.com/LiterMC/go-openbmclapi/lang/en"
+	_ "github.com/LiterMC/go-openbmclapi/lang/zh"
 )
 
 const ClusterServerURL = "https://openbmclapi.bangbang93.com"
@@ -99,6 +103,14 @@ func osExit(n int) {
 }
 
 func main() {
+	if runtime.GOOS == "windows" {
+		lang.SetLang("zh-cn")
+	} else {
+		lang.SetLang("en-us")
+	}
+	lang.ParseSystemLanguage()
+	log.Info("language:", lang.GetLang().Code())
+
 	printShortLicense()
 	parseArgs()
 
@@ -113,14 +125,15 @@ func main() {
 			}
 		}
 		if code != 0 {
-			log.Errorf("Program exiting with code %d", exitCode)
-			log.Error("Please read https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq before report your issue")
+			log.Errorf(Tr("program.exited"), exitCode)
+			log.Error(Tr("error.exit.please.read.faq"))
 			if runtime.GOOS == "windows" && !config.Advanced.DoNotOpenFAQOnWindows {
-				log.Warnf("Detected that you are in windows environment, we are helping you to open the browser")
-				exec.Command("explorer", "https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq").Start()
+				log.Warn(Tr("warn.exit.detected.windows.open.browser"))
+				exec.Command("explorer", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq").Start()
 				time.Sleep(time.Hour)
 			}
 		}
+		os.Exit(code)
 	}()
 	defer log.RecordPanic()
 	log.StartFlushLogFile()
@@ -168,10 +181,10 @@ START:
 		dialer *net.Dialer
 	)
 
-	log.Infof("Starting Go-OpenBmclApi v%s (%s)", build.ClusterVersion, build.BuildVersion)
+	log.Infof(Tr("program.starting"), build.ClusterVersion, build.BuildVersion)
 
 	if config.ClusterId == defaultConfig.ClusterId || config.ClusterSecret == defaultConfig.ClusterSecret {
-		log.Error("Please set cluster-id and cluster-secret in config.yaml before start!")
+		log.Error(Tr("error.set.cluster.id"))
 		osExit(1)
 	}
 
@@ -191,7 +204,7 @@ START:
 		cache,
 	)
 	if err := cluster.Init(ctx); err != nil {
-		log.Error("Cannot init cluster:", err)
+		log.Errorf(Tr("error.init.failed"), err)
 		osExit(1)
 	}
 
@@ -215,10 +228,10 @@ START:
 	go func(ctx context.Context) {
 		defer log.RecordPanic()
 		defer close(firstSyncDone)
-		log.Infof("Fetching file list")
+		log.Info(Tr("info.filelist.fetching"))
 		fl, err := cluster.GetFileList(ctx)
 		if err != nil {
-			log.Error("Cannot query cluster file list:", err)
+			log.Errorf(Tr("error.filelist.fetch.failed"), err)
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -249,10 +262,10 @@ START:
 			}
 		}
 		createInterval(ctx, func() {
-			log.Infof("Fetching file list")
+			log.Info(Tr("info.fetch.filelist"))
 			fl, err := cluster.GetFileList(ctx)
 			if err != nil {
-				log.Error("Cannot query cluster file list:", err)
+				log.Errorf(Tr("error.cannot.fetch.filelist"), err)
 				return
 			}
 			checkCount = (checkCount + 1) % heavyCheckInterval
@@ -267,7 +280,7 @@ START:
 		defer log.RecordPanic()
 		listener, err := net.Listen("tcp", clusterSvr.Addr)
 		if err != nil {
-			log.Errorf("Cannot listen on %s: %v", clusterSvr.Addr, err)
+			log.Errorf(Tr("error.address.listen.failed"), clusterSvr.Addr, err)
 			osExit(1)
 		}
 		if config.ServeLimit.Enable {
@@ -280,7 +293,7 @@ START:
 		var publicHosts []string
 		if config.UseCert {
 			if len(config.Certificates) == 0 {
-				log.Error("No certificates was set in the config")
+				log.Error(Tr("error.cert.not.set"))
 				osExit(1)
 			}
 			tlsConfig = new(tls.Config)
@@ -289,17 +302,18 @@ START:
 				var err error
 				tlsConfig.Certificates[i], err = tls.LoadX509KeyPair(c.Cert, c.Key)
 				if err != nil {
-					log.Errorf("Cannot parse certificate key pair[%d]: %v", i, err)
+					log.Errorf(Tr("error.cert.parse.failed"), i, err)
 					osExit(1)
 				}
 			}
 		}
 		if !config.Byoc {
+			log.Info(Tr("info.cert.requesting"))
 			tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
 			pair, err := cluster.RequestCert(tctx)
 			cancel()
 			if err != nil {
-				log.Error("Error when requesting certificate key pair:", err)
+				log.Errorf(Tr("error.cert.request.failed"), err)
 				osExit(1)
 			}
 			if tlsConfig == nil {
@@ -308,12 +322,12 @@ START:
 			var cert tls.Certificate
 			cert, err = tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
 			if err != nil {
-				log.Error("Cannot parse requested certificate key pair:", err)
+				log.Errorf(Tr("error.cert.requested.parse.failed"), err)
 				osExit(1)
 			}
 			tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
 			certHost, _ := parseCertCommonName(cert.Certificate[0])
-			log.Infof("Requested certificate for %s", certHost)
+			log.Infof(Tr("info.cert.requested"), certHost)
 		}
 		certCount := 0
 		publicHost := ""
@@ -340,15 +354,15 @@ START:
 		if publicHost == "" {
 			publicHost = config.PublicHost
 		}
-		log.Infof("Server public at https://%s:%d (%s) with %d certificates", publicHost, publicPort, clusterSvr.Addr, certCount)
+		log.Infof(Tr("info.server.public.at"), publicHost, publicPort, clusterSvr.Addr, certCount)
 		if len(publicHosts) > 1 {
-			log.Infof("Alternative hostnames:")
+			log.Info(Tr("info.server.alternative.hosts"))
 			for _, h := range publicHosts[1:] {
 				log.Infof("\t- https://%s:%d", h, publicPort)
 			}
 		}
 
-		log.Infof("Waiting for the first sync ...")
+		log.Info(Tr("info.wait.first.sync"))
 		select {
 		case <-firstSyncDone:
 		case <-ctx.Done():
@@ -364,7 +378,7 @@ START:
 		}
 
 		if err := cluster.Enable(ctx); err != nil {
-			log.Error("Cannot enable cluster:", err)
+			log.Errorf(Tr("error.cluster.enable.failed"), err)
 			osExit(1)
 		}
 	}(ctx)
@@ -407,13 +421,13 @@ SELECT_SIGNAL:
 
 		cancel()
 		shutCtx, cancelShut := context.WithTimeout(context.Background(), 20*time.Second)
-		log.Warn("Closing server ...")
+		log.Warn(Tr("warn.server.closing"))
 		shutExit := make(chan struct{}, 0)
 		go func() {
 			defer close(shutExit)
 			defer cancelShut()
 			cluster.Disable(shutCtx)
-			log.Info("Cluster disabled, closing http server")
+			log.Warn(Tr("warn.httpserver.closing"))
 			clusterSvr.Shutdown(shutCtx)
 		}()
 		select {
@@ -423,10 +437,14 @@ SELECT_SIGNAL:
 			log.Error("Second close signal received, exit")
 			return
 		}
-		log.Warn("Server closed.")
+		log.Warn(Tr("warn.server.closed"))
 		if s == syscall.SIGHUP {
 			log.Info("Restarting server ...")
 			goto START
 		}
 	}
+}
+
+func Tr(name string) string {
+	return lang.Tr(name)
 }

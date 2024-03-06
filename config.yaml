@@ -64,3 +64,4 @@ advanced:
   no-fast-enable: false
   wait-before-enable: 0
   do-NOT-redirect-https-to-SECURE-hostname: false
+  do-not-open-faq-on-windows: false

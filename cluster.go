@@ -508,7 +508,7 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 	if cr.socket == nil {
 		return false
 	}
-	log.Info("Disabling cluster")
+	log.Info(Tr("info.cluster.disabling"))
 	if resCh, err := cr.socket.EmitWithAck("disable"); err == nil {
 		tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.Advanced.KeepaliveTimeout))
 		select {
@@ -526,14 +526,14 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 			}
 		}
 	} else {
-		log.Errorf("Disable failed: %v", err)
+		log.Errorf(Tr("error.cluster.disable.failed"), err)
 	}
 
 	cr.enabled.Store(false)
 	go cr.socket.Close()
 	cr.socket = nil
 	close(cr.disabled)
-	log.Warn("Cluster disabled")
+	log.Warn(Tr("warn.cluster.disabled"))
 	return
 }
 
@@ -556,7 +556,6 @@ type CertKeyPair struct {
 }
 
 func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
-	log.Info("Requesting certificates, please wait ...")
 	resCh, err := cr.socket.EmitWithAck("request-cert")
 	if err != nil {
 		return
@@ -576,7 +575,6 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 		Cert: pair["cert"].(string),
 		Key:  pair["key"].(string),
 	}
-	log.Info("Certificate requested")
 	return
 }
 
@@ -704,7 +702,7 @@ type syncStats struct {
 }
 
 func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) bool {
-	log.Infof("Preparing to sync files, len(filelist) = %d ...", len(files))
+	log.Infof(Tr("info.sync.prepare"), len(files))
 	if !cr.issync.CompareAndSwap(false, true) {
 		log.Warn("Another sync task is running!")
 		return false
@@ -761,7 +759,7 @@ func (cr *Cluster) checkFileFor(
 		}
 	}
 
-	log.Infof("Start checking files for %s, heavy = %v", sto.String(), heavy)
+	log.Infof(Tr("info.check.start"), sto.String(), heavy)
 
 	var (
 		checkingHashMux  sync.Mutex
@@ -777,7 +775,7 @@ func (cr *Cluster) checkFileFor(
 	bar := pg.AddBar(0,
 		mpb.BarRemoveOnComplete(),
 		mpb.PrependDecorators(
-			decor.Name("> Checking "),
+			decor.Name(Tr("hint.check.checking")),
 			decor.Name(sto.String()),
 			decor.OnCondition(
 				decor.Any(func(decor.Statistics) string {
@@ -836,16 +834,17 @@ func (cr *Cluster) checkFileFor(
 			checkingHash = hash
 			checkingHashMux.Unlock()
 		}
+		name := sto.String() + "/" + hash
 		if f.Size == 0 {
-			log.Debugf("Skipped empty file %s", hash)
+			log.Debugf("Skipped empty file %s", name)
 		} else if size, ok := sizeMap[hash]; ok {
 			if size != f.Size {
-				log.Warnf("Found modified file: size of %q is %d, expect %d", hash, size, f.Size)
+				log.Warnf(Tr("warn.check.modified.size"), name, size, f.Size)
 				addMissing(f)
 			} else if heavy {
 				hashMethod, err := getHashMethod(len(hash))
 				if err != nil {
-					log.Errorf("Unknown hash method for %q", hash)
+					log.Errorf(Tr("error.check.unknown.hash.method"), hash)
 				} else {
 					_, buf, free := slots.Alloc(ctx)
 					if buf == nil {
@@ -856,15 +855,15 @@ func (cr *Cluster) checkFileFor(
 						miss := true
 						r, err := sto.Open(hash)
 						if err != nil {
-							log.Errorf("Could not open %q: %v", hash, err)
+							log.Errorf(Tr("error.check.open.failed"), name, err)
 						} else {
 							hw := hashMethod.New()
 							_, err = io.CopyBuffer(hw, r, buf[:])
 							r.Close()
 							if err != nil {
-								log.Errorf("Could not calculate hash for %s: %v", hash, err)
+								log.Errorf(Tr("error.check.hash.failed"), name, err)
 							} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != hash {
-								log.Warnf("Found modified file: hash of %s became %s", hash, hs)
+								log.Warnf(Tr("warn.check.modified.hash"), name, hs, hash)
 							} else {
 								miss = false
 							}
@@ -878,7 +877,7 @@ func (cr *Cluster) checkFileFor(
 				}
 			}
 		} else {
-			log.Debugf("Could not found file %q", hash)
+			log.Debugf("Could not found file %q", name)
 			addMissing(f)
 		}
 		bar.EwmaIncrement(time.Since(start))
@@ -889,7 +888,7 @@ func (cr *Cluster) checkFileFor(
 	checkingHashMux.Unlock()
 
 	bar.SetTotal(-1, true)
-	log.Infof("File check finished for %s, missing %d files", sto.String(), missingCount.Load())
+	log.Infof(Tr("info.check.done"), sto.String(), missingCount.Load())
 	return
 }
 
@@ -917,7 +916,7 @@ func (cr *Cluster) CheckFiles(
 		select {
 		case <-done:
 		case <-ctx.Done():
-			log.Warn("File sync interrupted")
+			log.Warn(Tr("warn.sync.interrupted"))
 			return nil, ctx.Err()
 		}
 	}
@@ -967,7 +966,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	}
 	totalFiles := len(missing)
 	if totalFiles == 0 {
-		log.Info("All files were synchronized")
+		log.Info(Tr("info.sync.none"))
 		return nil
 	}
 
@@ -978,7 +977,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		return err
 	}
 	syncCfg := ccfg.Sync
-	log.Infof("Sync config: %#v", syncCfg)
+	log.Infof(Tr("info.sync.config"), syncCfg)
 
 	done := make(chan struct{}, 0)
 
@@ -997,7 +996,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		mpb.BarRemoveOnComplete(),
 		mpb.BarPriority(stats.slots.Cap()),
 		mpb.PrependDecorators(
-			decor.Name("Total: "),
+			decor.Name(Tr("hint.sync.total")),
 			decor.NewPercentage("%.2f"),
 		),
 		mpb.AppendDecorators(
@@ -1012,14 +1011,14 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		),
 	)
 
-	log.Infof("Starting sync files, count: %d, total: %s", totalFiles, utils.BytesToUnit((float64)(stats.totalSize)))
+	log.Infof(Tr("hint.sync.start"), totalFiles, utils.BytesToUnit((float64)(stats.totalSize)))
 	start := time.Now()
 
 	for _, f := range missing {
 		log.Debugf("File %s is for %v", f.Hash, f.targets)
 		pathRes, err := cr.fetchFile(ctx, &stats, f.FileInfo)
 		if err != nil {
-			log.Warn("File sync interrupted")
+			log.Warn(Tr("warn.sync.interrupted"))
 			return err
 		}
 		go func(f *fileInfoWithTargets, pathRes <-chan string) {
@@ -1053,7 +1052,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 						}
 						err := target.Create(f.Hash, srcFd)
 						if err != nil {
-							log.Errorf("Cannot create %s/%s: %v", target.String(), f.Hash, err)
+							log.Errorf(Tr("error.sync.create.failed"), target.String(), f.Hash, err)
 							continue
 						}
 					}
@@ -1067,7 +1066,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		select {
 		case <-done:
 		case <-ctx.Done():
-			log.Warn("File sync interrupted")
+			log.Warn(Tr("warn.sync.interrupted"))
 			return ctx.Err()
 		}
 	}
@@ -1075,7 +1074,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	use := time.Since(start)
 	pg.Wait()
 
-	log.Infof("All files were synchronized, use time: %v, %s/s", use, utils.BytesToUnit((float64)(stats.totalSize)/use.Seconds()))
+	log.Infof(Tr("hint.sync.done"), use, utils.BytesToUnit((float64)(stats.totalSize)/use.Seconds()))
 	return nil
 }
 
@@ -1086,26 +1085,26 @@ func (cr *Cluster) Gc() {
 }
 
 func (cr *Cluster) gcFor(s storage.Storage) {
-	log.Info("Starting garbage collector for", s.String())
+	log.Infof(Tr("info.gc.start"), s.String())
 	err := s.WalkDir(func(hash string, _ int64) error {
 		if cr.issync.Load() {
 			return context.Canceled
 		}
 		if _, ok := cr.CachedFileSize(hash); !ok {
-			log.Info("Found outdated file:", hash)
+			log.Infof(Tr("info.gc.found"), s.String()+"/"+hash)
 			s.Remove(hash)
 		}
 		return nil
 	})
 	if err != nil {
 		if err == context.Canceled {
-			log.Warn("Garbage collector interrupted at", s.String())
+			log.Warnf(Tr("warn.gc.interrupted"), s.String())
 		} else {
-			log.Errorf("Garbage collector error: %v", err)
+			log.Errorf(Tr("error.gc.error"), err)
 		}
 		return
 	}
-	log.Info("Garbage collect finished for", s.String())
+	log.Infof(Tr("info.gc.done"), s.String())
 }
 
 func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) (<-chan string, error) {
@@ -1131,7 +1130,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 			mpb.BarRemoveOnComplete(),
 			mpb.BarPriority(slotId),
 			mpb.PrependDecorators(
-				decor.Name("> Downloading "),
+				decor.Name(Tr("hint.sync.downloading")),
 				decor.Any(func(decor.Statistics) string {
 					tc := trycount.Load()
 					if tc <= 1 {
@@ -1164,7 +1163,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 				}); err == nil {
 					pathRes <- path
 					stats.okCount.Add(1)
-					log.Infof("Downloaded %s [%s] %.2f%%", f.Path,
+					log.Infof(Tr("info.sync.downloaded"), f.Path,
 						utils.BytesToUnit((float64)(f.Size)),
 						(float64)(stats.totalBar.Current())/(float64)(stats.totalSize)*100)
 					return
@@ -1172,7 +1171,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 			}
 			bar.SetRefill(bar.Current())
 
-			log.Errorf("Download error %s:\n\t%s", f.Path, err)
+			log.Errorf(Tr("error.sync.download.failed"), f.Path, err)
 			c := trycount.Add(1)
 			if c > maxRetryCount {
 				break
@@ -1372,7 +1371,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 					return
 				}
 				if err := target.Create(hash, srcFd); err != nil {
-					log.Errorf("Cannot create %q: %v", target.String(), err)
+					log.Errorf(Tr("error.sync.create.failed"), target.String(), hash, err)
 					continue
 				}
 			}

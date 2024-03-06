@@ -262,15 +262,15 @@ func readConfig() (config Config) {
 	notexists := false
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			log.Error("Cannot read config:", err)
+			log.Errorf(Tr("error.config.read.failed"), err)
 			osExit(1)
 		}
-		log.Error("Config file not exists, create one")
+		log.Error(Tr("error.config.not.exists"))
 		notexists = true
 	} else {
 		migrateConfig(data, &config)
 		if err = yaml.Unmarshal(data, &config); err != nil {
-			log.Error("Cannot parse config:", err)
+			log.Errorf(Tr("error.config.parse.failed"), err)
 			osExit(1)
 		}
 		if len(config.Storages) == 0 {
@@ -314,7 +314,7 @@ func readConfig() (config Config) {
 			if alias := opt.Alias; alias != "" {
 				user, ok := config.WebdavUsers[alias]
 				if !ok {
-					log.Errorf("Web dav user %q does not exists", alias)
+					log.Errorf(Tr("error.config.alias.user.not.exists"), alias)
 					osExit(1)
 				}
 				opt.AliasUser = user
@@ -341,15 +341,15 @@ func readConfig() (config Config) {
 	encoder := yaml.NewEncoder(&buf)
 	encoder.SetIndent(2)
 	if err = encoder.Encode(config); err != nil {
-		log.Error("Cannot encode config:", err)
+		log.Errorf(Tr("error.config.encode.failed"), err)
 		osExit(1)
 	}
 	if err = os.WriteFile(configPath, buf.Bytes(), 0600); err != nil {
-		log.Error("Cannot write config:", err)
+		log.Errorf(Tr("error.config.write.failed"), err)
 		osExit(1)
 	}
 	if notexists {
-		log.Error("Config file created, please edit it and start the program again")
+		log.Error(Tr("error.config.created"))
 		osExit(0xff)
 	}
 

@@ -105,4 +105,5 @@ func ParseSystemLanguage() {
 	if lang != "" {
 		SetLang(lang)
 	}
+	// TODO: syscall.LoadDLL("kernel32") for windows
 }

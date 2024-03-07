@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/textproto"
@@ -66,6 +67,17 @@ func (w *statusResponseWriter) WriteHeader(status int) {
 func (w *statusResponseWriter) Write(buf []byte) (n int, err error) {
 	n, err = w.ResponseWriter.Write(buf)
 	w.wrote += (int64)(n)
+	return
+}
+
+func (w *statusResponseWriter) ReadFrom(r io.Reader) (n int64, err error) {
+	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		n, err = rf.ReadFrom(r)
+		w.wrote += n
+		return
+	}
+	n, err = io.Copy(w.ResponseWriter, r)
+	w.wrote += n
 	return
 }
 

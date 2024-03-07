@@ -73,15 +73,26 @@ func (w *NoLastNewLineWriter) Write(buf []byte) (int, error) {
 	return w.Writer.Write(buf)
 }
 
-
 var ErrNotSeeker = errors.New("r is not an io.Seeker")
 
-func GetFileSize(r io.Reader) (n int64, err error) {
+func GetReaderRemainSize(r io.Reader) (n int64, err error) {
+	// for strings.Reader and bytes.Reader
+	if l, ok := r.(interface{ Len() int }); ok {
+		return (int64)(l.Len()), nil
+	}
 	if s, ok := r.(io.Seeker); ok {
-		if n, err = s.Seek(0, io.SeekEnd); err == nil {
-			if _, err = s.Seek(0, io.SeekStart); err != nil {
-				return
-			}
+		var cur, end int64
+		if cur, err = s.Seek(0, io.SeekCurrent); err != nil {
+			return
+		}
+		if end, err = s.Seek(0, io.SeekEnd); err != nil {
+			return
+		}
+		if n = end - cur; n < 0 {
+			n = 0
+		}
+		if _, err = s.Seek(cur, io.SeekStart); err != nil {
+			return
 		}
 	} else {
 		err = ErrNotSeeker

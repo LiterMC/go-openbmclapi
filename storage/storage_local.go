@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/LiterMC/go-openbmclapi/log"
-	. "github.com/LiterMC/go-openbmclapi/utils"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type LocalStorageOption struct {
@@ -125,11 +125,11 @@ func (s *LocalStorage) Remove(hash string) error {
 }
 
 func (s *LocalStorage) WalkDir(walker func(hash string, size int64) error) error {
-	return WalkCacheDir(s.opt.CachePath, walker)
+	return utils.WalkCacheDir(s.opt.CachePath, walker)
 }
 
 func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
-	acceptEncoding := SplitCSV(req.Header.Get("Accept-Encoding"))
+	acceptEncoding := utils.SplitCSV(req.Header.Get("Accept-Encoding"))
 	name := req.URL.Query().Get("name")
 
 	hasGzip := false
@@ -157,7 +157,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		}
 		defer fd.Close()
 
-		counter := &CountReader{
+		counter := &utils.CountReader{
 			ReadSeeker: fd,
 		}
 		rw.Header().Set("ETag", `"`+hash+`"`)
@@ -182,7 +182,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		}
 		defer fd.Close()
 		r = fd
-		size, _ = GetFileSize(fd)
+		size, _ = utils.GetReaderRemainSize(fd)
 		rw.Header().Set("Content-Encoding", "gzip")
 	} else {
 		fd, err := os.Open(path)
@@ -211,7 +211,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 	}
 	rw.WriteHeader(http.StatusOK)
 	if req.Method == http.MethodGet {
-		buf, free := AllocBuf()
+		buf, free := utils.AllocBuf()
 		defer free()
 		n, _ := io.CopyBuffer(rw, r, buf)
 		return n, nil
@@ -220,11 +220,11 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 }
 
 func (s *LocalStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, size int) error {
-	rw.Header().Set("Content-Length", strconv.Itoa(size*MbChunkSize))
+	rw.Header().Set("Content-Length", strconv.Itoa(size*utils.MbChunkSize))
 	rw.WriteHeader(http.StatusOK)
 	if req.Method == http.MethodGet {
 		for i := 0; i < size; i++ {
-			rw.Write(MbChunk[:])
+			rw.Write(utils.MbChunk[:])
 		}
 	}
 	return nil

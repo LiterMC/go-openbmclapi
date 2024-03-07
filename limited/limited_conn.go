@@ -27,6 +27,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type RateController struct {
@@ -343,7 +345,7 @@ func (w *LimitedWriter) Write(buf []byte) (n int, err error) {
 		}
 		if m > 0 {
 			n0, err = w.Writer.Write(buf[n : n+m])
-			n = n + n0
+			n += n0
 			if err != nil {
 				return
 			}
@@ -351,6 +353,45 @@ func (w *LimitedWriter) Write(buf []byte) (n int, err error) {
 	}
 	return
 }
+
+func (w *LimitedWriter) readFrom(rf io.ReaderFrom, src io.Reader) (n int64, err error) {
+	lr := &io.LimitedReader{
+		R: src,
+		N: 0,
+	}
+	remain, _ := utils.GetReaderRemainSize(src)
+	for {
+		if !w.writeAfter.IsZero() {
+			now := time.Now()
+			if dur := w.writeAfter.Sub(now); dur > 0 {
+				time.Sleep(dur)
+			}
+		}
+		if remain <= 0 {
+			remain = (int64)(w.controller.minWriteRate)
+		}
+		m, dur := w.controller.preWrite((int)(remain))
+		if dur > 0 {
+			w.writeAfter = time.Now().Add(dur)
+		} else {
+			w.writeAfter = time.Time{}
+		}
+		if m > 0 {
+			lr.N = (int64)(m)
+			var n0 int64
+			n0, err = rf.ReadFrom(lr)
+			n += n0
+			remain -= n0
+			if err != nil {
+				return
+			}
+			if lr.N > 0 {
+				return
+			}
+		}
+	}
+}
+
 
 func (w *LimitedWriter) Close() error {
 	if w.closed.CompareAndSwap(false, true) {
@@ -435,13 +476,70 @@ func (c *LimitedConn) Write(buf []byte) (n int, err error) {
 		}
 		if m > 0 {
 			n0, err = c.Conn.Write(buf[n : n+m])
-			n = n + n0
+			n += n0
 			if err != nil {
 				return
 			}
 		}
 	}
 	return
+}
+
+// for zero copy
+func (c *LimitedConn) ReadFrom(src io.Reader) (n int64, err error) {
+	if rf, ok := c.Conn.(io.ReaderFrom); ok {
+		return c.readFrom(rf, src)
+	}
+	buf, free := utils.AllocBuf()
+	defer free()
+	return io.CopyBuffer(c.Conn, src, buf)
+}
+
+func (c *LimitedConn) readFrom(rf io.ReaderFrom, src io.Reader) (n int64, err error) {
+	lr := &io.LimitedReader{
+		R: src,
+		N: 0,
+	}
+	remain, _ := utils.GetReaderRemainSize(src)
+	for {
+		if !c.writeAfter.IsZero() {
+			now := time.Now()
+			if dur := c.writeAfter.Sub(now); dur > 0 {
+				if !c.writeDeadline.IsZero() {
+					if deadDur := c.writeDeadline.Sub(now); deadDur < dur {
+						if deadDur > 0 {
+							time.Sleep(deadDur)
+						}
+						err = os.ErrDeadlineExceeded
+						return
+					}
+				}
+				time.Sleep(dur)
+			}
+		}
+		if remain <= 0 {
+			remain = (int64)(c.controller.minWriteRate)
+		}
+		m, dur := c.controller.preWrite((int)(remain))
+		if dur > 0 {
+			c.writeAfter = time.Now().Add(dur)
+		} else {
+			c.writeAfter = time.Time{}
+		}
+		if m > 0 {
+			lr.N = (int64)(m)
+			var n0 int64
+			n0, err = rf.ReadFrom(lr)
+			n += n0
+			remain -= n0
+			if err != nil {
+				return
+			}
+			if lr.N > 0 {
+				return
+			}
+		}
+	}
 }
 
 func (c *LimitedConn) Close() error {

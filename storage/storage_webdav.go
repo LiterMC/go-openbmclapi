@@ -40,7 +40,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
-	. "github.com/LiterMC/go-openbmclapi/utils"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type WebDavStorageOption struct {
@@ -206,7 +206,7 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 }
 
 func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
-	size, err := GetFileSize(r)
+	size, err := utils.GetReaderRemainSize(r)
 	if err != nil {
 		return err
 	}
@@ -232,7 +232,7 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
 		return nil
 	default:
-		return &HTTPStatusError{Code: res.StatusCode}
+		return &utils.HTTPStatusError{Code: res.StatusCode}
 	}
 }
 
@@ -268,7 +268,7 @@ func (s *WebDavStorage) WalkDir(walker func(hash string, size int64) error) erro
 	s.limitedDialer.Acquire()
 	defer s.limitedDialer.Release()
 
-	for _, dir := range Hex256 {
+	for _, dir := range utils.Hex256 {
 		files, err := s.cli.ReadDir(path.Join("download", dir))
 		if err != nil {
 			continue
@@ -388,7 +388,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		n, _ := io.Copy(rw, resp.Body)
 		return n, nil
 	default:
-		return 0, &HTTPStatusError{Code: resp.StatusCode}
+		return 0, &utils.HTTPStatusError{Code: resp.StatusCode}
 	}
 }
 
@@ -435,11 +435,11 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 		fallthrough
 	default:
 		resp.Body.Close()
-		rw.Header().Set("Content-Length", strconv.Itoa(size*MbChunkSize))
+		rw.Header().Set("Content-Length", strconv.Itoa(size*utils.MbChunkSize))
 		rw.WriteHeader(http.StatusOK)
 		if req.Method == http.MethodGet {
 			for i := 0; i < size; i++ {
-				rw.Write(MbChunk[:])
+				rw.Write(utils.MbChunk[:])
 			}
 		}
 		return nil
@@ -448,7 +448,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 
 func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err error) {
 	t := path.Join("measure", strconv.Itoa(size))
-	tsz := (int64)(size) * MbChunkSize
+	tsz := (int64)(size) * utils.MbChunkSize
 	if size == 0 {
 		tsz = 2
 	}
@@ -464,7 +464,7 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err er
 		log.Errorf("Cannot get stat of %s: %v", t, err)
 	}
 	log.Infof("Creating measure file at %q", t)
-	if err = s.putFile(t, io.NewSectionReader(EmptyReader, 0, tsz)); err != nil {
+	if err = s.putFile(t, io.NewSectionReader(utils.EmptyReader, 0, tsz)); err != nil {
 		log.Errorf("Cannot create measure file %q: %v", t, err)
 		return
 	}

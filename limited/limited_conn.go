@@ -323,7 +323,10 @@ type LimitedWriter struct {
 	writeAfter time.Time
 }
 
-var _ io.WriteCloser = (*LimitedWriter)(nil)
+var (
+	_ io.WriteCloser = (*LimitedWriter)(nil)
+	_ io.ReaderFrom = (*LimitedWriter)(nil)
+)
 
 func (w *LimitedWriter) Write(buf []byte) (n int, err error) {
 	if len(buf) == 0 {
@@ -352,6 +355,16 @@ func (w *LimitedWriter) Write(buf []byte) (n int, err error) {
 		}
 	}
 	return
+}
+
+// for zero copy
+func (w *LimitedWriter) ReadFrom(src io.Reader) (n int64, err error) {
+	if rf, ok := w.Writer.(io.ReaderFrom); ok {
+		return w.readFrom(rf, src)
+	}
+	buf, free := utils.AllocBuf()
+	defer free()
+	return io.CopyBuffer(w.Writer, src, buf)
 }
 
 func (w *LimitedWriter) readFrom(rf io.ReaderFrom, src io.Reader) (n int64, err error) {
@@ -418,7 +431,10 @@ type LimitedConn struct {
 	writeDeadline time.Time
 }
 
-var _ net.Conn = (*LimitedConn)(nil)
+var (
+	_ net.Conn = (*LimitedConn)(nil)
+	_ io.ReaderFrom = (*LimitedConn)(nil)
+)
 
 func (c *LimitedConn) Read(buf []byte) (n int, err error) {
 	if !c.readAfter.IsZero() {

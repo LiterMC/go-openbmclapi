@@ -1,4 +1,4 @@
-//go:build !ignore || windows
+//go:build windows
 
 package main
 
@@ -54,18 +54,25 @@ func main() {
 		outputName := filepath.Join("output", fmt.Sprintf("go-openbmclapi-windows-%s.exe", arch))
 		fmt.Printf("Building %s ...\n", outputName)
 		{
-			cmd := exec.Command("go", "build", "-o", outputName, "-ldflags", ldflags, ".")
+			cmd := exec.Command("go", "build", "-o", outputName, "-ldflags", ldflags)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
+			cmd.Env = append(([]string)(nil), os.Environ()...)
 			cmd.Env = append(cmd.Env, "GOARCH="+arch)
+			fmt.Println("Running", cmd.String())
 			if err := cmd.Run(); err != nil {
 				fmt.Println("Error when building:", err)
+				dbugCmd := exec.Command("go", "env")
+				dbugCmd.Stdout = os.Stdout
+				dbugCmd.Stderr = os.Stderr
+				dbugCmd.Run()
 				os.Exit(1)
 			}
 		}
 		fmt.Printf("Signing %s ...\n", outputName)
 		{
 			cmd := exec.Command(signtool, "sign", "/sm",
+				"/n", "LiterMC-CodeSign",
 				"/tr", "http://timestamp.apple.com/ts01", "/td", "SHA256",
 				"/fd", "SHA256", outputName)
 			cmd.Stdout = os.Stdout

@@ -35,6 +35,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -58,6 +59,10 @@ import (
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
+)
+
+var (
+	reFileHashMismatchError = regexp.MustCompile(` hash mismatch, expected ([0-9a-f]+), got ([0-9a-f]+)`)
 )
 
 type Cluster struct {
@@ -376,14 +381,14 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	}
 
 	if cr.socket != nil && !cr.socket.IO().Connected() && config.MaxReconnectCount == 0 {
-		log.Errorf("Cluster disconnected from remote; exit.")
+		log.Error(Tr("error.cluster.disconnected"))
 		osExit(0x08)
 		return
 	}
 
 	cr.shouldEnable.Store(true)
 
-	log.Info("Sending enable packet")
+	log.Info(Tr("info.cluster.enable.sending"))
 	resCh, err := cr.socket.EmitWithAck("enable", Map{
 		"host":         cr.host,
 		"port":         cr.publicPort,
@@ -405,12 +410,24 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	}
 	log.Debug("got enable ack:", data)
 	if ero := data[0]; ero != nil {
+		if ero, ok := ero.(map[string]any); ok {
+			if msg, ok := ero["message"].(string); ok {
+				if hashMismatch := reFileHashMismatchError.FindStringSubmatch(msg); hashMismatch != nil {
+					hash := hashMismatch[1]
+					log.Warnf("Detected hash mismatch error, removing bad file %s", hash)
+					for _, s := range cr.storages {
+						s.Remove(hash)
+					}
+				}
+				return fmt.Errorf("Enable failed: %v", msg)
+			}
+		}
 		return fmt.Errorf("Enable failed: %v", ero)
 	}
 	if !data[1].(bool) {
 		return errors.New("Enable ack non true value")
 	}
-	log.Info("Cluster enabled")
+	log.Info(Tr("info.cluster.enabled"))
 	cr.disabled = make(chan struct{}, 0)
 	cr.enabled.Store(true)
 	for _, ch := range cr.waitEnable {
@@ -426,15 +443,15 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		cancel()
 		if !ok {
 			if keepaliveCtx.Err() == nil {
-				log.Info("Reconnecting due to keepalive failed")
+				log.Info(Tr("info.cluster.reconnect.keepalive"))
 				cr.disable(ctx)
-				log.Info("Reconnecting ...")
+				log.Info(Tr("info.cluster.reconnecting"))
 				if !cr.Connect(ctx) {
-					log.Error("Cannot reconnect to server, exit.")
+					log.Error(Tr("error.cluster.reconnect.failed"))
 					osExit(1)
 				}
 				if err := cr.Enable(ctx); err != nil {
-					log.Error("Cannot enable cluster:", err, "; exit.")
+					log.Errorf(Tr("error.cluster.enable.failed"), err)
 					osExit(1)
 				}
 			}
@@ -454,10 +471,10 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		"bytes": hbts,
 	})
 	if e := cr.stats.Save(cr.dataDir); e != nil {
-		log.Error("Error when saving status:", e)
+		log.Errorf(Tr("error.cluster.stat.save.failed"), e)
 	}
 	if err != nil {
-		log.Error("Error when keep-alive:", err)
+		log.Errorf(Tr("error.cluster.keepalive.send.failed"), err)
 		return false
 	}
 	var data []any
@@ -466,11 +483,25 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		return false
 	case data = <-resCh:
 	}
+	log.Debugf("Keep-alive response: %v", data)
 	if ero := data[0]; len(data) <= 1 || ero != nil {
-		log.Error("Keep-alive failed:", ero)
+		if ero, ok := ero.(map[string]any); ok {
+			if msg, ok := ero["message"].(string); ok {
+				if hashMismatch := reFileHashMismatchError.FindStringSubmatch(msg); hashMismatch != nil {
+					hash := hashMismatch[1]
+					log.Warnf("Detected hash mismatch error, removing bad file %s", hash)
+					for _, s := range cr.storages {
+						s.Remove(hash)
+					}
+				}
+				log.Errorf(Tr("error.cluster.keepalive.failed"), msg)
+				return false
+			}
+		}
+		log.Errorf(Tr("error.cluster.keepalive.failed"), ero)
 		return false
 	}
-	log.Info("Keep-alive success:", hits, utils.BytesToUnit((float64)(hbts)), data[1])
+	log.Infof(Tr("info.cluster.keepalive.success"), hits, utils.BytesToUnit((float64)(hbts)), data[1])
 	return true
 }
 
@@ -649,8 +680,7 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(res.Body)
-		err = fmt.Errorf("Unexpected status code: %d %s Body:\n\t%s", res.StatusCode, res.Status, (string)(data))
+		err = utils.NewHTTPStatusErrorFromResponse(res)
 		return
 	}
 	log.Debug("Parsing filelist body ...")
@@ -676,8 +706,7 @@ func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, 
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(res.Body)
-		err = fmt.Errorf("Unexpected status code: %d %s Body:\n\t%s", res.StatusCode, res.Status, (string)(data))
+		err = utils.NewHTTPStatusErrorFromResponse(res)
 		return
 	}
 	cfg = new(OpenbmclapiAgentConfig)
@@ -1072,6 +1101,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	}
 
 	use := time.Since(start)
+	stats.totalBar.Abort(true)
 	pg.Wait()
 
 	log.Infof(Tr("hint.sync.done"), use, utils.BytesToUnit((float64)(stats.totalSize)/use.Seconds()))
@@ -1308,6 +1338,9 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		go func() {
 			var err error
 			defer func() {
+				if err != nil {
+					log.Errorf(Tr("error.sync.download.failed"), hash, err)
+				}
 				done <- err
 				close(done)
 
@@ -1316,12 +1349,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 				delete(cr.downloading, hash)
 			}()
 
-			log.Infof("Downloading %s from handler", hash)
-			defer func() {
-				if err != nil {
-					log.Errorf("Could not download %s: %v", hash, err)
-				}
-			}()
+			log.Infof(Tr("hint.sync.downloading.handler"), hash)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			go func() {

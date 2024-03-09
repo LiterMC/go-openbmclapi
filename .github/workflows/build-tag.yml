@@ -7,7 +7,7 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       -
@@ -25,9 +25,22 @@ jobs:
       -
         name: Test
         run: go test -v ./...
+
+  create_release:
+    runs-on: ubuntu-latest
+    needs:
+      - test
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
       -
-        name: Build
-        run: bash ./build.sh
+        name: Output TAG
+        id: tag
+        run: |
+          export RELEASE_VERSION="${GITHUB_REF#refs/*/}"
+          echo "tag=${RELEASE_VERSION}"
+          echo "tag=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
       -
         name: Create Release
         id: create_release
@@ -37,47 +50,75 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: true
+          draft: true
+          prerelease: false
+
+  build:
+    runs-on: ubuntu-latest
+    needs:
+      - create_release
+    steps:
+      -
+        name: Action Checkout
+        uses: actions/checkout@v3
+      -
+        name: Setup Golang
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
+      -
+        name: Import codesign key
+        run: |
+          cat <<EOF >./private/LiterMC-CodeSign.key
+          ${{ secrets.CODE_SIGN_KEY }}
+          EOF
+      -
+        name: Generate
+        run: go generate .
+      -
+        name: Build
+        env:
+          TAG: ${{ needs.create_release.outputs.tag }}
+        run: bash ./scripts/build.sh
       -
         name: Upload Release Assets
         uses: zyxkad/upload-release-asset-dir@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
           asset_dir: ./output
 
-  build-docker:
-    runs-on: ubuntu-latest
+  build-windows:
+    runs-on: windows-2022
+    needs:
+      - create_release
     steps:
       -
         name: Action Checkout
         uses: actions/checkout@v3
       -
-        name: Get current tag
-        run: echo "TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      -
-        name: Login to Docker Hub
-        uses: docker/login-action@v2
+        name: Setup Golang
+        uses: actions/setup-go@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
       -
-        name: Build and push
-        uses: docker/build-push-action@v5
+        name: Generate
+        run: go generate .
+      -
+        name: Build
+        env:
+          TAG: ${{ needs.create_release.outputs.tag }}
+          CODE_SIGN_PFX: ${{ secrets.CODE_SIGN_PFX }}
+          CODE_SIGN_PFX_PASSWORD: ${{ secrets.CODE_SIGN_PFX_PASSWORD }}
+        run: go run ./scripts/build-windows.go
+      -
+        name: Upload Release Assets
+        uses: zyxkad/upload-release-asset-dir@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          context: .
-          push: true
-          tags: |
-            craftmine/go-openbmclapi:latest
-            craftmine/go-openbmclapi:${{env.TAG}}
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_dir: ./output

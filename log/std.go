@@ -25,7 +25,7 @@ import (
 )
 
 type stdLogProxyWriter struct {
-	buf []byte
+	buf     []byte
 	filters []func(line []byte) bool
 }
 
@@ -68,7 +68,7 @@ func (w *stdLogProxyWriter) Write(buf []byte) (n int, _ error) {
 		w.log(lines[i])
 	}
 
-	w.buf = append(w.buf[:0], buf[last + 1:]...)
+	w.buf = append(w.buf[:0], buf[last+1:]...)
 	return
 }
 
@@ -76,7 +76,7 @@ func splitByteIgnoreLast(buf []byte, sep byte, splited [][]byte) [][]byte {
 	for i := 0; i < len(buf); i++ {
 		if buf[i] == sep {
 			splited = append(splited, buf[:i])
-			buf = buf[i + 1:]
+			buf = buf[i+1:]
 			i = 0
 		}
 	}

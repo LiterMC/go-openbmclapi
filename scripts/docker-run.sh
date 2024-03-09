@@ -1,7 +1,5 @@
 #!/bin/sh
 
-cd "$(dirname "$0")"
-
 docker pull craftmine/go-openbmclapi:latest || {
  echo "[ERROR] Failed to pull docker image 'craftmine/go-openbmclapi:latest'"
  if ! docker images craftmine/go-openbmclapi | grep latest; then

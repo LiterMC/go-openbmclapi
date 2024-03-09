@@ -325,7 +325,7 @@ type LimitedWriter struct {
 
 var (
 	_ io.WriteCloser = (*LimitedWriter)(nil)
-	_ io.ReaderFrom = (*LimitedWriter)(nil)
+	_ io.ReaderFrom  = (*LimitedWriter)(nil)
 )
 
 func (w *LimitedWriter) Write(buf []byte) (n int, err error) {
@@ -405,7 +405,6 @@ func (w *LimitedWriter) readFrom(rf io.ReaderFrom, src io.Reader) (n int64, err 
 	}
 }
 
-
 func (w *LimitedWriter) Close() error {
 	if w.closed.CompareAndSwap(false, true) {
 		w.controller.Release()
@@ -432,7 +431,7 @@ type LimitedConn struct {
 }
 
 var (
-	_ net.Conn = (*LimitedConn)(nil)
+	_ net.Conn      = (*LimitedConn)(nil)
 	_ io.ReaderFrom = (*LimitedConn)(nil)
 )
 

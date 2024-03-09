@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-curdir="$(dirname $0)"
-
 available_platforms=(
 	darwin/amd64 darwin/arm64
 	linux/386 linux/amd64 linux/arm linux/arm64
 	# windows/386 windows/arm
-	windows/amd64 windows/arm64
+	# windows/amd64 windows/arm64 # windows builds are at build-windows.bat
 )
 
 outputdir=output
@@ -29,5 +27,5 @@ for p in "${available_platforms[@]}"; do
 		target="${target}.exe"
 	fi
 	echo "Building $target ..."
-	GOOS=$os GOARCH=$arch go build -o "$target" -ldflags "$ldflags" "$@" "$curdir" || exit $?
+	GOOS=$os GOARCH=$arch go build -o "$target" -ldflags "$ldflags" "$@" . || exit $?
 done

@@ -13,7 +13,7 @@
 /__hijack
 /oss_mirror
 
-# binarys
+# binaries
 /output
 /build
 /build-all.sh

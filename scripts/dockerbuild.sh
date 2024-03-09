@@ -3,8 +3,6 @@
 PUBLIC_PREFIX=craftmine/go-openbmclapi
 BUILD_PLATFORMS=(linux/arm64 linux/amd64) #
 
-cd $(dirname $0)
-
 [ -n "$TAG" ] || TAG=$(git describe --tags --match v[0-9]* --abbrev=0 2>/dev/null || git log -1 --format="dev-%H")
 
 function build(){

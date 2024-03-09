@@ -89,7 +89,7 @@ func searchSignTool() string {
 		panic(err)
 	}
 	for _, e := range entries {
-		if e.IsDir() {
+		if !e.IsDir() {
 			continue
 		}
 		name := e.Name()

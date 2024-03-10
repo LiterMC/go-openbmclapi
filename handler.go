@@ -33,6 +33,8 @@ import (
 	"net/http"
 	"net/textproto"
 	"os"
+	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -57,11 +59,24 @@ type statusResponseWriter struct {
 
 var _ http.Hijacker = (*statusResponseWriter)(nil)
 
+func getCaller() (caller runtime.Frame) {
+	pc := make([]uintptr, 16)
+	n := runtime.Callers(2, pc)
+	frames := runtime.CallersFrames(pc[:n])
+	frame, more := frames.Next()
+	_ = more
+	return frame
+}
+
 func (w *statusResponseWriter) WriteHeader(status int) {
 	if w.status == 0 {
 		w.status = status
+		w.ResponseWriter.WriteHeader(status)
+	} else {
+		caller := getCaller()
+		log.Errorf("http: superfluous response.WriteHeader call with status %d from %s (%s:%d)",
+			status, caller.Function, path.Base(caller.File), caller.Line)
 	}
-	w.ResponseWriter.WriteHeader(status)
 }
 
 func (w *statusResponseWriter) Write(buf []byte) (n int, err error) {

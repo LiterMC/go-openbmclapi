@@ -110,15 +110,12 @@ jobs:
         name: Generate
         run: go generate .
       -
-        name: Build build-windows.exe
-        run: go build -o ./scripts/build-windows.exe ./scripts/build-windows.go
-      -
         name: Run build-windows.exe
         env:
           TAG: ${{ needs.create_release.outputs.tag }}
           CODE_SIGN_PFX: ${{ secrets.CODE_SIGN_PFX }}
           CODE_SIGN_PFX_PASSWORD: ${{ secrets.CODE_SIGN_PFX_PASSWORD }}
-        run: ./scripts/build-windows.exe
+        run: go run ./scripts/build-windows.go
       -
         name: Upload Release Assets
         uses: zyxkad/upload-release-asset-dir@v1

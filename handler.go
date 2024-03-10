@@ -39,6 +39,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
@@ -375,7 +376,7 @@ var emptyHashes = func() (hashes map[string]struct{}) {
 	return
 }()
 
-const HeaderXPoweredBy = "go-openbmclapi; url=https://github.com/LiterMC/go-openbmclapi"
+var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", build.BuildVersion)
 
 func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method

@@ -344,7 +344,7 @@ func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
 		}
 		log.LogAccess(log.LevelInfo, accRec)
 
-		if srw.status < 200 && 400 <= srw.status {
+		if srw.status < 200 || 400 <= srw.status {
 			return
 		}
 		if !strings.HasPrefix(req.URL.Path, "/download/") {

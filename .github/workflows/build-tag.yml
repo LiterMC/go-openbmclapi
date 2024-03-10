@@ -35,6 +35,9 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       -
+        name: Action Checkout
+        uses: actions/checkout@v3
+      -
         name: Output TAG
         id: tag
         run: |

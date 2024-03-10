@@ -73,7 +73,7 @@ func main() {
 		{
 			cmd := exec.Command(signtool, "sign", "/sm",
 				"/n", "LiterMC-CodeSign",
-				"/tr", "http://timestamp.apple.com/ts01", "/td", "SHA256",
+				// "/tr", "http://timestamp.apple.com/ts01", "/td", "SHA256",
 				"/fd", "SHA256", outputName)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr

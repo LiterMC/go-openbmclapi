@@ -75,7 +75,7 @@ func (w *statusResponseWriter) WriteHeader(status int) {
 		w.ResponseWriter.WriteHeader(status)
 	} else {
 		caller := getCaller()
-		log.Errorf("http: superfluous response.WriteHeader call with status %d from %s (%s:%d)",
+		log.Warnf("http: superfluous response.WriteHeader call with status %d from %s (%s:%d)",
 			status, caller.Function, path.Base(caller.File), caller.Line)
 	}
 }

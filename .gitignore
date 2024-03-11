@@ -16,8 +16,8 @@
 # binaries
 /output
 /build
-/build-all.sh
 /vendor
+/*.wixobj
 
 # workspace
 go.work

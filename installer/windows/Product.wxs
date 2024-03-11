@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
+	<?include Product.Var.wxi ?>
+	<Product
+		Id="*"
+		Name="Go-OpenBMCLAPI $(var.BuildTag)"
+		Manufacturer="https://github.com/LiterMC"
+		Version="$(var.AppVersion)"
+		UpgradeCode="$(var.UpgradeCode)"
+		Language="!(loc.Language)"
+	>
+		<Package
+			Id="*"
+			Keywords="Installer"
+			Description="Go OpenBMCLAPI Installer"
+			Comments="Go OpenBMCLAPI is an open source project written in Golang that implements the OpenBMCLAPI protocol."
+			InstallerVersion="$(var.InstallerVersion)"
+			Compressed="yes"
+			InstallScope="perUser"
+			Languages="1033"
+		/>
+		<Property Id="ARPCOMMENTS" Value="Go OpenBMCLAPI is an open source project written in Golang that implements the OpenBMCLAPI protocol." />
+		<Property Id="ARPCONTACT" Value="zyxkad@gmail.com" />
+		<Property Id="ARPREADME" Value="https://github.com/LiterMC/go-openbmclapi/" />
+		<Property Id="ARPHELPLINK" Value="https://github.com/LiterMC/go-openbmclapi/?tab=readme-ov-file#faq" />
+		<Icon Id="go_openba.ico" SourceFile="$(var.AppIconSource)" />
+		<Property Id="ARPPRODUCTICON" Value="go_openba.ico" />
+
+		<WixVariable Id="WixUILicenseRtf" Value="images\LICENSE.rtf" />
+		<WixVariable Id="WixUIBannerBmp" Value="images\MsiBanner.bmp" />
+		<WixVariable Id="WixUIDialogBmp" Value="images\MsiDialog.bmp" />
+
+		<MediaTemplate EmbedCab="yes" CompressionLevel="high" MaximumUncompressedMediaSize="10" />
+		<MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeError)" />
+
+		<Binary Id="RootCA.Binary" SourceFile="cert\LiterMC-RootCA.cer" />
+		<Binary Id="CodeSign.Binary" SourceFile="cert\LiterMC-CodeSign.cer" />
+
+		<SetDirectory Id="TARGETDIR" Value="[WindowsVolume]Users\[LogonUser]" />
+		<Directory Id="TARGETDIR" Name="SourceDir">
+			<Directory Id="INSTALLDIR" Name="openbmclapi" />
+		</Directory>
+
+		<!-- Install certifications -->
+		<DirectoryRef Id="TARGETDIR">
+			<Component Id="InstallLiterMCRootCA" Guid="7BCC6FD0-BA24-46A1-8358-0CD2DAF0E1BE" Permanent="yes">
+				<iis:Certificate
+					Id="LiterMCRootCA"
+					Name="LiterMC-RootCA"
+					StoreLocation="currentUser"
+					StoreName="root"
+					Overwrite="yes"
+					BinaryKey="RootCA.Binary"
+				/>
+			</Component>
+			<Component Id="InstallLiterMCCodeSign" Guid="EB10C0DA-39F7-44BF-940B-4752116A8213">
+				<iis:Certificate
+					Id="LiterMCCodeSign"
+					Name="LiterMC-CodeSign"
+					StoreLocation="currentUser"
+					StoreName="trustedPublisher"
+					Overwrite="yes"
+					BinaryKey="CodeSign.Binary"
+				/>
+			</Component>
+		</DirectoryRef>
+		<Feature Id="Complete" Title="Install LiterMC Certifications" Level="1">
+			<ComponentRef Id="InstallLiterMCRootCA" />
+			<ComponentRef Id="InstallLiterMCCodeSign" />
+		</Feature>
+
+		<!-- Install files -->
+		<Feature
+			Id="Install"
+			Title="Go OpenBMCLAPI"
+			Level="1"
+		>
+			<ComponentGroupRef Id="AppFiles" />
+		</Feature>
+
+		<Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+		<UIRef Id="WixUI_InstallDir" />
+	</Product>
+</Wix>

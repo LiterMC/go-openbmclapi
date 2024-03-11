@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Include>
+	<!-- #### USER-DEFINED VARIABLES THAT DEFINED DURING BUILD #### -->
+	<!-- <?define Arch="$(var.Arch)" ?> -->
+	<?define AppVersion="$(var.BuildVersion)" ?>
+	<!-- Upgrade code HAS to be the same for all updates. Once you've chosen it, don't change it. -->
+	<?define UpgradeCode="2C6FAC6E-B40B-4179-AECF-9509FB6AECD0" ?>
+
+	<!-- #### USER-DEFINED VARIABLES #### -->
+	<!-- Set to 1 if you want to enable major upgrade -->
+	<?define EnableMajorUpgrade="1" ?>
+	<?define AppExeNameAmd64="go-openbmclapi-windows-amd64.exe" ?>
+	<?define AppExeNameArm64="go-openbmclapi-windows-arm64.exe" ?>
+	<!-- App Info -->
+	<!-- The URL for Add/Remove Programs -->
+	<?define InfoURL="https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq" ?>
+	<!-- App Icon -->
+	<?define AppIconSource="images\app.ico" ?>
+	<!-- GUIDs -->
+	<?define GuidInstallLocation="44CEEAD0-21CD-4817-9A23-ACAD1828E73C" ?>
+	<?define GuidApplicationShortcut="D15002CC-6088-49A0-AD98-FF2652E135AB" ?>
+	<?define GuidApplicationShortcutDesktop="D92075B3-0305-4BE2-A8F9-A2C3C1943F04" ?>
+	<?define GuidProductId="E9C10F6F-91A3-4363-A887-0BFAFA36C385" ?>
+
+	<!-- #### DO NOT EDIT ANYTHING BELOW THIS LINE #### -->
+	<?if $(var.EnableMajorUpgrade) = 1 ?>
+		<?define ProductId = "*" ?>
+	<?else ?>
+		<?define ProductId = "$(var.GuidProductId)" ?>
+	<?endif ?>
+	<?if $(var.Arch) = amd64 ?>
+		<?define Win64 = "yes" ?>
+		<?define InstallerVersion="500" ?>
+		<?define AppExeName = "$(var.AppExeNameAmd64)" ?>
+	<?elseif $(var.Arch) = arm64 ?>
+		<?define Win64 = "yes" ?>
+		<?define InstallerVersion="500" ?>
+		<?define AppExeName = "$(var.AppExeNameArm64)" ?>
+	<?else ?>
+		<?define Win64 = "no" ?>
+		<?define InstallerVersion="300" ?>
+	<?endif ?>
+	<?define MainExeSourcePath = "output\$(var.AppExeName)" ?>
+</Include>

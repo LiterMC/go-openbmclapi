@@ -53,6 +53,8 @@ A: 请将运行目录下 `logs` 文件夹内最新的日志上传到 [Github Iss
 
 ## 安装
 
+注意: LiterMC-RootCA 的 SHA1 指纹为 `A2:CB:34:70:25:CF:5D:F6:57:1C:67:81:35:49:7D:6D:A7:26:F7:0E`
+
 ### 无依赖直接运行
 
 1. 从 [Github Release](https://github.com/LiterMC/go-openbmclapi/releases/latest) 找到**适合您服务器平台**的程序并下载到节点服务器上

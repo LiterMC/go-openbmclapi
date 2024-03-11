@@ -34,9 +34,9 @@ jobs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      -
-        name: Action Checkout
-        uses: actions/checkout@v3
+      # -
+      #   name: Action Checkout
+      #   uses: actions/checkout@v3
       -
         name: Output TAG
         id: tag
@@ -55,14 +55,14 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: true
           prerelease: false
-      -
-        name: Upload Certificates
-        uses: zyxkad/upload-release-asset-dir@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_dir: ./cert
+      # -
+      #   name: Upload Certificates
+      #   uses: zyxkad/upload-release-asset-dir@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+      #     asset_dir: ./cert
 
   build:
     runs-on: ubuntu-latest

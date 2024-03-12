@@ -175,6 +175,11 @@ START:
 	} else {
 		log.SetLevel(log.LevelInfo)
 	}
+	if config.NoAccessLog {
+		log.SetAccessLogSlots(-1)
+	} else {
+		log.SetAccessLogSlots(config.AccessLogSlots)
+	}
 
 	config.applyWebManifest(dsbManifest)
 

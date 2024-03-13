@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="zh-cn" Codepage="936" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+	<String Overridable="yes" Id="Language">2052</String>
+
+	<String Overridable="yes" Id="DowngradeError">更新版本的 [ProductName] 已经安装了</String>
+	<String Overridable="yes" Id="ClusterSetupTitle">{\WixUI_Font_Title}初始化节点</String>
+	<String Overridable="yes" Id="ClusterSetupMessage">
+		请输入或复制粘贴您的 Cluster ID 和 Cluster Secret
+		如果您没有节点 ID, 请联系 @bangbang93 获取
+	</String>
+</WixLocalization>

@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<WixCATargetsImported>true</WixCATargetsImported>
+		<OutputName>CustomAction</OutputName>
+		<WixToolPath>{{.WixDir}}</WixToolPath>
+		<WixSdkPath>$(WixToolPath)\sdk</WixSdkPath>
+		<WixCATargetsPath>$(WixSdkPath)\wix.ca.targets</WixCATargetsPath>
+		<WixTasksPath>wixtasks.dll</WixTasksPath>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Reference Include="Microsoft.Deployment.WindowsInstaller">
+			<HintPath>$(WixSdkPath)\Microsoft.Deployment.WindowsInstaller.dll</HintPath>
+			<Private>True</Private>
+		</Reference>
+	</ItemGroup>
+</Project>

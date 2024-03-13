@@ -14,8 +14,6 @@
 	<!-- App Info -->
 	<!-- The URL for Add/Remove Programs -->
 	<?define InfoURL="https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq" ?>
-	<!-- App Icon -->
-	<?define AppIconSource="images\app.ico" ?>
 	<!-- GUIDs -->
 	<?define GuidInstallLocation="44CEEAD0-21CD-4817-9A23-ACAD1828E73C" ?>
 	<?define GuidApplicationShortcut="D15002CC-6088-49A0-AD98-FF2652E135AB" ?>

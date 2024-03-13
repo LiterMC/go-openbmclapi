@@ -1,4 +1,4 @@
-///go:build windows
+//go:build windows
 
 package main
 
@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"os"
@@ -28,8 +29,7 @@ var buildTagRe = regexp.MustCompile(`^v(\d+).(\d+).(\d+)-(\d+)$`)
 var signtool string
 
 func main() {
-	{
-		CODE_SIGN_PFX := os.Getenv("CODE_SIGN_PFX")
+	if CODE_SIGN_PFX := os.Getenv("CODE_SIGN_PFX"); CODE_SIGN_PFX != "" {
 		data, err := base64.StdEncoding.DecodeString(CODE_SIGN_PFX)
 		if err != nil {
 			fmt.Println("Cannot parse CODE_SIGN_PFX:", err)
@@ -47,6 +47,8 @@ func main() {
 			fmt.Println("Error when loading cert:", err)
 			os.Exit(1)
 		}
+	} else {
+		fmt.Fprintln(os.Stderr, "Warn: Skipped to install code sign pfx")
 	}
 
 	buildTag := os.Getenv("TAG")
@@ -73,12 +75,20 @@ func main() {
 		exeName := progName + ".exe"
 		outputName := filepath.Join("output", exeName)
 		fmt.Printf("\n==> Building %s ...\n", outputName)
+
+		tmpDir := filepath.Join("build", "tmp")
+		os.RemoveAll(tmpDir)
+		if err := os.MkdirAll(tmpDir, 0755); err != nil {
+			fmt.Println("Error when preparing app files", err)
+			os.Exit(1)
+		}
+
 		{
 			cmd := exec.Command("go", "build", "-o", outputName, "-ldflags", ldflags)
 			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 			cmd.Env = append(([]string)(nil), os.Environ()...)
 			cmd.Env = append(cmd.Env, "GOARCH="+arch)
-			fmt.Println("Running", cmd.String())
+			fmt.Println("$", cmd)
 			if err := cmd.Run(); err != nil {
 				fmt.Println("Error when building:", err)
 				os.Exit(1)
@@ -95,6 +105,29 @@ func main() {
 			fmt.Println("Error when installing wix", err)
 			os.Exit(1)
 		}
+
+		wsxPath := filepath.Join("installer", "windows")
+
+		// compile custom actions
+		if err := generateCustomActionCSProj(filepath.Join(wsxPath, "CustomAction", "CustomAction.csproj"), wixDir); err != nil {
+			fmt.Println("Error when generating csproj", err)
+			os.Exit(1)
+		}
+		{
+			outDir, err := filepath.Abs(tmpDir)
+			if err != nil {
+				panic(err)
+			}
+			cmd := exec.Command("dotnet", "publish", "--nologo", "--output", outDir)
+			cmd.Dir = filepath.Join(wsxPath, "CustomAction")
+			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+			fmt.Println("$", cmd)
+			if err := cmd.Run(); err != nil {
+				fmt.Println("Error when building custom actions", err)
+				os.Exit(1)
+			}
+		}
+
 		// prepare app files
 		appFilesDir := filepath.Join("build", "objs")
 		os.RemoveAll(appFilesDir)
@@ -102,26 +135,21 @@ func main() {
 			fmt.Println("Error when preparing app files", err)
 			os.Exit(1)
 		}
-		if err := osCopy(outputName, filepath.Join(appFilesDir, exeName), 0755); err != nil {
-			fmt.Println("Error when preparing app files", err)
-			os.Exit(1)
-		}
 		if err := osCopy("LICENSE", filepath.Join(appFilesDir, "LICENSE"), 0644); err != nil {
 			fmt.Println("Error when preparing app files", err)
 			os.Exit(1)
 		}
-
-		tmpDir := filepath.Join("build", "tmp")
-		os.RemoveAll(tmpDir)
-		if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		if err := osCopy("README.MD", filepath.Join(appFilesDir, "README.MD"), 0644); err != nil {
+			fmt.Println("Error when preparing app files", err)
+			os.Exit(1)
+		}
+		if err := osCopy(outputName, filepath.Join(appFilesDir, exeName), 0755); err != nil {
 			fmt.Println("Error when preparing app files", err)
 			os.Exit(1)
 		}
 
-		wsxPath := filepath.Join("installer", "windows")
-
 		// generate AppFiles
-		appFiles := filepath.Join(wsxPath, "AppFiles.wxs")
+		appFiles := filepath.Join(tmpDir, "AppFiles.wxs")
 		if err := run(filepath.Join(wixDir, "heat.exe"),
 			"dir", appFilesDir,
 			"-nologo",
@@ -144,7 +172,6 @@ func main() {
 			"-dBuildVersion="+wixVersion,
 			"-dArch="+arch,
 			"-dSourceDir="+appFilesDir,
-			"-ext", "WixIIsExtension",
 			"-out", tmpDir+`\`,
 			filepath.Join(wsxPath, "Product.wxs"),
 			appFiles,
@@ -160,8 +187,8 @@ func main() {
 			"-dcl:high",
 			"-ext", "WixUIExtension",
 			"-ext", "WixUtilExtension",
-			"-ext", "WixIIsExtension",
-			"-loc", filepath.Join(wsxPath, "Product.Loc-en.wxl"),
+			"-loc", filepath.Join(wsxPath, "ProductLoc.en.wxl"),
+			"-loc", filepath.Join(wsxPath, "ProductLoc.zh.wxl"),
 			filepath.Join(tmpDir, "AppFiles.wixobj"),
 			filepath.Join(tmpDir, "Product.wixobj"),
 			"-o", msiName,
@@ -174,6 +201,24 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func generateCustomActionCSProj(name string, wixDir string) (err error) {
+	tmpl, err := template.ParseFiles(name + ".gotmpl")
+	if err != nil {
+		return
+	}
+	fd, err := os.Create(name)
+	if err != nil {
+		return
+	}
+	defer fd.Close()
+	if err = tmpl.Execute(fd, map[string]any{
+		"WixDir": wixDir,
+	}); err != nil {
+		return
+	}
+	return
 }
 
 func searchSignTool() string {
@@ -251,9 +296,13 @@ func installWix(arch string) (string, error) {
 	default:
 		path = filepath.Join("build", "wix311")
 		wix = wixRelease311
-	// case "arm", "arm64":
-	// 	path = filepath.Join("build", "wix314")
-	// 	wix = wixRelease314
+		// case "arm", "arm64":
+		// 	path = filepath.Join("build", "wix314")
+		// 	wix = wixRelease314
+	}
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
 	}
 	if _, err := os.Stat(filepath.Join(path, "__build_wix_installed")); err == nil {
 		fmt.Printf("Cached %s at %s\n", wix.BinaryURL, path)

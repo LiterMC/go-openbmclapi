@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="en-us" Codepage="1252" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+	<String Overridable="yes" Id="Language">1033</String>
+
+	<String Overridable="yes" Id="DowngradeError">A newer version of [ProductName] is already installed.</String>
+	<String Overridable="yes" Id="ClusterSetupTitle">{\WixUI_Font_Title}Setup cluster</String>
+	<String Overridable="yes" Id="ClusterSetupMessage">
+		Please input or copy-paste your cluster ID and secret.
+		If you don't have one, please contact @bangbang93
+	</String>
+</WixLocalization>

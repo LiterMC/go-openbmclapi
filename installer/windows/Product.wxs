@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:iis="http://schemas.microsoft.com/wix/IIsExtension">
 	<?include Product.Var.wxi ?>
 	<Product
-		Id="*"
+		Id="$(var.ProductId)"
 		Name="Go-OpenBMCLAPI $(var.BuildTag)"
 		Manufacturer="https://github.com/LiterMC"
 		Version="$(var.AppVersion)"
@@ -17,57 +17,27 @@
 			InstallerVersion="$(var.InstallerVersion)"
 			Compressed="yes"
 			InstallScope="perUser"
-			Languages="1033"
+			Languages="1033,2052"
 		/>
 		<Property Id="ARPCOMMENTS" Value="Go OpenBMCLAPI is an open source project written in Golang that implements the OpenBMCLAPI protocol." />
 		<Property Id="ARPCONTACT" Value="zyxkad@gmail.com" />
 		<Property Id="ARPREADME" Value="https://github.com/LiterMC/go-openbmclapi/" />
 		<Property Id="ARPHELPLINK" Value="https://github.com/LiterMC/go-openbmclapi/?tab=readme-ov-file#faq" />
-		<Icon Id="go_openba.ico" SourceFile="$(var.AppIconSource)" />
+		<Icon Id="go_openba.ico" SourceFile="images\app.ico" />
 		<Property Id="ARPPRODUCTICON" Value="go_openba.ico" />
 
 		<WixVariable Id="WixUILicenseRtf" Value="images\LICENSE.rtf" />
 		<WixVariable Id="WixUIBannerBmp" Value="images\MsiBanner.bmp" />
 		<WixVariable Id="WixUIDialogBmp" Value="images\MsiDialog.bmp" />
+		<Binary Id="OBApi_Banner_Cat" SourceFile="images\MsiBannerCat.bmp" />
 
 		<MediaTemplate EmbedCab="yes" CompressionLevel="high" MaximumUncompressedMediaSize="10" />
 		<MajorUpgrade DowngradeErrorMessage="!(loc.DowngradeError)" />
-
-		<Binary Id="RootCA.Binary" SourceFile="cert\LiterMC-RootCA.cer" />
-		<Binary Id="CodeSign.Binary" SourceFile="cert\LiterMC-CodeSign.cer" />
 
 		<SetDirectory Id="TARGETDIR" Value="[WindowsVolume]Users\[LogonUser]" />
 		<Directory Id="TARGETDIR" Name="SourceDir">
 			<Directory Id="INSTALLDIR" Name="openbmclapi" />
 		</Directory>
-
-		<!-- Install certifications -->
-		<DirectoryRef Id="TARGETDIR">
-			<Component Id="InstallLiterMCRootCA" Guid="7BCC6FD0-BA24-46A1-8358-0CD2DAF0E1BE" Permanent="yes">
-				<iis:Certificate
-					Id="LiterMCRootCA"
-					Name="LiterMC-RootCA"
-					StoreLocation="currentUser"
-					StoreName="root"
-					Overwrite="yes"
-					BinaryKey="RootCA.Binary"
-				/>
-			</Component>
-			<Component Id="InstallLiterMCCodeSign" Guid="EB10C0DA-39F7-44BF-940B-4752116A8213">
-				<iis:Certificate
-					Id="LiterMCCodeSign"
-					Name="LiterMC-CodeSign"
-					StoreLocation="currentUser"
-					StoreName="trustedPublisher"
-					Overwrite="yes"
-					BinaryKey="CodeSign.Binary"
-				/>
-			</Component>
-		</DirectoryRef>
-		<Feature Id="Complete" Title="Install LiterMC Certifications" Level="1">
-			<ComponentRef Id="InstallLiterMCRootCA" />
-			<ComponentRef Id="InstallLiterMCCodeSign" />
-		</Feature>
 
 		<!-- Install files -->
 		<Feature
@@ -79,6 +49,103 @@
 		</Feature>
 
 		<Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
-		<UIRef Id="WixUI_InstallDir" />
+		<UIRef Id="OBApi_InstallUI" />
 	</Product>
+	<Fragment>
+		<Property Id="CLUSTERID" Hidden="no" Secure="yes" />
+		<Property Id="CLUSTERSECRET" Hidden="yes" Secure="no" />
+		<Binary Id="OBApiCAction.Dll" SourceFile="build\tmp\CustomAction.dll" />
+		<CustomAction Id="OBApiSetupCluster" BinaryKey="OBApiCAction.Dll" DllEntry="SetupCluster" Execute="immediate" Return="check"
+		 Value="CLUSTERID=[CLUSTERID];CLUSTERSECRET=[CLUSTERSECRET]" />
+
+		<UI Id="ClusterSetupUI">
+			<Dialog Id="BindClusterDlg" Width="370" Height="270" Title="!(loc.ClusterSetupTitle)">
+				<Control Id="SetupClusterTitle" Type="Text" X="50" Y="5" Width="200" Height="14" Transparent="yes"
+					Text="!(loc.ClusterSetupTitle)" />
+				<Control Id="SetupClusterMsg" Type="Text" X="50" Y="14" Width="200" Height="30" Transparent="yes"
+					Text="!(loc.ClusterSetupMessage)" />
+				<Control Id="clusterIdLabel" Type="Text" Transparent="yes"
+					X="20" Y="66" Height="14" Width="65"
+					Text="Cluster ID:" />
+				<Control Id="clusterIdTextBox" Type="Edit" Property="CLUSTERID"
+					X="80" Y="65" Height="14" Width="140" />
+				<Control Id="clusterSecretLabel" Type="Text" Transparent="yes"
+				 X="20" Y="86" Height="14" Width="65"
+					Text="Cluster Secret:" />
+				<Control Id="clusterSecretTextBox" Type="Edit" Property="CLUSTERSECRET"
+					X="80" Y="85" Height="14" Width="140" />
+
+				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+					<Publish Event="DoAction" Value="OBApiSetupCluster" Order="1">1</Publish>
+				</Control>
+				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
+				<Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+					<Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+				</Control>
+				<Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="OBApi_Banner_Cat" />
+				<Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+				<Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+			</Dialog>
+		</UI>
+	</Fragment>
+	<Fragment>
+		<UI Id="OBApi_InstallUI">
+			<TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+			<TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+			<TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+
+			<Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+			<Property Id="WixUI_Mode" Value="InstallDir" />
+
+			<DialogRef Id="BrowseDlg" />
+			<DialogRef Id="DiskCostDlg" />
+			<DialogRef Id="ErrorDlg" />
+			<DialogRef Id="FatalError" />
+			<DialogRef Id="FilesInUse" />
+			<DialogRef Id="MsiRMFilesInUse" />
+			<DialogRef Id="PrepareDlg" />
+			<DialogRef Id="ProgressDlg" />
+			<DialogRef Id="ResumeDlg" />
+			<DialogRef Id="UserExit" />
+
+			<DialogRef Id="BindClusterDlg" />
+			
+			<Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+			<Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+
+			<Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+
+			<Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg">NOT Installed</Publish>
+			<Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+
+			<Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+			<Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">LicenseAccepted = "1"</Publish>
+
+			<Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg">1</Publish>
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="BindClusterDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+			<Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+			<Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+
+			<Publish Dialog="BindClusterDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg">NOT Installed</Publish>
+			<Publish Dialog="BindClusterDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg">Installed AND NOT PATCH</Publish>
+			<Publish Dialog="BindClusterDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="2">1</Publish>
+
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="1">Installed AND WixUI_InstallMode = "Remove"</Publish>
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="BindClusterDlg" Order="2">NOT Installed OR NOT PATCH</Publish>
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>
+
+			<Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+
+			<Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="BindClusterDlg">1</Publish>
+			<Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+			<Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+
+			<Property Id="ARPNOMODIFY" Value="1" />
+		</UI>
+		<UIRef Id="WixUI_Common" />
+		<UIRef Id="ClusterSetupUI" />
+	</Fragment>
 </Wix>

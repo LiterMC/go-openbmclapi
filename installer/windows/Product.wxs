@@ -55,28 +55,40 @@
 		<Property Id="CLUSTERID" Hidden="no" Secure="yes" />
 		<Property Id="CLUSTERSECRET" Hidden="yes" Secure="no" />
 		<Binary Id="OBApiCAction.Dll" SourceFile="build\tmp\CustomAction.dll" />
-		<CustomAction Id="OBApiSetupCluster" BinaryKey="OBApiCAction.Dll" DllEntry="SetupCluster" Execute="immediate" Return="check"
-		 Value="CLUSTERID=[CLUSTERID];CLUSTERSECRET=[CLUSTERSECRET]" />
+		<CustomAction Id="OBApiSetupCluster" BinaryKey="OBApiCAction.Dll" DllEntry="SetupCluster" Execute="immediate" Return="check" />
 
 		<UI Id="ClusterSetupUI">
 			<Dialog Id="BindClusterDlg" Width="370" Height="270" Title="!(loc.ClusterSetupTitle)">
-				<Control Id="SetupClusterTitle" Type="Text" X="50" Y="5" Width="200" Height="14" Transparent="yes"
-					Text="!(loc.ClusterSetupTitle)" />
-				<Control Id="SetupClusterMsg" Type="Text" X="50" Y="14" Width="200" Height="30" Transparent="yes"
-					Text="!(loc.ClusterSetupMessage)" />
-				<Control Id="clusterIdLabel" Type="Text" Transparent="yes"
+				<Control Id="SetupClusterTitle"
+					Type="Text" X="50" Y="5" Width="200" Height="14" Transparent="yes"
+					Text="!(loc.ClusterSetupTitle)"
+				/>
+				<Control Id="SetupClusterMsg"
+					Type="Text" X="50" Y="14" Width="200" Height="30" Transparent="yes"
+					Text="!(loc.ClusterSetupMessage)"
+				/>
+				<Control Id="clusterIdLabel"
+					Type="Text" Transparent="yes"
 					X="20" Y="66" Height="14" Width="65"
-					Text="Cluster ID:" />
-				<Control Id="clusterIdTextBox" Type="Edit" Property="CLUSTERID"
-					X="80" Y="65" Height="14" Width="140" />
-				<Control Id="clusterSecretLabel" Type="Text" Transparent="yes"
-				 X="20" Y="86" Height="14" Width="65"
-					Text="Cluster Secret:" />
-				<Control Id="clusterSecretTextBox" Type="Edit" Property="CLUSTERSECRET"
-					X="80" Y="85" Height="14" Width="140" />
+					Text="Cluster ID:"
+				/>
+				<Control Id="clusterIdTextBox"
+					Type="Edit" Property="CLUSTERID"
+					X="80" Y="65" Height="14" Width="140"
+				/>
+				<Control Id="clusterSecretLabel"
+					Type="Text" Transparent="yes"
+					X="20" Y="86" Height="14" Width="65"
+					Text="Cluster Secret:"
+				/>
+				<Control Id="clusterSecretTextBox"
+					Type="Edit" Property="CLUSTERSECRET"
+					X="80" Y="85" Height="14" Width="140"
+				/>
 
 				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
-					<Publish Event="DoAction" Value="OBApiSetupCluster" Order="1">1</Publish>
+					<!-- <Publish Event="DoAction" Value="OBApiSetupCluster" Order="1">1</Publish> -->
+					<!-- TODO: make the action work -->
 				</Control>
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
 				<Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">

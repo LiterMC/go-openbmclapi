@@ -540,11 +540,13 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 		return false
 	}
 	log.Info(Tr("info.cluster.disabling"))
-	if resCh, err := cr.socket.EmitWithAck("disable"); err == nil {
+	resCh, err := cr.socket.EmitWithAck("disable", nil)
+	if err == nil {
 		tctx, cancel := context.WithTimeout(ctx, time.Second*(time.Duration)(config.Advanced.KeepaliveTimeout))
 		select {
 		case <-tctx.Done():
 			cancel()
+			err = tctx.Err()
 		case data := <-resCh:
 			cancel()
 			log.Debug("disable ack:", data)
@@ -556,7 +558,8 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 				ok = true
 			}
 		}
-	} else {
+	}
+	if err != nil {
 		log.Errorf(Tr("error.cluster.disable.failed"), err)
 	}
 

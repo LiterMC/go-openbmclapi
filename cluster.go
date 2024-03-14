@@ -371,6 +371,20 @@ func (cr *Cluster) WaitForEnable() <-chan struct{} {
 	return ch
 }
 
+type EnableData struct {
+	Host         string       `json:"host"`
+	Port         uint16       `json:"port"`
+	Version      string       `json:"version"`
+	Byoc         bool         `json:"byoc"`
+	NoFastEnable bool         `json:"noFastEnable"`
+	Flavor       ConfigFlavor `json:"flavor"`
+}
+
+type ConfigFlavor struct {
+	Runtime string `json:"runtime"`
+	Storage string `json:"storage"`
+}
+
 func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
@@ -388,13 +402,36 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 	cr.shouldEnable.Store(true)
 
+	storagesCount := make(map[string]int, 2)
+	for _, s := range cr.storageOpts {
+		switch s.Type {
+		case storage.StorageLocal:
+			storagesCount["file"]++
+		case storage.StorageMount, storage.StorageWebdav:
+			storagesCount["alist"]++
+		default:
+			log.Errorf("Unknown storage type %q", s.Type)
+		}
+	}
+	storageStr := ""
+	for s, _ := range storagesCount {
+		if len(storageStr) > 0 {
+			storageStr += "+"
+		}
+		storageStr += s
+	}
+
 	log.Info(Tr("info.cluster.enable.sending"))
-	resCh, err := cr.socket.EmitWithAck("enable", Map{
-		"host":         cr.host,
-		"port":         cr.publicPort,
-		"version":      build.ClusterVersion,
-		"byoc":         cr.byoc,
-		"noFastEnable": config.Advanced.NoFastEnable,
+	resCh, err := cr.socket.EmitWithAck("enable", EnableData{
+		Host:         cr.host,
+		Port:         cr.publicPort,
+		Version:      build.ClusterVersion,
+		Byoc:         cr.byoc,
+		NoFastEnable: config.Advanced.NoFastEnable,
+		Flavor: ConfigFlavor{
+			Runtime: "golang/" + runtime.GOOS + "-" + runtime.GOARCH,
+			Storage: storageStr,
+		},
 	})
 	if err != nil {
 		return

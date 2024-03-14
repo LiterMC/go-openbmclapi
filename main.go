@@ -426,7 +426,7 @@ SELECT_SIGNAL:
 		}
 
 		cancel()
-		shutCtx, cancelShut := context.WithTimeout(context.Background(), 20*time.Second)
+		shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Minute)
 		log.Warn(Tr("warn.server.closing"))
 		shutExit := make(chan struct{}, 0)
 		go func() {

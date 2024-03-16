@@ -119,7 +119,7 @@ func main() {
 	exitCode := -1
 	defer func() {
 		code := exitCode
-		if code < 0 {
+		if code == -1 {
 			select {
 			case code = <-exitCh:
 			default:
@@ -193,7 +193,7 @@ START:
 
 	if config.ClusterId == defaultConfig.ClusterId || config.ClusterSecret == defaultConfig.ClusterSecret {
 		log.Error(Tr("error.set.cluster.id"))
-		osExit(1)
+		osExit(CodeClientError)
 	}
 
 	cache := config.Cache.newCache()
@@ -213,11 +213,11 @@ START:
 	)
 	if err := cluster.Init(ctx); err != nil {
 		log.Errorf(Tr("error.init.failed"), err)
-		osExit(1)
+		osExit(CodeClientError)
 	}
 
 	if !cluster.Connect(ctx) {
-		osExit(1)
+		osExit(CodeClientOrServerError)
 	}
 
 	log.Debugf("Receiving signals")
@@ -236,6 +236,7 @@ START:
 	go func(ctx context.Context) {
 		defer log.RecordPanic()
 		defer close(firstSyncDone)
+
 		log.Info(Tr("info.filelist.fetching"))
 		fl, err := cluster.GetFileList(ctx)
 		if err != nil {
@@ -244,7 +245,7 @@ START:
 				return
 			}
 			if !config.Advanced.SkipFirstSync {
-				osExit(1)
+				osExit(CodeClientOrServerError)
 			}
 		}
 		checkCount := -1
@@ -289,7 +290,7 @@ START:
 		listener, err := net.Listen("tcp", clusterSvr.Addr)
 		if err != nil {
 			log.Errorf(Tr("error.address.listen.failed"), clusterSvr.Addr, err)
-			osExit(1)
+			osExit(CodeEnvironmentError)
 		}
 		if config.ServeLimit.Enable {
 			limted := limited.NewLimitedListener(listener, config.ServeLimit.MaxConn, 0, config.ServeLimit.UploadRate*1024)
@@ -302,7 +303,7 @@ START:
 		if config.UseCert {
 			if len(config.Certificates) == 0 {
 				log.Error(Tr("error.cert.not.set"))
-				osExit(1)
+				osExit(CodeClientError)
 			}
 			tlsConfig = new(tls.Config)
 			tlsConfig.Certificates = make([]tls.Certificate, len(config.Certificates))
@@ -311,7 +312,7 @@ START:
 				tlsConfig.Certificates[i], err = tls.LoadX509KeyPair(c.Cert, c.Key)
 				if err != nil {
 					log.Errorf(Tr("error.cert.parse.failed"), i, err)
-					osExit(1)
+					osExit(CodeClientError)
 				}
 			}
 		}
@@ -322,7 +323,7 @@ START:
 			cancel()
 			if err != nil {
 				log.Errorf(Tr("error.cert.request.failed"), err)
-				osExit(1)
+				osExit(CodeServerError)
 			}
 			if tlsConfig == nil {
 				tlsConfig = new(tls.Config)
@@ -331,7 +332,7 @@ START:
 			cert, err = tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
 			if err != nil {
 				log.Errorf(Tr("error.cert.requested.parse.failed"), err)
-				osExit(1)
+				osExit(CodeServerUnexpectedError)
 			}
 			tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
 			certHost, _ := parseCertCommonName(cert.Certificate[0])
@@ -355,8 +356,8 @@ START:
 		go func(listener net.Listener) {
 			defer listener.Close()
 			if err = clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-				log.Error("Error on server:", err)
-				osExit(1)
+				log.Error("Error when serving:", err)
+				osExit(CodeClientError)
 			}
 		}(listener)
 		if publicHost == "" {
@@ -394,15 +395,15 @@ START:
 			)
 			if cmdOut, err = cmd.StdoutPipe(); err != nil {
 				log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
-				osExit(9)
+				osExit(CodeClientUnexpectedError)
 			}
 			if cmdErr, err = cmd.StderrPipe(); err != nil {
 				log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
-				osExit(9)
+				osExit(CodeClientUnexpectedError)
 			}
 			if err = cmd.Start(); err != nil {
 				log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
-				osExit(1)
+				osExit(CodeClientError)
 			}
 			go func() {
 				defer cmdErr.Close()
@@ -416,25 +417,26 @@ START:
 				host string
 				port uint16
 			}
-			detectedCh := make(chan addrOut, 0)
+			detectedCh := make(chan addrOut, 1)
 			go func() {
 				defer cmdOut.Close()
 				defer cmd.Process.Kill()
 				sc := bufio.NewScanner(cmdOut)
 				for sc.Scan() {
 					log.Info("[tunneler/stdout]:", sc.Text())
-					if res := config.Tunneler.outputRegex.FindSubmatch(sc.Bytes()); res != nil {
+					log.Debugf("[tunneler/stdout]: %v", sc.Bytes())
+					if res := config.Tunneler.outputRegex.FindStringSubmatch(sc.Text()); res != nil {
 						tunnelHost, tunnelPort := res[config.Tunneler.hostOut], res[config.Tunneler.portOut]
 						if len(tunnelHost) > 0 && tunnelHost[0] == '[' && tunnelHost[len(tunnelHost)-1] == ']' { // a IPv6 with port [<ipv6>]:<port>
 							tunnelHost = tunnelHost[1 : len(tunnelHost)-1]
 						}
-						port, err := strconv.Atoi((string)(tunnelPort))
+						port, err := strconv.Atoi(tunnelPort)
 						if err != nil {
 							log.Panic(err)
 						}
 						select {
 						case detectedCh <- addrOut{
-							host: (string)(tunnelHost),
+							host: tunnelHost,
 							port: (uint16)(port),
 						}:
 						default:
@@ -457,18 +459,30 @@ START:
 						}
 						if err := cluster.Enable(ctx); err != nil {
 							log.Errorf(Tr("error.cluster.enable.failed"), err)
-							osExit(1)
+							if ctx.Err() != nil {
+								return
+							}
+							osExit(CodeServerOrEnvionmentError)
 						}
 					case <-ctx.Done():
 						return
 					}
 				}
 			}()
+			if _, err := cmd.Process.Wait(); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				osExit(CodeClientError)
+			}
 			// TODO: maybe restart the tunnel program?
 		} else {
 			if err := cluster.Enable(ctx); err != nil {
 				log.Errorf(Tr("error.cluster.enable.failed"), err)
-				osExit(1)
+				if ctx.Err() != nil {
+					return
+				}
+				osExit(CodeServerOrEnvionmentError)
 			}
 		}
 	}(ctx)

@@ -247,7 +247,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	_, err := cr.GetAuthToken(ctx)
 	if err != nil {
 		log.Errorf("Cannot get auth token: %v; exit.", err)
-		osExit(2)
+		osExit(CodeClientOrServerError)
 	}
 
 	engio, err := engine.NewSocket(engine.Options{
@@ -261,7 +261,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	})
 	if err != nil {
 		log.Errorf("Could not parse Engine.IO options: %v; exit.", err)
-		osExit(1)
+		osExit(CodeClientUnexpectedError)
 	}
 
 	cr.reconnectCount = 0
@@ -288,7 +288,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		if config.MaxReconnectCount == 0 {
 			if cr.shouldEnable.Load() {
 				log.Errorf("Cluster disconnected from remote; exit.")
-				osExit(0x08)
+				osExit(CodeServerOrEnvionmentError)
 			}
 		}
 		go cr.disconnected()
@@ -299,7 +299,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		if config.MaxReconnectCount < 0 || cr.reconnectCount >= config.MaxReconnectCount {
 			if cr.shouldEnable.Load() {
 				log.Errorf("Cluster failed to connect too much times; exit.")
-				osExit(0x08)
+				osExit(CodeServerOrEnvionmentError)
 			}
 		}
 	})
@@ -308,7 +308,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		token, err := cr.GetAuthToken(ctx)
 		if err != nil {
 			log.Errorf("Cannot get auth token: %v; exit.", err)
-			osExit(2)
+			osExit(CodeServerOrEnvionmentError)
 		}
 		return token
 	}))
@@ -320,7 +320,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		if cr.shouldEnable.Load() {
 			if err := cr.Enable(ctx); err != nil {
 				log.Errorf("Cannot enable cluster: %v; exit.", err)
-				osExit(0x08)
+				osExit(CodeClientOrEnvionmentError)
 			}
 		}
 		cr.reconnectCount = 0
@@ -394,7 +394,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 	if cr.socket != nil && !cr.socket.IO().Connected() && config.MaxReconnectCount == 0 {
 		log.Error(Tr("error.cluster.disconnected"))
-		osExit(0x08)
+		osExit(CodeServerOrEnvionmentError)
 		return
 	}
 
@@ -476,19 +476,26 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		tctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		ok := cr.KeepAlive(tctx)
 		cancel()
-		if !ok {
-			if keepaliveCtx.Err() == nil {
-				log.Info(Tr("info.cluster.reconnect.keepalive"))
-				cr.disable(ctx)
-				log.Info(Tr("info.cluster.reconnecting"))
-				if !cr.Connect(ctx) {
-					log.Error(Tr("error.cluster.reconnect.failed"))
-					osExit(1)
+		if ok {
+			return
+		}
+		if keepaliveCtx.Err() == nil {
+			log.Info(Tr("info.cluster.reconnect.keepalive"))
+			cr.disable(ctx)
+			log.Info(Tr("info.cluster.reconnecting"))
+			if !cr.Connect(ctx) {
+				log.Error(Tr("error.cluster.reconnect.failed"))
+				if ctx.Err() != nil {
+					return
 				}
-				if err := cr.Enable(ctx); err != nil {
-					log.Errorf(Tr("error.cluster.enable.failed"), err)
-					osExit(1)
+				osExit(CodeServerOrEnvionmentError)
+			}
+			if err := cr.Enable(ctx); err != nil {
+				log.Errorf(Tr("error.cluster.enable.failed"), err)
+				if ctx.Err() != nil {
+					return
 				}
+				osExit(CodeClientOrEnvionmentError)
 			}
 		}
 	}, KeepAliveInterval)

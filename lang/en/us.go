@@ -81,7 +81,7 @@ var areaUS = map[string]string{
 	"error.config.alias.user.not.exists": "WebDav alias user %q does not exists",
 
 	"info.tunnel.running":                 "Starting tunneler: %q",
-	"info.tunnel.detected":                "Detected that tunnel was finished: host=%s, port=%d",
+	"info.tunnel.detected":                "Detected that tunnel was created: host=%s, port=%d",
 	"error.tunnel.failed":                 "Tunneling failed: %v",
 	"error.tunnel.command.prepare.failed": "Tunnel command failed to prepare: %v",
 }

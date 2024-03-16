@@ -148,19 +148,12 @@ func (c *TunnelConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 	if c.outputRegex, err = regexp.Compile(c.OutputRegex); err != nil {
 		return
 	}
-	c.hostOut, c.portOut = 0, 0
-	for i, name := range c.outputRegex.SubexpNames() {
-		switch name {
-		case "host":
-			c.hostOut = i
-		case "port":
-			c.portOut = i
-		}
-	}
-	if c.hostOut == 0 {
+	c.hostOut = c.outputRegex.SubexpIndex("host")
+	c.portOut = c.outputRegex.SubexpIndex("port")
+	if c.hostOut <= 0 {
 		return errors.New("tunneler.output-regex: missing named `(?<host>)` capture group")
 	}
-	if c.portOut == 0 {
+	if c.portOut <= 0 {
 		return errors.New("tunneler.output-regex: missing named `(?<port>)` capture group")
 	}
 	return
@@ -312,7 +305,7 @@ func readConfig() (config Config) {
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Errorf(Tr("error.config.read.failed"), err)
-			osExit(1)
+			osExit(CodeClientError)
 		}
 		log.Error(Tr("error.config.not.exists"))
 		notexists = true
@@ -320,7 +313,7 @@ func readConfig() (config Config) {
 		migrateConfig(data, &config)
 		if err = yaml.Unmarshal(data, &config); err != nil {
 			log.Errorf(Tr("error.config.parse.failed"), err)
-			osExit(1)
+			osExit(CodeClientError)
 		}
 		if len(config.Storages) == 0 {
 			config.Storages = []storage.StorageOption{
@@ -351,7 +344,7 @@ func readConfig() (config Config) {
 			}
 			if j, ok := ids[s.Id]; ok {
 				log.Errorf("Duplicated storage id %q at [%d] and [%d], please edit the config.", s.Id, i, j)
-				osExit(1)
+				osExit(CodeClientError)
 			}
 			ids[s.Id] = i
 		}
@@ -364,7 +357,7 @@ func readConfig() (config Config) {
 				user, ok := config.WebdavUsers[alias]
 				if !ok {
 					log.Errorf(Tr("error.config.alias.user.not.exists"), alias)
-					osExit(1)
+					osExit(CodeClientError)
 				}
 				opt.AliasUser = user
 				var end *url.URL
@@ -391,11 +384,11 @@ func readConfig() (config Config) {
 	encoder.SetIndent(2)
 	if err = encoder.Encode(config); err != nil {
 		log.Errorf(Tr("error.config.encode.failed"), err)
-		osExit(1)
+		osExit(CodeClientError)
 	}
 	if err = os.WriteFile(configPath, buf.Bytes(), 0600); err != nil {
 		log.Errorf(Tr("error.config.write.failed"), err)
-		osExit(1)
+		osExit(CodeClientError)
 	}
 	if notexists {
 		log.Error(Tr("error.config.created"))

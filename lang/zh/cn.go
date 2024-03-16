@@ -81,7 +81,7 @@ var areaCN = map[string]string{
 	"error.config.alias.user.not.exists": "WebDav 别名用户 %q 不存在",
 
 	"info.tunnel.running":                 "正在开始打洞, 执行 %q",
-	"info.tunnel.detected":                "检测到打洞已完成: host=%s, port=%d",
+	"info.tunnel.detected":                "检测到隧道已创建: host=%s, port=%d",
 	"error.tunnel.failed":                 "打洞失败: %v",
 	"error.tunnel.command.prepare.failed": "打洞指令准备失败: %v",
 }

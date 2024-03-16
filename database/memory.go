@@ -21,60 +21,106 @@ package database
 
 import (
 	"sync"
+	"time"
 )
 
 type MemoryDB struct {
-	mux  sync.RWMutex
-	data map[string]*Record
+	fileRecMux  sync.RWMutex
+	fileRecords map[string]*FileRecord
+
+	tokenMux sync.RWMutex
+	tokens   map[string]time.Time
 }
 
 var _ DB = (*MemoryDB)(nil)
 
 func NewMemoryDB() *MemoryDB {
 	return &MemoryDB{
-		data: make(map[string]*Record),
+		fileRecords: make(map[string]*FileRecord),
+		tokens:      make(map[string]time.Time),
 	}
 }
 
-func (m *MemoryDB) Get(path string) (*Record, error) {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
+func (m *MemoryDB) ValidJTI(jti string) (bool, error) {
+	m.tokenMux.RLock()
+	defer m.tokenMux.RUnlock()
 
-	record, ok := m.data[path]
+	expire, ok := m.tokens[jti]
+	if !ok {
+		return false, ErrNotFound
+	}
+	if time.Now().After(expire) {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (m *MemoryDB) AddJTI(jti string, expire time.Time) error {
+	m.tokenMux.Lock()
+	defer m.tokenMux.Unlock()
+	if _, ok := m.tokens[jti]; ok {
+		return ErrExists
+	}
+	m.tokens[jti] = expire
+	return nil
+}
+
+func (m *MemoryDB) RemoveJTI(jti string) error {
+	m.tokenMux.RLock()
+	_, ok := m.tokens[jti]
+	m.tokenMux.RUnlock()
+	if !ok {
+		return ErrNotFound
+	}
+
+	m.tokenMux.Lock()
+	defer m.tokenMux.Unlock()
+	if _, ok := m.tokens[jti]; !ok {
+		return ErrNotFound
+	}
+	delete(m.tokens, jti)
+	return nil
+}
+
+func (m *MemoryDB) GetFileRecord(path string) (*FileRecord, error) {
+	m.fileRecMux.RLock()
+	defer m.fileRecMux.RUnlock()
+
+	record, ok := m.fileRecords[path]
 	if !ok {
 		return nil, ErrNotFound
 	}
 	return record, nil
 }
 
-func (m *MemoryDB) Set(record Record) error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
+func (m *MemoryDB) SetFileRecord(record FileRecord) error {
+	m.fileRecMux.Lock()
+	defer m.fileRecMux.Unlock()
 
-	old, ok := m.data[record.Path]
+	old, ok := m.fileRecords[record.Path]
 	if ok && *old == record {
 		return nil
 	}
-	m.data[record.Path] = &record
+	m.fileRecords[record.Path] = &record
 	return nil
 }
 
-func (m *MemoryDB) Remove(path string) error {
-	m.mux.Lock()
-	defer m.mux.Unlock()
+func (m *MemoryDB) RemoveFileRecord(path string) error {
+	m.fileRecMux.Lock()
+	defer m.fileRecMux.Unlock()
 
-	if _, ok := m.data[path]; !ok {
+	if _, ok := m.fileRecords[path]; !ok {
 		return ErrNotFound
 	}
-	delete(m.data, path)
+	delete(m.fileRecords, path)
 	return nil
 }
 
-func (m *MemoryDB) ForEach(cb func(*Record) error) error {
-	m.mux.RLock()
-	defer m.mux.RUnlock()
+func (m *MemoryDB) ForEachFileRecord(cb func(*FileRecord) error) error {
+	m.fileRecMux.RLock()
+	defer m.fileRecMux.RUnlock()
 
-	for _, v := range m.data {
+	for _, v := range m.fileRecords {
 		if err := cb(v); err != nil {
 			if err == ErrStopIter {
 				break

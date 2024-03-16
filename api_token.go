@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -55,85 +54,6 @@ var (
 	ErrStrictQueryNotMatch = errors.New("strict query value not match")
 )
 
-type TokenStorage struct {
-	mux       sync.RWMutex
-	tokens    map[string]time.Time
-	nextCheck time.Time
-	checking  bool
-}
-
-func NewTokenStorage() *TokenStorage {
-	return &TokenStorage{
-		tokens:    make(map[string]time.Time),
-		nextCheck: time.Now().Add(time.Minute * 5),
-	}
-}
-
-func (s *TokenStorage) checker() {
-	s.mux.RLock()
-	var expired []string
-	now := time.Now()
-	for k, v := range s.tokens {
-		if now.After(v) {
-			expired = append(expired, k)
-		}
-	}
-	s.mux.RUnlock()
-	s.mux.Lock()
-	for _, k := range expired {
-		delete(s.tokens, k)
-	}
-	s.checking = false
-	s.nextCheck = time.Now().Add(time.Minute * 5)
-	s.mux.Unlock()
-}
-
-func (s *TokenStorage) tryCheckLocked() {
-	if !s.checking && time.Now().After(s.nextCheck) {
-		s.checking = true
-		go s.checker()
-	}
-}
-
-func (s *TokenStorage) tryCheck() {
-	s.mux.RLock()
-	ok := !s.checking && time.Now().After(s.nextCheck)
-	s.mux.RUnlock()
-	if ok {
-		s.mux.Lock()
-		s.tryCheckLocked()
-		s.mux.Unlock()
-	}
-}
-
-func (s *TokenStorage) Register(id string, expire time.Time) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	s.tokens[id] = expire
-	if len(s.tokens) > 256 {
-		s.tryCheckLocked()
-	}
-}
-
-func (s *TokenStorage) Unregister(id string) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	delete(s.tokens, id)
-}
-
-func (s *TokenStorage) Check(id string) bool {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-	expire, ok := s.tokens[id]
-	if !ok {
-		return false
-	}
-	if time.Now().After(expire) {
-		return false
-	}
-	return true
-}
-
 func (cr *Cluster) getJWTKey(t *jwt.Token) (any, error) {
 	if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 		return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
@@ -158,13 +78,14 @@ func (cr *Cluster) generateAuthToken(cliId string) (string, error) {
 		return "", err
 	}
 	now := time.Now()
+	exp := now.Add(time.Hour * 24)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &authTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
 			Subject:   authTokenSubject,
 			Issuer:    cr.jwtIssuer,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour * 24)),
+			ExpiresAt: jwt.NewNumericDate(exp),
 		},
 		Client: cliId,
 	})
@@ -172,7 +93,9 @@ func (cr *Cluster) generateAuthToken(cliId string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// registerTokenId(jti) // ignore JTI for auth token; TODO
+	if err = cr.database.AddJTI(jti, exp); err != nil {
+		return "", err
+	}
 	return tokenStr, nil
 }
 
@@ -193,10 +116,9 @@ func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string, err e
 		return "", ErrClientIdNotMatch
 	}
 	jti := claims.ID
-	// if !checkTokenId(jti) { // ignore JTI here; TODO
-	// 	logDebugf("Cannot verity auth token: jti not exists")
-	// 	return ""
-	// }
+	if ok, _ := cr.database.ValidJTI(jti); !ok {
+		return "", ErrJTINotExists
+	}
 	return jti, nil
 }
 
@@ -231,7 +153,9 @@ func (cr *Cluster) generateAPIToken(cliId string, path string, query map[string]
 	if err != nil {
 		return "", err
 	}
-	cr.tokens.Register(jti, exp)
+	if err = cr.database.AddJTI(jti, exp); err != nil {
+		return "", err
+	}
 	return tokenStr, nil
 }
 
@@ -252,7 +176,7 @@ func (cr *Cluster) verifyAPIToken(cliId string, token string, path string, query
 		return "", ErrClientIdNotMatch
 	}
 	jti := claims.ID
-	if !cr.tokens.Check(jti) {
+	if ok, _ := cr.database.ValidJTI(jti); !ok {
 		return "", ErrJTINotExists
 	}
 	if claims.StrictPath != path {

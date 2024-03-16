@@ -224,7 +224,7 @@ onMounted(() => {
 		<h1>Go-OpenBmclAPI {{ tr('title.dashboard') }}</h1>
 		<div class="main">
 			<div class="flex-row-center basic-info">
-				<div class="flex-row-center">
+				<div class="flex-row-center" style="height: 4rem">
 					<Button class="info-status" :status="status">
 						{{ tr(`badge.server.status.${status}`) }}
 					</Button>

@@ -21,26 +21,32 @@ package database
 
 import (
 	"errors"
+	"time"
 )
 
 var (
 	ErrStopIter = errors.New("stop iteration")
 	ErrNotFound = errors.New("no record was found")
+	ErrExists   = errors.New("record's key was already exists")
 )
 
-type Record struct {
+type FileRecord struct {
 	Path string
 	Hash string
 	Size int64
 }
 
 type DB interface {
+	ValidJTI(jti string) (bool, error)
+	AddJTI(jti string, expire time.Time) error
+	RemoveJTI(jti string) error
+
 	// You should not edit the record pointer
-	Get(path string) (*Record, error)
-	Set(Record) error
-	Remove(path string) error
+	GetFileRecord(path string) (*FileRecord, error)
+	SetFileRecord(FileRecord) error
+	RemoveFileRecord(path string) error
 
 	// if the callback returns ErrStopIter, ForEach must immediately stop and returns a nil error
 	// the callback should not edit the record pointer
-	ForEach(cb func(*Record) error) error
+	ForEachFileRecord(cb func(*FileRecord) error) error
 }

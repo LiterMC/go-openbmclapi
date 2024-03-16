@@ -9,6 +9,7 @@
     "dev": "vite",
     "format": "prettier --write *.ts *.cjs src/",
     "preview": "vite preview",
+    "build-preview": "npm run build && npm run preview",
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
@@ -21,7 +22,11 @@
     "vue": "^3.2.47",
     "vue-cookies": "^1.8.3",
     "vue-request": "^2.0.4",
-    "vue-router": "^4.1.6"
+    "vue-router": "^4.1.6",
+    "workbox": "^0.0.0",
+    "workbox-core": "^7.0.0",
+    "workbox-precaching": "^7.0.0",
+    "workbox-routing": "^7.0.0"
   },
   "devDependencies": {
     "@rushstack/eslint-patch": "^1.2.0",

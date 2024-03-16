@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -125,6 +126,46 @@ type DashboardConfig struct {
 	PwaDesc      string `yaml:"pwa-description"`
 }
 
+type TunnelConfig struct {
+	Enable        bool   `yaml:"enable"`
+	TunnelProg    string `yaml:"tunnel-program"`
+	OutputRegex   string `yaml:"output-regex"`
+	TunnelTimeout int    `yaml:"tunnel-timeout"`
+
+	outputRegex *regexp.Regexp
+	hostOut     int
+	portOut     int
+}
+
+func (c *TunnelConfig) UnmarshalYAML(n *yaml.Node) (err error) {
+	type T TunnelConfig
+	if err = n.Decode((*T)(c)); err != nil {
+		return
+	}
+	if !c.Enable {
+		return
+	}
+	if c.outputRegex, err = regexp.Compile(c.OutputRegex); err != nil {
+		return
+	}
+	c.hostOut, c.portOut = 0, 0
+	for i, name := range c.outputRegex.SubexpNames() {
+		switch name {
+		case "host":
+			c.hostOut = i
+		case "port":
+			c.portOut = i
+		}
+	}
+	if c.hostOut == 0 {
+		return errors.New("tunneler.output-regex: missing named `(?<host>)` capture group")
+	}
+	if c.portOut == 0 {
+		return errors.New("tunneler.output-regex: missing named `(?<port>)` capture group")
+	}
+	return
+}
+
 type Config struct {
 	LogSlots             int    `yaml:"log-slots"`
 	NoAccessLog          bool   `yaml:"no-access-log"`
@@ -143,6 +184,7 @@ type Config struct {
 	MaxReconnectCount    int    `yaml:"max-reconnect-count"`
 
 	Certificates []CertificateConfig            `yaml:"certificates"`
+	Tunneler     TunnelConfig                   `yaml:"tunneler"`
 	Cache        CacheConfig                    `yaml:"cache"`
 	ServeLimit   ServeLimitConfig               `yaml:"serve-limit"`
 	Dashboard    DashboardConfig                `yaml:"dashboard"`
@@ -182,6 +224,13 @@ var defaultConfig = Config{
 			Cert: "/path/to/cert.pem",
 			Key:  "/path/to/key.pem",
 		},
+	},
+
+	Tunneler: TunnelConfig{
+		Enable:        false,
+		TunnelProg:    "./path/to/tunnel/program",
+		OutputRegex:   `\bNATedAddr\s+(?<host>[0-9.]+|\[[0-9a-f:]+\]):(?<port>\d+)$`,
+		TunnelTimeout: 0,
 	},
 
 	Cache: CacheConfig{

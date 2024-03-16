@@ -28,12 +28,20 @@ import (
 type SqlDB struct {
 	db *sql.DB
 
-	getStmt       *sql.Stmt
-	hasStmt       *sql.Stmt
-	setInsertStmt *sql.Stmt
-	setUpdateStmt *sql.Stmt
-	removeStmt    *sql.Stmt
-	forEachStmt   *sql.Stmt
+	jtiStmts struct {
+		get    *sql.Stmt
+		add    *sql.Stmt
+		remove *sql.Stmt
+	}
+
+	fileRecordStmts struct {
+		get       *sql.Stmt
+		has       *sql.Stmt
+		setInsert *sql.Stmt
+		setUpdate *sql.Stmt
+		remove    *sql.Stmt
+		forEach   *sql.Stmt
+	}
 }
 
 var _ DB = (*SqlDB)(nil)
@@ -64,6 +72,87 @@ func (db *SqlDB) setup(ctx context.Context) (err error) {
 		return
 	}
 
+	if err = db.setupJTI(ctx); err != nil {
+		return
+	}
+
+	if err = db.setupFileRecords(ctx); err != nil {
+		return
+	}
+	return
+}
+
+func (db *SqlDB) setupJTI(ctx context.Context) (err error) {
+	const tableName = "`token_id`"
+
+	const createTable = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
+		" `id` VARCHAR(256) NOT NULL," +
+		" `expire` TIMESTAMP NOT NULL," +
+		" PRIMARY KEY (`id`)" +
+		")"
+	if _, err = db.db.ExecContext(ctx, createTable); err != nil {
+		return
+	}
+
+	const getSelectCmd = "SELECT 1 FROM " + tableName +
+		" WHERE `id`=? AND `expire` > CURRENT_TIMESTAMP()"
+	if db.jtiStmts.get, err = db.db.PrepareContext(ctx, getSelectCmd); err != nil {
+		return
+	}
+
+	const addInsertCmd = "INSERT INTO " + tableName +
+		" (`id`,`expire`) VALUES" +
+		" (?,?)"
+	if db.jtiStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
+		return
+	}
+
+	const removeDeleteCmd = "DELETE FROM " + tableName +
+		" WHERE `id`=?"
+	if db.jtiStmts.remove, err = db.db.PrepareContext(ctx, removeDeleteCmd); err != nil {
+		return
+	}
+	return
+}
+
+func (db *SqlDB) ValidJTI(jti string) (has bool, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	var has1 int
+	if err = db.jtiStmts.get.QueryRowContext(ctx, jti).Scan(has1); err != nil {
+		return
+	}
+	if has1 == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (db *SqlDB) AddJTI(jti string, expire time.Time) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if _, err = db.jtiStmts.add.ExecContext(ctx, jti, expire); err != nil {
+		return
+	}
+	return
+}
+
+func (db *SqlDB) RemoveJTI(jti string) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if _, err = db.jtiStmts.remove.ExecContext(ctx, jti); err != nil {
+		if err == sql.ErrNoRows {
+			err = ErrNotFound
+		}
+		return
+	}
+	return
+}
+
+func (db *SqlDB) setupFileRecords(ctx context.Context) (err error) {
 	const tableName = "`file_records`"
 
 	const createTable = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
@@ -78,13 +167,13 @@ func (db *SqlDB) setup(ctx context.Context) (err error) {
 
 	const getSelectCmd = "SELECT `hash`,`size` FROM " + tableName +
 		" WHERE `path`=?"
-	if db.getStmt, err = db.db.PrepareContext(ctx, getSelectCmd); err != nil {
+	if db.fileRecordStmts.get, err = db.db.PrepareContext(ctx, getSelectCmd); err != nil {
 		return
 	}
 
 	const hasSelectCmd = "SELECT 1 FROM " + tableName +
 		" WHERE `path`=?"
-	if db.hasStmt, err = db.db.PrepareContext(ctx, hasSelectCmd); err != nil {
+	if db.fileRecordStmts.has, err = db.db.PrepareContext(ctx, hasSelectCmd); err != nil {
 		return
 	}
 
@@ -94,32 +183,32 @@ func (db *SqlDB) setup(ctx context.Context) (err error) {
 	const setUpdateCmd = "UPDATE " + tableName + " SET" +
 		" `hash`=?, `size`=?" +
 		" WHERE `path`=?"
-	if db.setInsertStmt, err = db.db.PrepareContext(ctx, setInsertCmd); err != nil {
+	if db.fileRecordStmts.setInsert, err = db.db.PrepareContext(ctx, setInsertCmd); err != nil {
 		return
 	}
-	if db.setUpdateStmt, err = db.db.PrepareContext(ctx, setUpdateCmd); err != nil {
+	if db.fileRecordStmts.setUpdate, err = db.db.PrepareContext(ctx, setUpdateCmd); err != nil {
 		return
 	}
 
 	const removeDeleteCmd = "DELETE FROM " + tableName +
 		" WHERE `path`=?"
-	if db.removeStmt, err = db.db.PrepareContext(ctx, removeDeleteCmd); err != nil {
+	if db.fileRecordStmts.remove, err = db.db.PrepareContext(ctx, removeDeleteCmd); err != nil {
 		return
 	}
 
 	const forEachSelectCmd = "SELECT `path`,`hash`,`size` FROM " + tableName
-	if db.forEachStmt, err = db.db.PrepareContext(ctx, forEachSelectCmd); err != nil {
+	if db.fileRecordStmts.forEach, err = db.db.PrepareContext(ctx, forEachSelectCmd); err != nil {
 		return
 	}
 	return err
 }
 
-func (db *SqlDB) Get(path string) (rec *Record, err error) {
+func (db *SqlDB) GetFileRecord(path string) (rec *FileRecord, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	rec = new(Record)
-	if err = db.getStmt.QueryRowContext(ctx, path).Scan(&rec.Hash, &rec.Size); err != nil {
+	rec = new(FileRecord)
+	if err = db.fileRecordStmts.get.QueryRowContext(ctx, path).Scan(&rec.Hash, &rec.Size); err != nil {
 		if err == sql.ErrNoRows {
 			err = ErrNotFound
 		}
@@ -128,7 +217,7 @@ func (db *SqlDB) Get(path string) (rec *Record, err error) {
 	return
 }
 
-func (db *SqlDB) Set(rec Record) (err error) {
+func (db *SqlDB) SetFileRecord(rec FileRecord) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -143,15 +232,15 @@ func (db *SqlDB) Set(rec Record) (err error) {
 	}()
 
 	var has int
-	if err = tx.Stmt(db.hasStmt).QueryRow(rec.Path).Scan(has); err != nil {
+	if err = tx.Stmt(db.fileRecordStmts.has).QueryRow(rec.Path).Scan(has); err != nil {
 		return
 	}
 	if has == 0 {
-		if _, err = tx.Stmt(db.setInsertStmt).Exec(rec.Path, rec.Hash, rec.Size); err != nil {
+		if _, err = tx.Stmt(db.fileRecordStmts.setInsert).Exec(rec.Path, rec.Hash, rec.Size); err != nil {
 			return
 		}
 	} else {
-		if _, err = tx.Stmt(db.setUpdateStmt).Exec(rec.Hash, rec.Size, rec.Path); err != nil {
+		if _, err = tx.Stmt(db.fileRecordStmts.setUpdate).Exec(rec.Hash, rec.Size, rec.Path); err != nil {
 			return
 		}
 	}
@@ -161,11 +250,11 @@ func (db *SqlDB) Set(rec Record) (err error) {
 	return
 }
 
-func (db *SqlDB) Remove(path string) (err error) {
+func (db *SqlDB) RemoveFileRecord(path string) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	if _, err = db.removeStmt.ExecContext(ctx, path); err != nil {
+	if _, err = db.fileRecordStmts.remove.ExecContext(ctx, path); err != nil {
 		if err == sql.ErrNoRows {
 			err = ErrNotFound
 		}
@@ -174,16 +263,16 @@ func (db *SqlDB) Remove(path string) (err error) {
 	return
 }
 
-func (db *SqlDB) ForEach(cb func(*Record) error) (err error) {
+func (db *SqlDB) ForEachFileRecord(cb func(*FileRecord) error) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	var rows *sql.Rows
-	if rows, err = db.removeStmt.QueryContext(ctx); err != nil {
+	if rows, err = db.fileRecordStmts.remove.QueryContext(ctx); err != nil {
 		return
 	}
 	defer rows.Close()
-	var rec Record
+	var rec FileRecord
 	for rows.Next() {
 		if err = rows.Scan(&rec.Path, &rec.Hash, &rec.Size); err != nil {
 			return

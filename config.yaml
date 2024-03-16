@@ -16,6 +16,11 @@ max-reconnect-count: 10
 certificates:
   - cert: /path/to/cert.pem
     key: /path/to/key.pem
+tunneler:
+  enable: false
+  tunnel-program: ./path/to/tunnel/program
+  output-regex: \bNATedAddr\s+(?<host>[0-9.]+|\[[0-9a-f:]+\]):(?<port>\d+)$
+  tunnel-timeout: 0
 cache:
   type: inmem
 serve-limit:

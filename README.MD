@@ -146,7 +146,7 @@ cluster-secret: ${CLUSTER_SECRET}
 sync-interval: 10
 # 仅在程序开始时清理文件
 only-gc-when-start: false
-# 同步文件时最多打开的连接数量. 注意: 该选项目前没用
+# 按需同步时最大可打开的连接数量.
 download-max-conn: 64
 # 连接主控的最大重试数, 0 表示不重试, -1 表示无限制
 max-reconnect-count: 10
@@ -155,6 +155,17 @@ max-reconnect-count: 10
 certificates:
   - cert: /path/to/cert.pem # 证书路径
     key: /path/to/key.pem   # 私钥路径
+
+# 打洞程序配置
+tunneler:
+  # 是否使用打洞
+  enable: false
+  # 打洞程序/脚本路径. 注意: 暂不支持传递参数. 若要指定参数, 请填入带参调用脚本路径
+  tunnel-program: ./path/to/tunnel/program
+  # 打洞程序 host & port 输出, 使用 regex 格式
+  output-regex: \bNATedAddr\s+(?<host>[0-9.]+|\[[0-9a-f:]+\]):(?<port>\d+)$
+  # 打洞超时, 暂无用处
+  tunnel-timeout: 0
 
 # 缓存
 cache:

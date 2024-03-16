@@ -79,4 +79,9 @@ var areaUS = map[string]string{
 	"error.config.created":               "Config file created, please edit it and start the program again",
 	"error.config.parse.failed":          "Cannot parse config: %v",
 	"error.config.alias.user.not.exists": "WebDav alias user %q does not exists",
+
+	"info.tunnel.running":                 "Starting tunneler: %q",
+	"info.tunnel.detected":                "Detected that tunnel was finished: host=%s, port=%d",
+	"error.tunnel.failed":                 "Tunneling failed: %v",
+	"error.tunnel.command.prepare.failed": "Tunnel command failed to prepare: %v",
 }

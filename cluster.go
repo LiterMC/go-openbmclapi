@@ -66,7 +66,7 @@ var (
 )
 
 type Cluster struct {
-	host          string   // not public host
+	host          string   // not the public access host, but maybe a public IP, or a host that will be resolved to the IP
 	publicHosts   []string // should not contains port, can be nil
 	publicPort    uint16
 	clusterId     string
@@ -104,14 +104,13 @@ type Cluster struct {
 	downloading     map[string]chan error // TODO: use struct { sync.Mutex; error } rather than chan error
 	filesetMux      sync.RWMutex
 	fileset         map[string]int64
-	fileMapDB       database.DB
 	authTokenMux    sync.RWMutex
 	authToken       *ClusterToken
 
 	client    *http.Client
 	cachedCli *http.Client
 	bufSlots  *limited.BufSlots
-	tokens    *TokenStorage
+	database  database.DB
 
 	wsUpgrader    *websocket.Upgrader
 	handlerAPIv0  http.Handler
@@ -169,7 +168,6 @@ func NewCluster(
 		cachedCli: &http.Client{
 			Transport: cachedTransport,
 		},
-		tokens: NewTokenStorage(),
 
 		wsUpgrader: &websocket.Upgrader{
 			HandshakeTimeout: time.Minute,
@@ -205,13 +203,13 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	os.MkdirAll(cr.dataDir, 0755)
 
 	if config.Database.Driver == "memory" {
-		cr.fileMapDB = database.NewMemoryDB()
-	} else if cr.fileMapDB, err = database.NewSqlDB(config.Database.Driver, config.Database.DSN); err != nil {
+		cr.database = database.NewMemoryDB()
+	} else if cr.database, err = database.NewSqlDB(config.Database.Driver, config.Database.DSN); err != nil {
 		return
 	}
 
 	if config.Hijack.Enable {
-		cr.hijackProxy = NewHjProxy(cr.client, cr.fileMapDB, cr.handleDownload)
+		cr.hijackProxy = NewHjProxy(cr.client, cr.database, cr.handleDownload)
 		if config.Hijack.EnableLocalCache {
 			os.MkdirAll(config.Hijack.LocalCachePath, 0755)
 		}
@@ -608,6 +606,10 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 	return
 }
 
+func (cr *Cluster) Enabled() bool {
+	return cr.enabled.Load()
+}
+
 func (cr *Cluster) Disabled() <-chan struct{} {
 	cr.mux.RLock()
 	defer cr.mux.RUnlock()
@@ -786,7 +788,7 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	for _, f := range files {
 		fileset[f.Hash] = f.Size
 		if config.Hijack.Enable && !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
-			cr.fileMapDB.Set(database.Record{
+			cr.database.SetFileRecord(database.FileRecord{
 				Path: f.Path,
 				Hash: f.Hash,
 				Size: f.Size,

@@ -129,7 +129,7 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if req.Method == http.MethodGet || req.Method == http.MethodHead {
-		if rec, err := h.fileMap.Get(req.URL.Path); err == nil {
+		if rec, err := h.fileMap.GetFileRecord(req.URL.Path); err == nil {
 			ctx := req.Context()
 			ctx = context.WithValue(ctx, "go-openbmclapi.handler.no.record.for.keepalive", true)
 			h.downloadHandler(rw, req.WithContext(ctx), rec.Hash)

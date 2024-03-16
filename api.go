@@ -324,7 +324,7 @@ func (cr *Cluster) apiV0Logout(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	tid := req.Context().Value(tokenIdKey).(string)
-	cr.tokens.Unregister(tid)
+	cr.database.RemoveJTI(tid)
 	rw.WriteHeader(http.StatusNoContent)
 }
 

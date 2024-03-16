@@ -21,6 +21,11 @@
 	max-width: calc(100vw - 40px);
 }
 
+.p-disabled, .p-disabled * {
+	cursor: not-allowed;
+	pointer-events: auto;
+}
+
 .pointer {
 	cursor: pointer;
 }

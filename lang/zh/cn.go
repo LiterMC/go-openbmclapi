@@ -66,8 +66,8 @@ var areaCN = map[string]string{
 	"error.sync.download.failed":    "下载失败 %s:\n\t%s",
 	"error.sync.create.failed":      "无法创建 %s/%s: %v",
 
-	"info.gc.start":       "已为 %s 开启垃圾收集器",
-	"info.gc.done":        "垃圾收集已在 %s 完成",
+	"info.gc.start":       "正在清理 %s",
+	"info.gc.done":        "已清理 %s",
 	"warn.gc.interrupted": "垃圾收集器在 %s 中断",
 	"info.gc.found":       "找到过期文件 %s",
 	"error.gc.error":      "垃圾收集错误: %v",
@@ -79,4 +79,9 @@ var areaCN = map[string]string{
 	"error.config.created":               "配置文件已创建, 请修改, 并重启程序",
 	"error.config.parse.failed":          "无法解析配置文件: %v",
 	"error.config.alias.user.not.exists": "WebDav 别名用户 %q 不存在",
+
+	"info.tunnel.running":                 "正在开始打洞, 执行 %q",
+	"info.tunnel.detected":                "检测到打洞已完成: host=%s, port=%d",
+	"error.tunnel.failed":                 "打洞失败: %v",
+	"error.tunnel.command.prepare.failed": "打洞指令准备失败: %v",
 }

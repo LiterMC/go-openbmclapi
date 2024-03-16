@@ -20,6 +20,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -33,6 +34,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -383,9 +385,91 @@ START:
 			}
 		}
 
-		if err := cluster.Enable(ctx); err != nil {
-			log.Errorf(Tr("error.cluster.enable.failed"), err)
-			osExit(1)
+		if config.Tunneler.Enable {
+			cmd := exec.CommandContext(ctx, config.Tunneler.TunnelProg)
+			log.Infof(Tr("info.tunnel.running"), cmd.String())
+			var (
+				cmdOut, cmdErr io.ReadCloser
+				err            error
+			)
+			if cmdOut, err = cmd.StdoutPipe(); err != nil {
+				log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
+				osExit(9)
+			}
+			if cmdErr, err = cmd.StderrPipe(); err != nil {
+				log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
+				osExit(9)
+			}
+			if err = cmd.Start(); err != nil {
+				log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
+				osExit(1)
+			}
+			go func() {
+				defer cmdErr.Close()
+				defer cmd.Process.Kill()
+				sc := bufio.NewScanner(cmdErr)
+				for sc.Scan() {
+					log.Info("[tunneler/stderr]:", sc.Text())
+				}
+			}()
+			type addrOut struct {
+				host string
+				port uint16
+			}
+			detectedCh := make(chan addrOut, 0)
+			go func() {
+				defer cmdOut.Close()
+				defer cmd.Process.Kill()
+				sc := bufio.NewScanner(cmdOut)
+				for sc.Scan() {
+					log.Info("[tunneler/stdout]:", sc.Text())
+					if res := config.Tunneler.outputRegex.FindSubmatch(sc.Bytes()); res != nil {
+						tunnelHost, tunnelPort := res[config.Tunneler.hostOut], res[config.Tunneler.portOut]
+						if len(tunnelHost) > 0 && tunnelHost[0] == '[' && tunnelHost[len(tunnelHost)-1] == ']' { // a IPv6 with port [<ipv6>]:<port>
+							tunnelHost = tunnelHost[1 : len(tunnelHost)-1]
+						}
+						port, err := strconv.Atoi((string)(tunnelPort))
+						if err != nil {
+							log.Panic(err)
+						}
+						select {
+						case detectedCh <- addrOut{
+							host: (string)(tunnelHost),
+							port: (uint16)(port),
+						}:
+						default:
+						}
+					}
+				}
+			}()
+			go func() {
+				defer cmd.Process.Kill()
+				for {
+					select {
+					case addr := <-detectedCh:
+						cluster.host = addr.host
+						cluster.publicPort = addr.port
+						log.Infof(Tr("info.tunnel.detected"), cluster.host, cluster.publicPort)
+						if !cluster.Enabled() {
+							shutCtx, cancel := context.WithTimeout(ctx, time.Minute)
+							cluster.Disable(shutCtx)
+							cancel()
+						}
+						if err := cluster.Enable(ctx); err != nil {
+							log.Errorf(Tr("error.cluster.enable.failed"), err)
+							osExit(1)
+						}
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+			// TODO: maybe restart the tunnel program?
+		} else {
+			if err := cluster.Enable(ctx); err != nil {
+				log.Errorf(Tr("error.cluster.enable.failed"), err)
+				osExit(1)
+			}
 		}
 	}(ctx)
 

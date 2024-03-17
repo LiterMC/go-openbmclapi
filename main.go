@@ -127,7 +127,7 @@ func main() {
 			}
 		}
 		if code != 0 {
-			log.Errorf(Tr("program.exited"), exitCode)
+			log.Errorf(Tr("program.exited"), code)
 			log.Error(Tr("error.exit.please.read.faq"))
 			if runtime.GOOS == "windows" && !config.Advanced.DoNotOpenFAQOnWindows {
 				log.Warn(Tr("warn.exit.detected.windows.open.browser"))
@@ -140,12 +140,6 @@ func main() {
 	}()
 	defer log.RecordPanic()
 	log.StartFlushLogFile()
-
-	// override the osExit inside main function
-	osExit := func(n int) {
-		exitCode = n
-		runtime.Goexit()
-	}
 
 	bgctx := context.Background()
 

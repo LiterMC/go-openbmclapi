@@ -61,7 +61,7 @@ const (
 	LevelError
 	LevelPanic
 
-	LevelMask = 0xff
+	LevelMask = 1<<8 - 1
 )
 
 const (

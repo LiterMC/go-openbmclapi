@@ -23,6 +23,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -190,6 +191,21 @@ func (s *httpTLSListener) serveHTTP(conn net.Conn) {
 	}
 	if host == "" {
 		// we have nowhere to redirect
+		body := strings.NewReader("Sent http request on https server")
+		resp := &http.Response{
+			StatusCode: http.StatusBadRequest,
+			ProtoMajor: req.ProtoMajor,
+			ProtoMinor: req.ProtoMinor,
+			Request:    req,
+			Header: http.Header{
+				"Content-Type": {"text/plain"},
+				"X-Powered-By": {HeaderXPoweredBy},
+			},
+			ContentLength: (int64)(body.Len()),
+		}
+		conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
+		resp.Write(conn)
+		io.Copy(conn, body)
 		return
 	}
 	u.Host = net.JoinHostPort(host, s.getPublicPort())
@@ -203,7 +219,7 @@ func (s *httpTLSListener) serveHTTP(conn net.Conn) {
 			"X-Powered-By": {HeaderXPoweredBy},
 		},
 	}
-	conn.SetWriteDeadline(time.Now().Add(time.Second * 15))
+	conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
 	resp.Write(conn)
 }
 

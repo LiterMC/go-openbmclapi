@@ -405,43 +405,48 @@ START:
 				log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
 				osExit(CodeClientError)
 			}
-			go func() {
-				defer cmdErr.Close()
-				defer cmd.Process.Kill()
-				sc := bufio.NewScanner(cmdErr)
-				for sc.Scan() {
-					log.Info("[tunneler/stderr]:", sc.Text())
-				}
-			}()
 			type addrOut struct {
 				host string
 				port uint16
 			}
 			detectedCh := make(chan addrOut, 1)
+			onLog := func(line []byte) {
+				res := config.Tunneler.outputRegex.FindSubmatch(line)
+				if res == nil {
+					return
+				}
+				tunnelHost, tunnelPort := res[config.Tunneler.hostOut], res[config.Tunneler.portOut]
+				if len(tunnelHost) > 0 && tunnelHost[0] == '[' && tunnelHost[len(tunnelHost)-1] == ']' { // a IPv6 with port [<ipv6>]:<port>
+					tunnelHost = tunnelHost[1 : len(tunnelHost)-1]
+				}
+				port, err := strconv.Atoi((string)(tunnelPort))
+				if err != nil {
+					log.Panic(err)
+				}
+				select {
+				case detectedCh <- addrOut{
+					host: (string)(tunnelHost),
+					port: (uint16)(port),
+				}:
+				default:
+				}
+			}
 			go func() {
 				defer cmdOut.Close()
 				defer cmd.Process.Kill()
 				sc := bufio.NewScanner(cmdOut)
 				for sc.Scan() {
 					log.Info("[tunneler/stdout]:", sc.Text())
-					log.Debugf("[tunneler/stdout]: %v", sc.Bytes())
-					if res := config.Tunneler.outputRegex.FindStringSubmatch(sc.Text()); res != nil {
-						tunnelHost, tunnelPort := res[config.Tunneler.hostOut], res[config.Tunneler.portOut]
-						if len(tunnelHost) > 0 && tunnelHost[0] == '[' && tunnelHost[len(tunnelHost)-1] == ']' { // a IPv6 with port [<ipv6>]:<port>
-							tunnelHost = tunnelHost[1 : len(tunnelHost)-1]
-						}
-						port, err := strconv.Atoi(tunnelPort)
-						if err != nil {
-							log.Panic(err)
-						}
-						select {
-						case detectedCh <- addrOut{
-							host: tunnelHost,
-							port: (uint16)(port),
-						}:
-						default:
-						}
-					}
+					onLog(sc.Bytes())
+				}
+			}()
+			go func() {
+				defer cmdErr.Close()
+				defer cmd.Process.Kill()
+				sc := bufio.NewScanner(cmdErr)
+				for sc.Scan() {
+					log.Info("[tunneler/stderr]:", sc.Text())
+					onLog(sc.Bytes())
 				}
 			}()
 			go func() {

@@ -21,7 +21,7 @@ var areaCN = map[string]string{
 	"error.cert.request.failed":         "证书请求失败: %v",
 	"error.cert.requested.parse.failed": "无法解析已请求的证书: %v",
 
-	"info.server.public.at":            "服务器已在 https://%s:%d (%s) 开放, 使用了 %d 个证书",
+	"info.server.public.at":            "服务器已在 https://%s (%s) 开放, 使用了 %d 个证书",
 	"info.server.alternative.hosts":    "备用域名:",
 	"info.wait.first.sync":             "正在等待第一次同步 ...",
 	"info.cluster.enable.sending":      "正在发送启用数据包",

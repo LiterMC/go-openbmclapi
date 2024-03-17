@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -39,6 +40,7 @@ import (
 type httpTLSListener struct {
 	net.Listener
 	TLSConfig *tls.Config
+	mux       sync.RWMutex
 	hosts     []string
 	port      string
 
@@ -72,6 +74,18 @@ func (s *httpTLSListener) Close() (err error) {
 	default:
 	}
 	return
+}
+
+func (s *httpTLSListener) SetPublicPort(port string) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	s.port = port
+}
+
+func (s *httpTLSListener) getPublicPort() string {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	return s.port
 }
 
 func (s *httpTLSListener) maybeHTTPConn(c *connHeadReader) (ishttp bool) {
@@ -178,7 +192,7 @@ func (s *httpTLSListener) serveHTTP(conn net.Conn) {
 		// we have nowhere to redirect
 		return
 	}
-	u.Host = net.JoinHostPort(host, s.port)
+	u.Host = net.JoinHostPort(host, s.getPublicPort())
 	resp := &http.Response{
 		StatusCode: http.StatusPermanentRedirect,
 		ProtoMajor: req.ProtoMajor,

@@ -363,11 +363,14 @@ START:
 		if publicHost == "" {
 			publicHost = config.PublicHost
 		}
-		log.Infof(Tr("info.server.public.at"), publicHost, publicPort, clusterSvr.Addr, certCount)
-		if len(publicHosts) > 1 {
-			log.Info(Tr("info.server.alternative.hosts"))
-			for _, h := range publicHosts[1:] {
-				log.Infof("\t- https://%s:%d", h, publicPort)
+		if !config.Tunneler.Enable {
+			strPort := strconv.Itoa((int)(publicPort))
+			log.Infof(Tr("info.server.public.at"), net.JoinHostPort(publicHost, strPort), clusterSvr.Addr, certCount)
+			if len(publicHosts) > 1 {
+				log.Info(Tr("info.server.alternative.hosts"))
+				for _, h := range publicHosts[1:] {
+					log.Infof("\t- https://%s", net.JoinHostPort(h, strPort))
+				}
 			}
 		}
 
@@ -454,9 +457,19 @@ START:
 				for {
 					select {
 					case addr := <-detectedCh:
-						cluster.host = addr.host
-						cluster.publicPort = addr.port
-						log.Infof(Tr("info.tunnel.detected"), cluster.host, cluster.publicPort)
+						log.Infof(Tr("info.tunnel.detected"), addr.host, addr.port)
+						cluster.host, cluster.publicPort = addr.host, addr.port
+						strPort := strconv.Itoa((int)(publicPort))
+						if spp, ok := listener.(interface{ SetPublicPort(port string) }); ok {
+							spp.SetPublicPort(strPort)
+						}
+						log.Infof(Tr("info.server.public.at"), net.JoinHostPort(addr.host, strPort), clusterSvr.Addr, certCount)
+						if len(publicHosts) > 1 {
+							log.Info(Tr("info.server.alternative.hosts"))
+							for _, h := range publicHosts[1:] {
+								log.Infof("\t- https://%s", net.JoinHostPort(h, strPort))
+							}
+						}
 						if !cluster.Enabled() {
 							shutCtx, cancel := context.WithTimeout(ctx, time.Minute)
 							cluster.Disable(shutCtx)
@@ -478,6 +491,7 @@ START:
 				if ctx.Err() != nil {
 					return
 				}
+				log.Errorf("Tunnel program exited: %v", err)
 				osExit(CodeClientError)
 			}
 			// TODO: maybe restart the tunnel program?

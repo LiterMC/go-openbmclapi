@@ -21,7 +21,7 @@ var areaUS = map[string]string{
 	"error.cert.request.failed":         "Error when requesting certificate key pair: %v",
 	"error.cert.requested.parse.failed": "Cannot parse requested certificate key pair: %v",
 
-	"info.server.public.at":            "Server public at https://%s:%d (%s) with %d certificates",
+	"info.server.public.at":            "Server public at https://%s (%s) with %d certificates",
 	"info.server.alternative.hosts":    "Alternative hostnames:",
 	"info.wait.first.sync":             "Waiting for the first sync ...",
 	"info.cluster.enable.sending":      "Sending enable packet",

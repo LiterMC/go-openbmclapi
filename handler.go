@@ -62,7 +62,7 @@ var _ http.Hijacker = (*statusResponseWriter)(nil)
 
 func getCaller() (caller runtime.Frame) {
 	pc := make([]uintptr, 16)
-	n := runtime.Callers(2, pc)
+	n := runtime.Callers(3, pc)
 	frames := runtime.CallersFrames(pc[:n])
 	frame, more := frames.Next()
 	_ = more

@@ -161,7 +161,7 @@ certificates:
 tunneler:
   # 是否使用打洞
   enable: false
-  # 打洞程序/脚本路径. 注意: 暂不支持传递参数. 若要指定参数, 请填入带参调用脚本路径
+  # 打洞程序/脚本路径. 注意: 暂不支持传递参数. 若要指定参数, 请在脚本内带参调用目标程序
   tunnel-program: ./path/to/tunnel/program
   # 打洞程序 host & port 输出, 使用 regex 格式
   output-regex: \bNATedAddr\s+(?<host>[0-9.]+|\[[0-9a-f:]+\]):(?<port>\d+)$

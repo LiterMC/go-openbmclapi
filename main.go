@@ -98,8 +98,7 @@ var exitCh = make(chan int, 1)
 
 func osExit(n int) {
 	select {
-	case exitCh
-		<- n:
+	case exitCh<- n:
 	default:
 	}
 	runtime.Goexit()

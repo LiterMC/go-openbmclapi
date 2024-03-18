@@ -35,7 +35,7 @@ var areaUS = map[string]string{
 	"error.cluster.stat.save.failed":      "Error when saving status: %v",
 	"error.cluster.keepalive.send.failed": "Error when keep-alive: %v",
 	"error.cluster.keepalive.failed":      "Keep-alive failed: %v",
-	"info.cluster.keepalive.success":      "Keep-alive success: hits=%d bytes=%s",
+	"info.cluster.keepalive.success":      "Keep-alive success: hits=%d bytes=%s; %s",
 
 	"warn.server.closing":          "Closing server ...",
 	"warn.server.closed":           "Server closed.",

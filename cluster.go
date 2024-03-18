@@ -296,7 +296,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	engio.OnDialError(func(_ *engine.Socket, err error) {
 		cr.reconnectCount++
 		log.Errorf("Failed to connect to the center server (%d/%d): %v", cr.reconnectCount, config.MaxReconnectCount, err)
-		if config.MaxReconnectCount < 0 || cr.reconnectCount >= config.MaxReconnectCount {
+		if config.MaxReconnectCount >= 0 && cr.reconnectCount >= config.MaxReconnectCount {
 			if cr.shouldEnable.Load() {
 				log.Errorf("Cluster failed to connect too much times; exit.")
 				osExit(CodeServerOrEnvionmentError)

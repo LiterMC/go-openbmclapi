@@ -75,12 +75,12 @@ func parseArgs() {
 			fmt.Printf("Go-OpenBmclApi v%s (%s)\n", build.ClusterVersion, build.BuildVersion)
 			os.Exit(0)
 		case "help", "--help":
-			printHelp()
+		printHelp()
 			os.Exit(0)
 		case "zip-cache":
 			cmdZipCache(os.Args[2:])
 			os.Exit(0)
-		case "unzip-cache":
+		case  "unzip-cache":
 			cmdUnzipCache(os.Args[2:])
 			os.Exit(0)
 		case "upload-webdav":
@@ -98,7 +98,8 @@ var exitCh = make(chan int, 1)
 
 func osExit(n int) {
 	select {
-	case exitCh <- n:
+	case exitCh
+		<- n:
 	default:
 	}
 	runtime.Goexit()
@@ -119,7 +120,7 @@ func main() {
 	exitCode := -1
 	defer func() {
 		code := exitCode
-		if code == -1 {
+		if code == -1{
 			select {
 			case code = <-exitCh:
 			default:
@@ -148,7 +149,7 @@ func main() {
 		var err error
 		dumpCmdFile := filepath.Join(os.TempDir(), fmt.Sprintf("go-openbmclapi-dump-command.%d.in", os.Getpid()))
 		if r.dumpCmdFd, err = os.OpenFile(dumpCmdFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, 0660); err != nil {
-			log.Errorf("Cannot create %q: %v", dumpCmdFile, err)
+		log.Errorf("Cannot create %q: %v", dumpCmdFile, err)
 		} else {
 			defer os.Remove(dumpCmdFile)
 			defer r.dumpCmdFd.Close()
@@ -456,7 +457,7 @@ func (r *Runner) GenerateTLSConfig(ctx context.Context) (tlsConfig *tls.Config) 
 			}
 		}
 	}
-	if !config.Byoc {
+	if!  config.Byoc {
 		log.Info(Tr("info.cert.requesting"))
 		tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
 		pair, err := r.cluster.RequestCert(tctx)
@@ -600,21 +601,20 @@ func (r *Runner) enableClusterByTunnel(ctx context.Context) {
 					}
 					osExit(CodeServerOrEnvionmentError)
 				}
-			case <-ctx.Done():
+			case<-ctx.Done():
 				return
 			}
 		}
 	}()
-	if _, err := cmd.Process.Wait(); err != nil {
+	if _,err := cmd.Process.Wait(); err != nil {
 		if ctx.Err() != nil {
 			return
 		}
 		log.Errorf("Tunnel program exited: %v", err)
 		osExit(CodeClientError)
 	}
-	// TODO: maybe restart the tunnel program?
+// TODO: maybe restart the tunnel program?
 }
 
-func Tr(name string) string {
-	return lang.Tr(name)
-}
+func Tr(name string) string {return lang.Tr(
+	name)}

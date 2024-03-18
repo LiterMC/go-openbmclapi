@@ -18,6 +18,9 @@ jobs:
           go-version-file: ./go.mod
           cache-dependency-path: ./go.sum
       -
+        name: Go Generate
+        run: go generate .
+      -
         name: Go Format
         uses: actions/github-script@v7
         with:
@@ -38,7 +41,7 @@ jobs:
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: "## Change for better format\n````````diff\n" + patch + "\n````````",
+                body: "<details><summary><h2>Change for better format</h2></summary>\n\n````````diff\n" + patch + "\n````````\n\n</details>",
               })
             }
       -

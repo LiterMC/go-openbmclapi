@@ -120,7 +120,7 @@ func (db *SqlDB) ValidJTI(jti string) (has bool, err error) {
 	defer cancel()
 
 	var has1 int
-	if err = db.jtiStmts.get.QueryRowContext(ctx, jti).Scan(has1); err != nil {
+	if err = db.jtiStmts.get.QueryRowContext(ctx, jti).Scan(&has1); err != nil {
 		return
 	}
 	if has1 == 0 {

@@ -1,0 +1,49 @@
+
+name: Check Pull Request
+on:
+  pull_request:
+    #
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Action Checkout
+        uses: actions/checkout@v3
+      -
+        name: Setup Golang
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
+      -
+        name: Go Format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const child_process = require('child_process')
+            const patch = await new Promise((resolve, reject) => child_process.exec('gofmt -d .', (error, stdout, stderr) => {
+              if (stderr) {
+                console.error(stderr)
+              }
+              if (error) {
+                reject(error)
+                return
+              }
+              resolve(stdout)
+            }))
+            if (patch) {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: "## Change for better format\n````````diff\n" + patch + "\n````````",
+              })
+            }
+      -
+        name: Go Vet
+        run: go vet ./...
+      -
+        name: Go Test
+        run: go test -v ./...

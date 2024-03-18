@@ -236,7 +236,7 @@ onMounted(() => {
 				</div>
 				<template v-else-if="data">
 					<div class="no-select">
-						<span>{{ tr('message.server.run-for') }}</span>
+						<span>{{ tr('message.server.run-for') }}&nbsp;</span>
 						<span class="info-uptime">
 							{{ formatTime(now.getTime() - new Date(data.startAt).getTime()) }}
 						</span>
@@ -244,6 +244,7 @@ onMounted(() => {
 					<div v-if="data.isSync" class="no-select">
 						&nbsp; |
 						{{ tr('message.server.synchronizing') }}
+						&nbsp;
 						<i>
 							(
 							<b>{{ data.sync?.prog }}</b>

@@ -246,7 +246,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 
 	_, err := cr.GetAuthToken(ctx)
 	if err != nil {
-		log.Errorf("Cannot get auth token: %v; exit.", err)
+		log.Errorf(Tr("error.cluster.auth.failed"), err)
 		osExit(CodeClientOrServerError)
 	}
 
@@ -295,10 +295,10 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	})
 	engio.OnDialError(func(_ *engine.Socket, err error) {
 		cr.reconnectCount++
-		log.Errorf("Failed to connect to the center server (%d/%d): %v", cr.reconnectCount, config.MaxReconnectCount, err)
+		log.Errorf(Tr("error.cluster.connect.failed"), cr.reconnectCount, config.MaxReconnectCount, err)
 		if config.MaxReconnectCount >= 0 && cr.reconnectCount >= config.MaxReconnectCount {
 			if cr.shouldEnable.Load() {
-				log.Errorf("Cluster failed to connect too much times; exit.")
+				log.Error(Tr("error.cluster.connect.failed.toomuch"))
 				osExit(CodeServerOrEnvionmentError)
 			}
 		}
@@ -307,19 +307,19 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket = socket.NewSocket(engio, socket.WithAuthTokenFn(func() string {
 		token, err := cr.GetAuthToken(ctx)
 		if err != nil {
-			log.Errorf("Cannot get auth token: %v; exit.", err)
+			log.Errorf(Tr("error.cluster.auth.failed"), err)
 			osExit(CodeServerOrEnvionmentError)
 		}
 		return token
 	}))
 	cr.socket.OnBeforeConnect(func(*socket.Socket) {
-		log.Infof("Preparing to connect to center server (%d/%d)", cr.reconnectCount, config.MaxReconnectCount)
+		log.Infof(Tr("info.cluster.connect.prepare"), cr.reconnectCount, config.MaxReconnectCount)
 	})
 	cr.socket.OnConnect(func(*socket.Socket, string) {
 		log.Debugf("shouldEnable is %v", cr.shouldEnable.Load())
 		if cr.shouldEnable.Load() {
 			if err := cr.Enable(ctx); err != nil {
-				log.Errorf("Cannot enable cluster: %v; exit.", err)
+				log.Errorf(Tr("error.cluster.enable.failed"), err)
 				osExit(CodeClientOrEnvionmentError)
 			}
 		}

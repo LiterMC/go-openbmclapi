@@ -95,7 +95,7 @@ func (db *SqlDB) setupJTI(ctx context.Context) (err error) {
 	}
 
 	const getSelectCmd = "SELECT 1 FROM " + tableName +
-		" WHERE `id`=? AND `expire` > CURRENT_TIMESTAMP()"
+		" WHERE `id`=? AND `expire` > CURRENT_TIMESTAMP"
 	if db.jtiStmts.get, err = db.db.PrepareContext(ctx, getSelectCmd); err != nil {
 		return
 	}

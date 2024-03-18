@@ -187,7 +187,7 @@ cache:
 serve-limit:
   # 是否启用上行限制
   enable: false
-  # 最大连接数量
+  # 最大连接数量, -1 表示无限制
   max-conn: 16384
   # 上行速率限制 (KiB/s), 0 表示无限制
   upload-rate: 0

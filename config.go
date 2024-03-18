@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -246,7 +247,7 @@ var defaultConfig = Config{
 
 	Database: DatabaseConfig{
 		Driver: "sqlite",
-		DSN:    "files.db",
+		DSN:    filepath.Join("data", "files.db"),
 	},
 
 	Hijack: HijackConfig{

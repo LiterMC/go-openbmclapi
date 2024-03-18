@@ -24,6 +24,7 @@ Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 - 得益于 Golang 强大的跨平台编译器, 支持大部分主流平台/处理器
 - 内置一个统计面板
 - 支持在面板内实时查看日志 (需登录)
+- 支持自动化打洞程序
 - 支持一些小众的~~奇怪~~需求
 - ~~更好的压榨节点~~
 

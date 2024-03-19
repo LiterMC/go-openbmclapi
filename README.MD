@@ -242,7 +242,7 @@ storages:
     weight: 100
     # 节点附加数据
     data:
-      # cache 文件夹到路径
+      # cache 文件夹的路径
       cache-path: cache
       # 压缩方式 (目前未使用)
       compressor: ""

@@ -8,8 +8,8 @@
 ARGS=()
 
 while [ $# -gt 0 ]; do
-  case "$1" in
-  	-m|--mirror)
+	case "$1" in
+		-m|--mirror)
 			shift
 			MIRROR_PREFIX=$1
 			;;
@@ -60,7 +60,7 @@ if ! id $USERNAME >/dev/null 2>&1; then
 	useradd $USERNAME || {
 		echo -e "\e[31mERROR: Could not create user $USERNAME\e[0m"
 		exit 1
-  	}
+	}
 fi
 
 
@@ -115,23 +115,23 @@ fetchBlob service/go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.
 
 ARCH=$(uname -m)
 case "$ARCH" in
-    amd64|x86_64)
-        ARCH="amd64"
-    ;;
-    i386|i686)
-        ARCH="386"
-    ;;
-    aarch64|armv8|arm64)
-        ARCH="arm64"
-    ;;
-    armv7l|armv6|armv7)
-        ARCH="arm"
-    ;;
-    *)
-        echo -e "\e[31m
+	amd64|x86_64)
+		ARCH="amd64"
+	;;
+	i386|i686)
+		ARCH="386"
+	;;
+	aarch64|armv8|arm64)
+		ARCH="arm64"
+	;;
+	armv7l|armv6|armv7)
+		ARCH="arm"
+	;;
+	*)
+		echo -e "\e[31m
 Unknown CPU architecture: $ARCH
 Please report to https://github.com/LiterMC/go-openbmclapi/issues/new\e[0m"
-        exit 1
+		exit 1
 esac
 
 source="${MIRROR_PREFIX}https://github.com/$REPO/releases/download/$TARGET_TAG/go-openbmclapi-linux-$ARCH"

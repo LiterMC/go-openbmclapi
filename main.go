@@ -142,7 +142,6 @@ func main() {
 	log.StartFlushLogFile()
 
 	r := new(Runner)
-	signalCh := make(chan os.Signal, 1)
 
 	if config.Advanced.DebugLog {
 		var err error
@@ -182,23 +181,20 @@ START:
 
 	r.InitCluster(ctx)
 
-	if !r.cluster.Connect(ctx) {
-		osExit(CodeClientOrServerError)
-	}
-
-	log.Debugf("Receiving signals")
-	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-
-	firstSyncDone := make(chan struct{}, 0)
-
 	go func(ctx context.Context) {
 		defer log.RecordPanic()
-		defer close(firstSyncDone)
-		r.InitSynchronizer(ctx)
-	}(ctx)
 
-	go func(ctx context.Context) {
-		defer log.RecordPanic()
+		if !r.cluster.Connect(ctx) {
+			osExit(CodeClientOrServerError)
+		}
+
+		firstSyncDone := make(chan struct{}, 0)
+		go func() {
+			defer log.RecordPanic()
+			defer close(firstSyncDone)
+			r.InitSynchronizer(ctx)
+		}()
+
 		listener := r.CreateHTTPServerListener(ctx)
 		go func(listener net.Listener) {
 			defer listener.Close()
@@ -235,8 +231,7 @@ START:
 		r.EnableCluster(ctx)
 	}(ctx)
 
-	code := r.DoSignals(signalCh, cancel)
-	signal.Stop(signalCh)
+	code := r.DoSignals(cancel)
 	if r.restartFlag {
 		goto START
 	}
@@ -269,7 +264,12 @@ func (r *Runner) getCertCount() int {
 	return len(r.tlsConfig.Certificates)
 }
 
-func (r *Runner) DoSignals(signalCh <-chan os.Signal, cancel context.CancelFunc) int {
+func (r *Runner) DoSignals(cancel context.CancelFunc) int {
+	signalCh := make(chan os.Signal, 1)
+	log.Debugf("Receiving signals")
+	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer signal.Stop(signalCh)
+
 	r.restartFlag = false
 	for {
 		select {
@@ -399,7 +399,7 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		}
 	}
 	createInterval(ctx, func() {
-		log.Info(Tr("info.fetch.filelist"))
+		log.Info(Tr("info.filelist.fetching"))
 		fl, err := r.cluster.GetFileList(ctx)
 		if err != nil {
 			log.Errorf(Tr("error.cannot.fetch.filelist"), err)

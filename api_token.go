@@ -34,6 +34,8 @@ const jwtIssuerPrefix = "GOBA.dash.api"
 const (
 	tokenTypeKey = "go-openbmclapi.cluster.token.typ"
 	tokenIdKey   = "go-openbmclapi.cluster.token.id"
+
+	loggedUserKey = "go-openbmclapi.cluster.logged.user"
 )
 
 const (
@@ -43,6 +45,13 @@ const (
 
 func getRequestTokenType(req *http.Request) string {
 	return req.Context().Value(tokenTypeKey).(string)
+}
+
+func getLoggedUser(req *http.Request) string {
+	if user, ok := req.Context().Value(loggedUserKey).(string); ok {
+		return user
+	}
+	return ""
 }
 
 var (
@@ -70,9 +79,10 @@ type authTokenClaims struct {
 	jwt.RegisteredClaims
 
 	Client string `json:"cli"`
+	User   string `json:"usr"`
 }
 
-func (cr *Cluster) generateAuthToken(cliId string) (string, error) {
+func (cr *Cluster) generateAuthToken(cliId string, userId string) (string, error) {
 	jti, err := genRandB64(16)
 	if err != nil {
 		return "", err
@@ -88,6 +98,7 @@ func (cr *Cluster) generateAuthToken(cliId string) (string, error) {
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
 		Client: cliId,
+		User:   userId,
 	})
 	tokenStr, err := token.SignedString(cr.apiHmacKey)
 	if err != nil {
@@ -99,27 +110,33 @@ func (cr *Cluster) generateAuthToken(cliId string) (string, error) {
 	return tokenStr, nil
 }
 
-func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string, err error) {
+func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string, user string, err error) {
 	var claims authTokenClaims
-	_, err = jwt.ParseWithClaims(
+	if _, err = jwt.ParseWithClaims(
 		token,
 		&claims,
 		cr.getJWTKey,
 		jwt.WithSubject(authTokenSubject),
 		jwt.WithIssuedAt(),
 		jwt.WithIssuer(cr.jwtIssuer),
-	)
-	if err != nil {
+	); err != nil {
 		return
 	}
 	if claims.Client != cliId {
-		return "", ErrClientIdNotMatch
+		err = ErrClientIdNotMatch
+		return
 	}
-	jti := claims.ID
-	if ok, _ := cr.database.ValidJTI(jti); !ok {
-		return "", ErrJTINotExists
+	id = claims.ID
+	if ok, _ := cr.database.ValidJTI(id); !ok {
+		err = ErrJTINotExists
+		return
 	}
-	return jti, nil
+	if user = claims.User; user == "" {
+		// reject old token
+		err = ErrJTINotExists
+		return
+	}
+	return
 }
 
 type apiTokenClaims struct {

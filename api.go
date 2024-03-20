@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime"
 	"net/http"
@@ -34,6 +35,7 @@ import (
 	"runtime/pprof"
 	// "github.com/gorilla/websocket"
 
+	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
 )
@@ -110,13 +112,15 @@ func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 				})
 				return
 			}
-			if id, err = cr.verifyAuthToken(cli, tk); err != nil {
+			var user string
+			if id, user, err = cr.verifyAuthToken(cli, tk); err != nil {
 				writeJson(rw, http.StatusUnauthorized, Map{
 					"error": "invalid authorization token",
 				})
 				return
 			}
 			ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAuth)
+			ctx = context.WithValue(ctx, loggedUserKey, user)
 		}
 		ctx = context.WithValue(ctx, tokenIdKey, id)
 		req = req.WithContext(ctx)
@@ -146,6 +150,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 
 	mux.HandleFunc("/log.io", cr.apiV0LogIO)
 	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV0Pprof))
+	mux.Handle("/subscribe", cr.apiAuthHandleFunc(cr.apiV0Subscribe))
 	return mux
 }
 
@@ -157,7 +162,7 @@ func (cr *Cluster) apiV0Ping(rw http.ResponseWriter, req *http.Request) {
 	cli := apiGetClientId(req)
 	auth := req.Header.Get("Authorization")
 	if tk, ok := strings.CutPrefix(auth, "Bearer "); ok {
-		if _, err := cr.verifyAuthToken(cli, tk); err == nil {
+		if _, _, err := cr.verifyAuthToken(cli, tk); err == nil {
 			authed = true
 		}
 	}
@@ -210,40 +215,21 @@ func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 	}
 	cli := apiGetClientId(req)
 
-	var (
-		authUser, authPass string
-	)
-	ct, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
-	if err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":        "Unexpected Content-Type",
-			"content-type": req.Header.Get("Content-Type"),
-			"message":      err.Error(),
-		})
-		return
+	type T = struct {
+		User string `json:"username"`
+		Pass string `json:"password"`
 	}
-	switch ct {
-	case "application/x-www-form-urlencoded":
-		authUser = req.PostFormValue("username")
-		authPass = req.PostFormValue("password")
-	case "application/json":
-		var data struct {
-			User string `json:"username"`
-			Pass string `json:"password"`
+	data, ok := parseRequestBody(rw, req, func(rw http.ResponseWriter, req *http.Request, ct string, data *T) error {
+		switch ct {
+		case "application/x-www-form-urlencoded":
+			data.User = req.PostFormValue("username")
+			data.Pass = req.PostFormValue("password")
+			return nil
+		default:
+			return errUnknownContent
 		}
-		if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
-			writeJson(rw, http.StatusBadRequest, Map{
-				"error":   "Cannot decode json body",
-				"message": err.Error(),
-			})
-			return
-		}
-		authUser, authPass = data.User, data.Pass
-	default:
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":        "Unexpected Content-Type",
-			"content-type": ct,
-		})
+	})
+	if !ok {
 		return
 	}
 
@@ -255,14 +241,14 @@ func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	expectPassword = asSha256Hex(expectPassword)
-	if subtle.ConstantTimeCompare(([]byte)(expectUsername), ([]byte)(authUser)) == 0 ||
-		subtle.ConstantTimeCompare(([]byte)(expectPassword), ([]byte)(authPass)) == 0 {
+	if subtle.ConstantTimeCompare(([]byte)(expectUsername), ([]byte)(data.User)) == 0 ||
+		subtle.ConstantTimeCompare(([]byte)(expectPassword), ([]byte)(data.Pass)) == 0 {
 		writeJson(rw, http.StatusUnauthorized, Map{
 			"error": "The username or password is incorrect",
 		})
 		return
 	}
-	token, err := cr.generateAuthToken(cli)
+	token, err := cr.generateAuthToken(cli, data.User)
 	if err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Cannot generate token",
@@ -382,8 +368,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 		}
 		return
 	}
-	tid, _ := cr.verifyAuthToken(cli, authData.Token)
-	if tid == "" {
+	if _, _, err = cr.verifyAuthToken(cli, authData.Token); err != nil {
 		conn.WriteJSON(Map{
 			"type":    "error",
 			"message": "auth failed",
@@ -578,7 +563,135 @@ func (cr *Cluster) apiV0Pprof(rw http.ResponseWriter, req *http.Request) {
 	p.WriteTo(rw, debug)
 }
 
+func (cr *Cluster) apiV0Subscribe(rw http.ResponseWriter, req *http.Request) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost) {
+		return
+	}
+	cliId := apiGetClientId(req)
+	user := getLoggedUser(req)
+	if user == "" {
+		writeJson(rw, http.StatusForbidden, Map{
+			"error": "Unauthorized",
+		})
+		return
+	}
+	switch req.Method {
+	case http.MethodGet:
+		cr.apiV0SubscribeGET(rw, req, user, cliId)
+	case http.MethodPost:
+		cr.apiV0SubscribePOST(rw, req, user, cliId)
+	default:
+		panic("unreachable")
+	}
+}
+
+func (cr *Cluster) apiV0SubscribeGET(rw http.ResponseWriter, req *http.Request, user string, client string) {
+	record, err := cr.database.GetSubscribe(user, client)
+	if err != nil {
+		if err == database.ErrNotFound {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error": "no subscription was found",
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	writeJson(rw, http.StatusOK, Map{
+		"scopes": record.Scopes,
+	})
+}
+
+func (cr *Cluster) apiV0SubscribePOST(rw http.ResponseWriter, req *http.Request, user string, client string) {
+	type T = struct {
+		EndPoint string   `json:"endpoint,omitempty"`
+		Scopes   []string `json:"scopes"`
+	}
+	rec := database.SubscribeRecord{
+		User:   user,
+		Client: client,
+	}
+	data, ok := parseRequestBody(rw, req, func(rw http.ResponseWriter, req *http.Request, ct string, data *T) error {
+		switch ct {
+		case "application/x-www-form-urlencoded":
+			if err := req.ParseForm(); err != nil {
+				return err
+			}
+			data.EndPoint = req.PostFormValue("endpoint")
+			for _, scope := range req.PostForm["scopes"] {
+				ss := strings.Split(strings.ToLower(scope), ",")
+				rec.Scopes.FromStrings(ss)
+			}
+			return nil
+		default:
+			return errUnknownContent
+		}
+	})
+	if !ok {
+		return
+	}
+
+	rec.EndPoint = data.EndPoint
+	rec.Scopes.FromStrings(data.Scopes)
+	err := cr.database.SetSubscribe(rec)
+	if err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "Database update failed",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
 type Map = map[string]any
+
+var errUnknownContent = errors.New("unknown content-type")
+
+type requestBodyParser[T any] func(rw http.ResponseWriter, req *http.Request, contentType string, data *T) error
+
+func parseRequestBody[T any](rw http.ResponseWriter, req *http.Request, fallback requestBodyParser[T]) (data T, parsed bool) {
+	contentType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
+	if err != nil {
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":        "Unexpected Content-Type",
+			"content-type": req.Header.Get("Content-Type"),
+			"message":      err.Error(),
+		})
+		return
+	}
+	switch contentType {
+	case "application/json":
+		if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+			writeJson(rw, http.StatusBadRequest, Map{
+				"error":   "Cannot decode request body",
+				"message": err.Error(),
+			})
+			return
+		}
+		return data, true
+	default:
+		if fallback != nil {
+			if err := fallback(rw, req, contentType, &data); err == nil {
+				return data, true
+			} else if err != errUnknownContent {
+				writeJson(rw, http.StatusBadRequest, Map{
+					"error":   "Cannot decode request body",
+					"message": err.Error(),
+				})
+				return
+			}
+		}
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":        "Unexpected Content-Type",
+			"content-type": contentType,
+		})
+		return
+	}
+}
 
 func writeJson(rw http.ResponseWriter, code int, data any) (err error) {
 	buf, err := json.Marshal(data)

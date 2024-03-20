@@ -505,7 +505,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		}
 	}
 	var sto storage.Storage
-	forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
+	if forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
 		sto = cr.storages[i]
 		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.String())
 
@@ -525,7 +525,9 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			}
 		}
 		return true
-	})
+	}) {
+		err = nil
+	}
 	if sto != nil {
 		SetAccessInfo(req, "storage", sto.String())
 	}

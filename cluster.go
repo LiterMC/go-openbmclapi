@@ -231,6 +231,12 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	return
 }
 
+func (cr *Cluster) Destory(ctx context.Context) {
+	if cr.database != nil {
+		cr.database.Cleanup()
+	}
+}
+
 func (cr *Cluster) allocBuf(ctx context.Context) (slotId int, buf []byte, free func()) {
 	return cr.bufSlots.Alloc(ctx)
 }

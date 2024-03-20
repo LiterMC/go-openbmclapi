@@ -20,6 +20,8 @@
 package database
 
 import (
+	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"time"
 )
@@ -30,13 +32,11 @@ var (
 	ErrExists   = errors.New("record's key was already exists")
 )
 
-type FileRecord struct {
-	Path string
-	Hash string
-	Size int64
-}
-
 type DB interface {
+	// Cleanup will release any release that the database created
+	// No operation should be executed during or after cleanup
+	Cleanup() (err error)
+
 	ValidJTI(jti string) (bool, error)
 	AddJTI(jti string, expire time.Time) error
 	RemoveJTI(jti string) error
@@ -45,8 +45,95 @@ type DB interface {
 	GetFileRecord(path string) (*FileRecord, error)
 	SetFileRecord(FileRecord) error
 	RemoveFileRecord(path string) error
-
 	// if the callback returns ErrStopIter, ForEach must immediately stop and returns a nil error
 	// the callback should not edit the record pointer
 	ForEachFileRecord(cb func(*FileRecord) error) error
+
+	GetSubscribe(user string, client string) (*SubscribeRecord, error)
+	SetSubscribe(SubscribeRecord) error
+	RemoveSubscribe(user string, client string) error
+	ForEachSubscribe(cb func(*SubscribeRecord) error) error
+}
+
+type FileRecord struct {
+	Path string
+	Hash string
+	Size int64
+}
+
+type SubscribeRecord struct {
+	User     string
+	Client   string
+	EndPoint string
+	Scopes   NotificationScopes
+}
+
+type NotificationScopes struct {
+	Disabled bool `json:"disabled"`
+	Enabled  bool `json:"enabled"`
+	SyncDone bool `json:"syncdone"`
+	Updates  bool `json:"updates"`
+}
+
+var (
+	_ sql.Scanner   = (*NotificationScopes)(nil)
+	_ driver.Valuer = (*NotificationScopes)(nil)
+)
+
+const (
+	nsFlagDisabled = 1 << iota
+	nsFlagEnabled
+	nsFlagSyncDone
+	nsFlagUpdates
+)
+
+func (ns *NotificationScopes) ToInt64() (v int64) {
+	if ns.Disabled {
+		v |= nsFlagDisabled
+	}
+	if ns.Enabled {
+		v |= nsFlagEnabled
+	}
+	if ns.SyncDone {
+		v |= nsFlagSyncDone
+	}
+	if ns.Updates {
+		v |= nsFlagUpdates
+	}
+	return
+}
+
+func (ns *NotificationScopes) FromInt64(v int64) {
+	ns.Disabled = v&nsFlagDisabled != 0
+	ns.Enabled = v&nsFlagEnabled != 0
+	ns.SyncDone = v&nsFlagSyncDone != 0
+	ns.Updates = v&nsFlagUpdates != 0
+}
+
+func (ns *NotificationScopes) Scan(src any) error {
+	v, ok := src.(int64)
+	if !ok {
+		return errors.New("Source is not a integer")
+	}
+	ns.FromInt64(v)
+	return nil
+}
+
+func (ns *NotificationScopes) Value() (driver.Value, error) {
+	return ns.ToInt64(), nil
+}
+
+func (ns *NotificationScopes) FromStrings(scopes []string) {
+	for _, s := range scopes {
+		switch s {
+		case "disabled":
+			ns.Disabled = true
+		case "enabled":
+			ns.Enabled = true
+		case "syncdone":
+			ns.SyncDone = true
+		case "updates":
+			ns.Updates = true
+		}
+	}
 }

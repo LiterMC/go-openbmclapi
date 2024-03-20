@@ -23,6 +23,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 type SqlDB struct {
@@ -42,6 +44,19 @@ type SqlDB struct {
 		remove    *sql.Stmt
 		forEach   *sql.Stmt
 	}
+
+	subscribeStmts struct {
+		get                 *sql.Stmt
+		has                 *sql.Stmt
+		setInsert           *sql.Stmt
+		setUpdate           *sql.Stmt
+		setUpdateScopesOnly *sql.Stmt
+		remove              *sql.Stmt
+		removeUser          *sql.Stmt
+		forEach             *sql.Stmt
+	}
+
+	jtiCleaner *time.Timer
 }
 
 var _ DB = (*SqlDB)(nil)
@@ -79,6 +94,16 @@ func (db *SqlDB) setup(ctx context.Context) (err error) {
 	if err = db.setupFileRecords(ctx); err != nil {
 		return
 	}
+
+	if err = db.setupSubscribe(ctx); err != nil {
+		return
+	}
+	return
+}
+
+func (db *SqlDB) Cleanup() (err error) {
+	db.jtiCleaner.Stop()
+	db.db.Close()
 	return
 }
 
@@ -112,6 +137,26 @@ func (db *SqlDB) setupJTI(ctx context.Context) (err error) {
 	if db.jtiStmts.remove, err = db.db.PrepareContext(ctx, removeDeleteCmd); err != nil {
 		return
 	}
+
+	const cleanDeleteCmd = "DELETE FROM " + tableName +
+		" WHERE `expire` < CURRENT_TIMESTAMP"
+	var cleanStmt *sql.Stmt
+	if cleanStmt, err = db.db.PrepareContext(ctx, cleanDeleteCmd); err != nil {
+		return
+	}
+
+	db.jtiCleaner = time.NewTimer(time.Minute * 10)
+	go func(timer *time.Timer, cleanStmt *sql.Stmt) {
+		defer cleanStmt.Close()
+		for range timer.C {
+			ctx, cancel := context.WithTimeout(ctx, time.Second*15)
+			_, err := cleanStmt.ExecContext(ctx)
+			cancel()
+			if err != nil {
+				log.Errorf("Error when cleaning expired tokens: %v", err)
+			}
+		}
+	}(db.jtiCleaner, cleanStmt)
 	return
 }
 
@@ -208,6 +253,7 @@ func (db *SqlDB) GetFileRecord(path string) (rec *FileRecord, err error) {
 	defer cancel()
 
 	rec = new(FileRecord)
+	rec.Path = path
 	if err = db.fileRecordStmts.get.QueryRowContext(ctx, path).Scan(&rec.Hash, &rec.Size); err != nil {
 		if err == sql.ErrNoRows {
 			err = ErrNotFound
@@ -232,7 +278,7 @@ func (db *SqlDB) SetFileRecord(rec FileRecord) (err error) {
 	}()
 
 	var has int
-	if err = tx.Stmt(db.fileRecordStmts.has).QueryRow(rec.Path).Scan(has); err != nil {
+	if err = tx.Stmt(db.fileRecordStmts.has).QueryRow(rec.Path).Scan(&has); err != nil && err != sql.ErrNoRows {
 		return
 	}
 	if has == 0 {
@@ -275,6 +321,163 @@ func (db *SqlDB) ForEachFileRecord(cb func(*FileRecord) error) (err error) {
 	var rec FileRecord
 	for rows.Next() {
 		if err = rows.Scan(&rec.Path, &rec.Hash, &rec.Size); err != nil {
+			return
+		}
+		cb(&rec)
+	}
+	if err = rows.Err(); err != nil {
+		return
+	}
+	return
+}
+
+func (db *SqlDB) setupSubscribe(ctx context.Context) (err error) {
+	const tableName = "`subscribes`"
+
+	const createTable = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
+		" `user` VARCHAR(128) NOT NULL," +
+		" `client` VARCHAR(128) NOT NULL," +
+		" `endpoint` VARCHAR(256) NOT NULL," +
+		" `scopes` INTEGER NOT NULL," +
+		" PRIMARY KEY (`user`,`client`)" +
+		")"
+	if _, err = db.db.ExecContext(ctx, createTable); err != nil {
+		return
+	}
+
+	const getSelectCmd = "SELECT `endpoint`,`scopes` FROM " + tableName +
+		" WHERE `user`=? AND `client`=?"
+	if db.subscribeStmts.get, err = db.db.PrepareContext(ctx, getSelectCmd); err != nil {
+		return
+	}
+
+	const hasSelectCmd = "SELECT 1 FROM " + tableName +
+		" WHERE `user`=? AND `client`=?"
+	if db.subscribeStmts.has, err = db.db.PrepareContext(ctx, hasSelectCmd); err != nil {
+		return
+	}
+
+	const setInsertCmd = "INSERT INTO " + tableName +
+		" (`user`,`client`,`endpoint`,`scopes`) VALUES" +
+		" (?,?,?,?)"
+	const setUpdateCmd = "UPDATE " + tableName + " SET" +
+		" `endpoint`=?, `scopes`=?" +
+		" WHERE `user`=? AND `client`=?"
+	const setUpdateScopesOnlyCmd = "UPDATE " + tableName + " SET" +
+		" scopes`=?" +
+		" WHERE `user`=? AND `client`=?"
+	if db.subscribeStmts.setInsert, err = db.db.PrepareContext(ctx, setInsertCmd); err != nil {
+		return
+	}
+	if db.subscribeStmts.setUpdate, err = db.db.PrepareContext(ctx, setUpdateCmd); err != nil {
+		return
+	}
+	if db.subscribeStmts.setUpdateScopesOnly, err = db.db.PrepareContext(ctx, setUpdateScopesOnlyCmd); err != nil {
+		return
+	}
+
+	const removeDeleteCmd = "DELETE FROM " + tableName +
+		" WHERE `user`=? AND `client`=?"
+	if db.subscribeStmts.remove, err = db.db.PrepareContext(ctx, removeDeleteCmd); err != nil {
+		return
+	}
+
+	const removeUserDeleteCmd = "DELETE FROM " + tableName +
+		" WHERE `user`=?"
+	if db.subscribeStmts.removeUser, err = db.db.PrepareContext(ctx, removeUserDeleteCmd); err != nil {
+		return
+	}
+
+	const forEachSelectCmd = "SELECT `user`,`client`,`endpoint`,`scopes` FROM " + tableName
+	if db.subscribeStmts.forEach, err = db.db.PrepareContext(ctx, forEachSelectCmd); err != nil {
+		return
+	}
+	return err
+}
+
+func (db *SqlDB) GetSubscribe(user string, client string) (rec *SubscribeRecord, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	rec = new(SubscribeRecord)
+	rec.User = user
+	rec.Client = client
+	if err = db.subscribeStmts.get.QueryRowContext(ctx, user, client).Scan(&rec.EndPoint, &rec.Scopes); err != nil {
+		if err == sql.ErrNoRows {
+			err = ErrNotFound
+		}
+		return
+	}
+	return
+}
+
+func (db *SqlDB) SetSubscribe(rec SubscribeRecord) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	tx, err := db.db.BeginTx(ctx, nil)
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if rec.EndPoint == "" {
+		if _, err = tx.Stmt(db.subscribeStmts.setUpdateScopesOnly).Exec(rec.Scopes, rec.User, rec.Client); err != nil {
+			if err == sql.ErrNoRows {
+				err = ErrNotFound
+			}
+			return
+		}
+	} else {
+		var has int
+		if err = tx.Stmt(db.subscribeStmts.has).QueryRow(rec.User, rec.Client).Scan(&has); err != nil && err != sql.ErrNoRows {
+			return
+		}
+		if has == 0 {
+			if _, err = tx.Stmt(db.subscribeStmts.setInsert).Exec(rec.User, rec.Client, rec.EndPoint, rec.Scopes); err != nil {
+				return
+			}
+		} else {
+			if _, err = tx.Stmt(db.subscribeStmts.setUpdate).Exec(rec.EndPoint, rec.Scopes, rec.User, rec.Client); err != nil {
+				return
+			}
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return
+	}
+	return
+}
+
+func (db *SqlDB) RemoveSubscribe(user string, client string) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if _, err = db.subscribeStmts.remove.ExecContext(ctx, user, client); err != nil {
+		if err == sql.ErrNoRows {
+			err = ErrNotFound
+		}
+		return
+	}
+	return
+}
+
+func (db *SqlDB) ForEachSubscribe(cb func(*SubscribeRecord) error) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	var rows *sql.Rows
+	if rows, err = db.subscribeStmts.remove.QueryContext(ctx); err != nil {
+		return
+	}
+	defer rows.Close()
+	var rec SubscribeRecord
+	for rows.Next() {
+		if err = rows.Scan(&rec.User, &rec.Client, &rec.EndPoint, &rec.Scopes); err != nil {
 			return
 		}
 		cb(&rec)

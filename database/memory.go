@@ -30,15 +30,25 @@ type MemoryDB struct {
 
 	tokenMux sync.RWMutex
 	tokens   map[string]time.Time
+
+	subscribeMux     sync.RWMutex
+	subscribeRecords map[[2]string]*SubscribeRecord
 }
 
 var _ DB = (*MemoryDB)(nil)
 
 func NewMemoryDB() *MemoryDB {
 	return &MemoryDB{
-		fileRecords: make(map[string]*FileRecord),
-		tokens:      make(map[string]time.Time),
+		fileRecords:      make(map[string]*FileRecord),
+		tokens:           make(map[string]time.Time),
+		subscribeRecords: make(map[[2]string]*SubscribeRecord),
 	}
+}
+
+func (m *MemoryDB) Cleanup() (err error) {
+	m.fileRecords = nil
+	m.tokens = nil
+	return
 }
 
 func (m *MemoryDB) ValidJTI(jti string) (bool, error) {
@@ -121,6 +131,61 @@ func (m *MemoryDB) ForEachFileRecord(cb func(*FileRecord) error) error {
 	defer m.fileRecMux.RUnlock()
 
 	for _, v := range m.fileRecords {
+		if err := cb(v); err != nil {
+			if err == ErrStopIter {
+				break
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *MemoryDB) GetSubscribe(user string, client string) (*SubscribeRecord, error) {
+	m.subscribeMux.RLock()
+	defer m.subscribeMux.RUnlock()
+
+	record, ok := m.subscribeRecords[[2]string{user, client}]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return record, nil
+}
+
+func (m *MemoryDB) SetSubscribe(record SubscribeRecord) error {
+	m.subscribeMux.Lock()
+	defer m.subscribeMux.Unlock()
+
+	key := [2]string{record.User, record.Client}
+	if record.EndPoint == "" {
+		old, ok := m.subscribeRecords[key]
+		if !ok {
+			return ErrNotFound
+		}
+		record.EndPoint = old.EndPoint
+	}
+	m.subscribeRecords[key] = &record
+	return nil
+}
+
+func (m *MemoryDB) RemoveSubscribe(user string, client string) error {
+	m.subscribeMux.Lock()
+	defer m.subscribeMux.Unlock()
+
+	key := [2]string{user, client}
+	_, ok := m.subscribeRecords[key]
+	if !ok {
+		return ErrNotFound
+	}
+	delete(m.subscribeRecords, key)
+	return nil
+}
+
+func (m *MemoryDB) ForEachSubscribe(cb func(*SubscribeRecord) error) error {
+	m.subscribeMux.RLock()
+	defer m.subscribeMux.RUnlock()
+
+	for _, v := range m.subscribeRecords {
 		if err := cb(v); err != nil {
 			if err == ErrStopIter {
 				break

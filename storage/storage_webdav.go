@@ -381,7 +381,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		copyHeader("Last-Modified", rwh, resp.Header)
 		copyHeader("Content-Length", rwh, resp.Header)
 		if name := req.URL.Query().Get("name"); name != "" {
-			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+			rwh.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 		}
 		copyHeader("Content-Range", rwh, resp.Header)
 		rw.WriteHeader(resp.StatusCode)
@@ -435,7 +435,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 		fallthrough
 	default:
 		resp.Body.Close()
-		rw.Header().Set("Content-Length", strconv.Itoa(size*utils.MbChunkSize))
+		rwh.Set("Content-Length", strconv.Itoa(size*utils.MbChunkSize))
 		rw.WriteHeader(http.StatusOK)
 		if req.Method == http.MethodGet {
 			for i := 0; i < size; i++ {

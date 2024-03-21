@@ -25,6 +25,7 @@ Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 - 内置一个统计面板
 - 支持在面板内实时查看日志 (需登录)
 - 支持自动化打洞程序
+- 支持在节点上线/下线时发送通知
 - 支持一些小众的~~奇怪~~需求
 - ~~更好的压榨节点~~
 
@@ -206,6 +207,8 @@ dashboard:
   pwa-short_name: GOBA Dash
   # PWA 描述
   pwa-description: Go-Openbmclapi Internal Dashboard
+  # 签名推送 JWT 时的 subject, 请将其设为 "mailto:<您的邮箱>" 或 "https://<您的域名>"
+  notification-subject: mailto:user@example.com
 
 # 数据库
 database:

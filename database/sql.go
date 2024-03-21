@@ -67,8 +67,13 @@ func NewSqlDB(driverName string, dataSourceName string) (db *SqlDB, err error) {
 		return
 	}
 	ddb.SetConnMaxLifetime(time.Minute * 3)
-	ddb.SetMaxOpenConns(16)
-	ddb.SetMaxIdleConns(16)
+	if driverName == "sqlite" || driverName == "sqlite3" {
+		ddb.SetMaxOpenConns(1)
+		ddb.SetMaxIdleConns(1)
+	} else {
+		ddb.SetMaxOpenConns(16)
+		ddb.SetMaxIdleConns(16)
+	}
 
 	db = &SqlDB{
 		db: ddb,
@@ -111,7 +116,7 @@ func (db *SqlDB) setupJTI(ctx context.Context) (err error) {
 	const tableName = "`token_id`"
 
 	const createTable = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
-		" `id` VARCHAR(256) NOT NULL," +
+		" `id` VARCHAR(127) NOT NULL," +
 		" `expire` TIMESTAMP NOT NULL," +
 		" PRIMARY KEY (`id`)" +
 		")"
@@ -201,8 +206,8 @@ func (db *SqlDB) setupFileRecords(ctx context.Context) (err error) {
 	const tableName = "`file_records`"
 
 	const createTable = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
-		" `path` VARCHAR(256) NOT NULL," +
-		" `hash` VARCHAR(256) NOT NULL," +
+		" `path` VARCHAR(255) NOT NULL," +
+		" `hash` VARCHAR(255) NOT NULL," +
 		" `size` INTEGER NOT NULL," +
 		" PRIMARY KEY (`path`)" +
 		")"
@@ -335,9 +340,10 @@ func (db *SqlDB) setupSubscribe(ctx context.Context) (err error) {
 	const tableName = "`subscribes`"
 
 	const createTable = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
-		" `user` VARCHAR(128) NOT NULL," +
-		" `client` VARCHAR(128) NOT NULL," +
-		" `endpoint` VARCHAR(256) NOT NULL," +
+		" `user` VARCHAR(127) NOT NULL," +
+		" `client` VARCHAR(127) NOT NULL," +
+		" `endpoint` VARCHAR(255) NOT NULL," +
+		" `keys` VARCHAR(255) NOT NULL," +
 		" `scopes` INTEGER NOT NULL," +
 		" PRIMARY KEY (`user`,`client`)" +
 		")"
@@ -345,7 +351,7 @@ func (db *SqlDB) setupSubscribe(ctx context.Context) (err error) {
 		return
 	}
 
-	const getSelectCmd = "SELECT `endpoint`,`scopes` FROM " + tableName +
+	const getSelectCmd = "SELECT `endpoint`,`keys`,`scopes` FROM " + tableName +
 		" WHERE `user`=? AND `client`=?"
 	if db.subscribeStmts.get, err = db.db.PrepareContext(ctx, getSelectCmd); err != nil {
 		return
@@ -358,10 +364,10 @@ func (db *SqlDB) setupSubscribe(ctx context.Context) (err error) {
 	}
 
 	const setInsertCmd = "INSERT INTO " + tableName +
-		" (`user`,`client`,`endpoint`,`scopes`) VALUES" +
-		" (?,?,?,?)"
+		" (`user`,`client`,`endpoint`,`keys`,`scopes`) VALUES" +
+		" (?,?,?,?,?)"
 	const setUpdateCmd = "UPDATE " + tableName + " SET" +
-		" `endpoint`=?, `scopes`=?" +
+		" `endpoint`=?, `keys`=?, `scopes`=?" +
 		" WHERE `user`=? AND `client`=?"
 	const setUpdateScopesOnlyCmd = "UPDATE " + tableName + " SET" +
 		" scopes`=?" +
@@ -388,7 +394,7 @@ func (db *SqlDB) setupSubscribe(ctx context.Context) (err error) {
 		return
 	}
 
-	const forEachSelectCmd = "SELECT `user`,`client`,`endpoint`,`scopes` FROM " + tableName
+	const forEachSelectCmd = "SELECT `user`,`client`,`endpoint`,`keys`,`scopes` FROM " + tableName
 	if db.subscribeStmts.forEach, err = db.db.PrepareContext(ctx, forEachSelectCmd); err != nil {
 		return
 	}
@@ -402,7 +408,7 @@ func (db *SqlDB) GetSubscribe(user string, client string) (rec *SubscribeRecord,
 	rec = new(SubscribeRecord)
 	rec.User = user
 	rec.Client = client
-	if err = db.subscribeStmts.get.QueryRowContext(ctx, user, client).Scan(&rec.EndPoint, &rec.Scopes); err != nil {
+	if err = db.subscribeStmts.get.QueryRowContext(ctx, user, client).Scan(&rec.EndPoint, &rec.Keys, &rec.Scopes); err != nil {
 		if err == sql.ErrNoRows {
 			err = ErrNotFound
 		}
@@ -438,11 +444,11 @@ func (db *SqlDB) SetSubscribe(rec SubscribeRecord) (err error) {
 			return
 		}
 		if has == 0 {
-			if _, err = tx.Stmt(db.subscribeStmts.setInsert).Exec(rec.User, rec.Client, rec.EndPoint, rec.Scopes); err != nil {
+			if _, err = tx.Stmt(db.subscribeStmts.setInsert).Exec(rec.User, rec.Client, rec.EndPoint, rec.Keys, rec.Scopes); err != nil {
 				return
 			}
 		} else {
-			if _, err = tx.Stmt(db.subscribeStmts.setUpdate).Exec(rec.EndPoint, rec.Scopes, rec.User, rec.Client); err != nil {
+			if _, err = tx.Stmt(db.subscribeStmts.setUpdate).Exec(rec.EndPoint, rec.Keys, rec.Scopes, rec.User, rec.Client); err != nil {
 				return
 			}
 		}
@@ -477,7 +483,7 @@ func (db *SqlDB) ForEachSubscribe(cb func(*SubscribeRecord) error) (err error) {
 	defer rows.Close()
 	var rec SubscribeRecord
 	for rows.Next() {
-		if err = rows.Scan(&rec.User, &rec.Client, &rec.EndPoint, &rec.Scopes); err != nil {
+		if err = rows.Scan(&rec.User, &rec.Client, &rec.EndPoint, &rec.Keys, &rec.Scopes); err != nil {
 			return
 		}
 		cb(&rec)

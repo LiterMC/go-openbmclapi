@@ -15,20 +15,18 @@ const settings = reactive({
 	notifyUpdates: false,
 })
 
+settings
+
 watch(
 	() => settings.enableNotify,
-	(notify) => {
-		if (notify) {
-			Notification.requestPermission().then((perm) => {
-				if (perm !== 'granted') {
-					settings.enableNotify = false
-					toast.add({
-						severity: 'error',
-						summary: tr('message.settings.notify.cant.enable'),
-						detail: tr('message.settings.notify.denied'),
-						life: 5000,
-					})
-				}
+	async (notify) => {
+		if (notify && (await Notification.requestPermission()) !== 'granted') {
+			settings.enableNotify = false
+			toast.add({
+				severity: 'error',
+				summary: tr('message.settings.notify.cant.enable'),
+				detail: tr('message.settings.notify.denied'),
+				life: 5000,
 			})
 		}
 	},

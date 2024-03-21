@@ -22,6 +22,7 @@ package database
 import (
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -65,7 +66,35 @@ type SubscribeRecord struct {
 	User     string
 	Client   string
 	EndPoint string
+	Keys     SubscribeRecordKeys
 	Scopes   NotificationScopes
+}
+
+type SubscribeRecordKeys struct {
+	Auth   string `json:"auth"`
+	P256dh string `json:"p256dh"`
+}
+
+var (
+	_ sql.Scanner   = (*SubscribeRecordKeys)(nil)
+	_ driver.Valuer = (*SubscribeRecordKeys)(nil)
+)
+
+func (sk *SubscribeRecordKeys) Scan(src any) error {
+	var data []byte
+	switch v := src.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = ([]byte)(v)
+	default:
+		return errors.New("Source is not a string")
+	}
+	return json.Unmarshal(data, sk)
+}
+
+func (sk *SubscribeRecordKeys) Value() (driver.Value, error) {
+	return json.Marshal(sk)
 }
 
 type NotificationScopes struct {

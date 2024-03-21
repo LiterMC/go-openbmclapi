@@ -88,4 +88,8 @@ var areaCN = map[string]string{
 	"info.tunnel.detected":                "检测到隧道已创建: host=%s, port=%d",
 	"error.tunnel.failed":                 "打洞失败: %v",
 	"error.tunnel.command.prepare.failed": "打洞指令准备失败: %v",
+
+	"error.update.check.failed": "更新检测失败: %v",
+	"info.update.detected":      "已检测到新版 go-openbmclapi: tag=%s, current=%s",
+	"info.update.changelog":     "更新日志 %s -> %s:\n%s",
 }

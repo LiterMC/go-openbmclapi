@@ -16,12 +16,21 @@ import './assets/main.css'
 
 registerSW({
 	immediate: true,
+	async onRegisteredSW(
+		swScriptUrl: string,
+		registration: ServiceWorkerRegistration | undefined,
+	): Promise<void> {
+		if (!registration) {
+			return
+		}
+		registration.sync.register('poll-state')
+	},
 })
 
 const app = createApp(App)
 
 app.use(router)
-app.use(vueCookies, { expires: '30d', path: '/dashboard/' })
+app.use(vueCookies, { expires: '30d', path: import.meta.env.BASE_URL })
 
 app.use(PrimeVue, { ripple: true })
 app.use(ToastService)

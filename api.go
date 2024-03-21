@@ -22,6 +22,7 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -150,6 +151,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 
 	mux.HandleFunc("/log.io", cr.apiV0LogIO)
 	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV0Pprof))
+	mux.HandleFunc("/subscribeKey", cr.apiV0SubscribeKey)
 	mux.Handle("/subscribe", cr.apiAuthHandleFunc(cr.apiV0Subscribe))
 	return mux
 }
@@ -563,6 +565,15 @@ func (cr *Cluster) apiV0Pprof(rw http.ResponseWriter, req *http.Request) {
 	p.WriteTo(rw, debug)
 }
 
+func (cr *Cluster) apiV0SubscribeKey(rw http.ResponseWriter, req *http.Request) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+		return
+	}
+	writeJson(rw, http.StatusOK, Map{
+		"publicKey": base64.RawURLEncoding.EncodeToString(cr.pushManager.GetPublicKey()),
+	})
+}
+
 func (cr *Cluster) apiV0Subscribe(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost) {
 		return
@@ -607,34 +618,21 @@ func (cr *Cluster) apiV0SubscribeGET(rw http.ResponseWriter, req *http.Request, 
 
 func (cr *Cluster) apiV0SubscribePOST(rw http.ResponseWriter, req *http.Request, user string, client string) {
 	type T = struct {
-		EndPoint string   `json:"endpoint,omitempty"`
-		Scopes   []string `json:"scopes"`
+		EndPoint string                       `json:"endpoint,omitempty"`
+		Keys     database.SubscribeRecordKeys `json:"keys,omitempty"`
+		Scopes   []string                     `json:"scopes"`
 	}
 	rec := database.SubscribeRecord{
 		User:   user,
 		Client: client,
 	}
-	data, ok := parseRequestBody(rw, req, func(rw http.ResponseWriter, req *http.Request, ct string, data *T) error {
-		switch ct {
-		case "application/x-www-form-urlencoded":
-			if err := req.ParseForm(); err != nil {
-				return err
-			}
-			data.EndPoint = req.PostFormValue("endpoint")
-			for _, scope := range req.PostForm["scopes"] {
-				ss := strings.Split(strings.ToLower(scope), ",")
-				rec.Scopes.FromStrings(ss)
-			}
-			return nil
-		default:
-			return errUnknownContent
-		}
-	})
+	data, ok := parseRequestBody[T](rw, req, nil)
 	if !ok {
 		return
 	}
 
 	rec.EndPoint = data.EndPoint
+	rec.Keys = data.Keys
 	rec.Scopes.FromStrings(data.Scopes)
 	err := cr.database.SetSubscribe(rec)
 	if err != nil {

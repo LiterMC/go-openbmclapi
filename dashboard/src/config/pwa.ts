@@ -1,6 +1,10 @@
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default VitePWA({
+	devOptions: {
+		enabled: true,
+		type: 'module',
+	},
 	srcDir: 'src',
 	filename: 'sw.ts',
 	registerType: 'autoUpdate',

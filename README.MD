@@ -323,6 +323,10 @@ advanced:
   no-fast-enable: false
   # 上线前等待几秒
   wait-before-enable: 0
+  # ⚠️ 不进行安全域名重定向
+  do-NOT-redirect-https-to-SECURE-hostname: false
+  # ⚠️ 当您阅读完全部 README 后, 将该选项设为 true 即可避免打开浏览器
+  do-not-open-faq-on-windows: false
 
 ```
 

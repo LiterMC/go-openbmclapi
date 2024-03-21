@@ -107,10 +107,12 @@ type Cluster struct {
 	authTokenMux    sync.RWMutex
 	authToken       *ClusterToken
 
-	client    *http.Client
-	cachedCli *http.Client
-	bufSlots  *limited.BufSlots
-	database  database.DB
+	client        *http.Client
+	cachedCli     *http.Client
+	bufSlots      *limited.BufSlots
+	database      database.DB
+	pushManager   *WebPushManager
+	updateChecker *time.Timer
 
 	wsUpgrader    *websocket.Upgrader
 	handlerAPIv0  http.Handler
@@ -215,6 +217,12 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 		}
 	}
 
+	// Init WebPush Manager
+	cr.pushManager = NewWebPushManager(cr.dataDir, cr.database)
+	if err = cr.pushManager.Init(ctx); err != nil {
+		return
+	}
+
 	// Init storages
 	vctx := context.WithValue(ctx, storage.ClusterCacheCtxKey, cr.cache)
 	for _, s := range cr.storages {
@@ -228,6 +236,15 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	if cr.apiHmacKey, err = loadOrCreateHmacKey(cr.dataDir); err != nil {
 		return fmt.Errorf("Cannot load hmac key: %w", err)
 	}
+
+	cr.updateChecker = time.NewTimer(time.Hour)
+	go func(timer *time.Timer) {
+		for range timer.C {
+			if err := cr.checkUpdate(); err != nil {
+				log.Errorf(Tr("error.update.check.failed"), err)
+			}
+		}
+	}(cr.updateChecker)
 	return
 }
 
@@ -235,6 +252,7 @@ func (cr *Cluster) Destory(ctx context.Context) {
 	if cr.database != nil {
 		cr.database.Cleanup()
 	}
+	cr.updateChecker.Stop()
 }
 
 func (cr *Cluster) allocBuf(ctx context.Context) (slotId int, buf []byte, free func()) {
@@ -476,6 +494,8 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	}
 	cr.waitEnable = cr.waitEnable[:0]
 
+	go cr.pushManager.OnEnabled()
+
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
 	createInterval(keepaliveCtx, func() {
@@ -518,6 +538,8 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		"hits":  hits,
 		"bytes": hbts,
 	})
+	go cr.pushManager.OnReportStat(&cr.stats)
+
 	if e := cr.stats.Save(cr.dataDir); e != nil {
 		log.Errorf(Tr("error.cluster.stat.save.failed"), e)
 	}
@@ -564,6 +586,7 @@ func (cr *Cluster) disconnected() bool {
 		cr.cancelKeepalive()
 		cr.cancelKeepalive = nil
 	}
+	go cr.pushManager.OnDisabled()
 	return true
 }
 
@@ -580,6 +603,11 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 		log.Debug("Extra disable")
 		return false
 	}
+
+	defer func() {
+		go cr.pushManager.OnDisabled()
+	}()
+
 	if cr.cancelKeepalive != nil {
 		cr.cancelKeepalive()
 		cr.cancelKeepalive = nil
@@ -797,6 +825,7 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	if cr.syncFiles(ctx, files, heavyCheck) != nil {
 		return false
 	}
+
 	fileset := make(map[string]int64, len(files))
 	for _, f := range files {
 		fileset[f.Hash] = f.Size
@@ -1053,6 +1082,11 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		log.Info(Tr("info.sync.none"))
 		return nil
 	}
+
+	go cr.pushManager.OnSyncBegin()
+	defer func() {
+		go cr.pushManager.OnSyncDone()
+	}()
 
 	cr.syncTotal.Store((int64)(totalFiles))
 

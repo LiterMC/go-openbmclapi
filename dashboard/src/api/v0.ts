@@ -129,3 +129,18 @@ export async function getPprofURL(token: string, opts: PprofOptions): Promise<st
 	}
 	return u.toString()
 }
+
+export type SubscribeScope = 'disabled' | 'enabled' | 'syncdone' | 'updates'
+
+export interface SubscribeSettings {
+	subscribed: SubscribeScope[] | null
+}
+
+export async function getSubscribeSettings(token: string): Promise<SubscribeSettings> {
+	const res = await axios.get<SubscribeSettings>(`/api/v0/settings/subscribe`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+	return res.data
+}

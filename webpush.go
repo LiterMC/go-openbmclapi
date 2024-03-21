@@ -229,13 +229,17 @@ func (w *WebPushManager) SendNotification(ctx context.Context, message []byte, s
 }
 
 func (w *WebPushManager) sendMessageIf(ctx context.Context, message []byte, opts *PushOptions, filter func(*database.SubscribeRecord) bool) {
+	log.Debugf("Sending notification: %s", message)
 	var wg sync.WaitGroup
 	w.database.ForEachSubscribe(func(record *database.SubscribeRecord) error {
 		if filter(record) {
 			wg.Add(1)
 			go func(subs *Subscription) {
 				defer wg.Done()
-				w.SendNotification(ctx, message, subs, opts)
+				err := w.SendNotification(ctx, message, subs, opts)
+				if err != nil {
+					log.Warnf("Error when sending notification: %v", err)
+				}
 			}(&Subscription{
 				EndPoint: record.EndPoint,
 				Keys:     record.Keys,
@@ -267,7 +271,7 @@ func (w *WebPushManager) OnEnabled() {
 
 func (w *WebPushManager) OnDisabled() {
 	message, err := json.Marshal(Map{
-		"typ": "enabled",
+		"typ": "disabled",
 		"at":  time.Now().UnixMilli(),
 	})
 	if err != nil {

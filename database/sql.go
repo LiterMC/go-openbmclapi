@@ -477,7 +477,7 @@ func (db *SqlDB) ForEachSubscribe(cb func(*SubscribeRecord) error) (err error) {
 	defer cancel()
 
 	var rows *sql.Rows
-	if rows, err = db.subscribeStmts.remove.QueryContext(ctx); err != nil {
+	if rows, err = db.subscribeStmts.forEach.QueryContext(ctx); err != nil {
 		return
 	}
 	defer rows.Close()

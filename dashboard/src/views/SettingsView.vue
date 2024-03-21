@@ -30,12 +30,15 @@ const selectedLang = computed({
 const requestingPermission = ref(false)
 
 const enableNotify = ref(false)
-const settings = bindObjectToLocalStorage({
-	notifyWhenDisabled: false,
-	notifyWhenEnabled: false,
-	notifyWhenSyncFinished: false,
-	notifyUpdates: false,
-}, 'go-openbmclapi.settings.notify')
+const settings = bindObjectToLocalStorage(
+	{
+		notifyWhenDisabled: false,
+		notifyWhenEnabled: false,
+		notifyWhenSyncFinished: false,
+		notifyUpdates: false,
+	},
+	'go-openbmclapi.settings.notify',
+)
 
 function getSubscribeScopes(): SubscribeScope[] {
 	const res: SubscribeScope[] = []
@@ -158,7 +161,6 @@ onMounted(() => {
 			requestingPermission.value = false
 		})
 })
-
 </script>
 <template>
 	<div>

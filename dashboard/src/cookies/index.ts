@@ -43,10 +43,7 @@ export function bindRefToLocalStorage<T>(
 	return ref
 }
 
-export function bindObjectToLocalStorage<T extends object>(
-	obj: T,
-	name: string,
-): T {
+export function bindObjectToLocalStorage<T extends object>(obj: T, name: string): T {
 	const active = reactive(obj) as T
 	const s = localStorage.getItem(name)
 	if (s) {

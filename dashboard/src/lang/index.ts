@@ -90,3 +90,8 @@ export function tr(key: string, ...values: unknown[]): string {
 	// TODO: apply values
 	return cur
 }
+
+export const langNameMap: { [key: string]: string } = {
+	'en-US': 'English',
+	'zh-CN': '简体中文',
+}

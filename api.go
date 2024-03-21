@@ -569,13 +569,20 @@ func (cr *Cluster) apiV0SubscribeKey(rw http.ResponseWriter, req *http.Request) 
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
+	key := cr.pushManager.GetPublicKey()
+	etag := `"` + bytesAsSha256(key) + `"`
+	rw.Header().Set("ETag", etag)
+	if cachedTag := req.Header.Get("If-None-Match"); cachedTag == etag {
+		rw.WriteHeader(http.StatusNotModified)
+		return
+	}
 	writeJson(rw, http.StatusOK, Map{
-		"publicKey": base64.RawURLEncoding.EncodeToString(cr.pushManager.GetPublicKey()),
+		"publicKey": base64.RawURLEncoding.EncodeToString(key),
 	})
 }
 
 func (cr *Cluster) apiV0Subscribe(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost, http.MethodDelete) {
 		return
 	}
 	cliId := apiGetClientId(req)
@@ -591,6 +598,8 @@ func (cr *Cluster) apiV0Subscribe(rw http.ResponseWriter, req *http.Request) {
 		cr.apiV0SubscribeGET(rw, req, user, cliId)
 	case http.MethodPost:
 		cr.apiV0SubscribePOST(rw, req, user, cliId)
+	case http.MethodDelete:
+		cr.apiV0SubscribeDELETE(rw, req, user, cliId)
 	default:
 		panic("unreachable")
 	}
@@ -638,6 +647,24 @@ func (cr *Cluster) apiV0SubscribePOST(rw http.ResponseWriter, req *http.Request,
 	if err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Database update failed",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (cr *Cluster) apiV0SubscribeDELETE(rw http.ResponseWriter, req *http.Request, user string, client string) {
+	err := cr.database.RemoveSubscribe(user, client)
+	if err != nil {
+		if err == database.ErrNotFound {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error": "no subscription was found",
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
 			"message": err.Error(),
 		})
 		return

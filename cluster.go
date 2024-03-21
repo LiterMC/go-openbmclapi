@@ -218,10 +218,11 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	}
 
 	// Init WebPush Manager
-	cr.pushManager = NewWebPushManager(cr.dataDir, cr.database)
+	cr.pushManager = NewWebPushManager(cr.dataDir, cr.database, cr.client)
 	if err = cr.pushManager.Init(ctx); err != nil {
 		return
 	}
+	cr.pushManager.SetSubject(config.Dashboard.NotifySubject)
 
 	// Init storages
 	vctx := context.WithValue(ctx, storage.ClusterCacheCtxKey, cr.cache)
@@ -238,7 +239,11 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	}
 
 	cr.updateChecker = time.NewTimer(time.Hour)
+
 	go func(timer *time.Timer) {
+		if err := cr.checkUpdate(); err != nil {
+			log.Errorf(Tr("error.update.check.failed"), err)
+		}
 		for range timer.C {
 			if err := cr.checkUpdate(); err != nil {
 				log.Errorf(Tr("error.update.check.failed"), err)
@@ -347,7 +352,6 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 				osExit(CodeClientOrEnvionmentError)
 			}
 		}
-		cr.reconnectCount = 0
 	})
 	cr.socket.OnDisconnect(func(*socket.Socket, string) {
 		go cr.disconnected()
@@ -487,13 +491,13 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		return errors.New("Enable ack non true value")
 	}
 	log.Info(Tr("info.cluster.enabled"))
+	cr.reconnectCount = 0
 	cr.disabled = make(chan struct{}, 0)
 	cr.enabled.Store(true)
 	for _, ch := range cr.waitEnable {
 		close(ch)
 	}
 	cr.waitEnable = cr.waitEnable[:0]
-
 	go cr.pushManager.OnEnabled()
 
 	var keepaliveCtx context.Context
@@ -990,7 +994,7 @@ func (cr *Cluster) checkFileFor(
 				}
 			}
 		} else {
-			log.Debugf("Could not found file %q", name)
+			// log.Debugf("Could not found file %q", name)
 			addMissing(f)
 		}
 		bar.EwmaIncrement(time.Since(start))

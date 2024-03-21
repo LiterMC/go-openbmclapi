@@ -1,4 +1,4 @@
-import { inject, watch, type Ref } from 'vue'
+import { reactive, inject, watch, type Ref } from 'vue'
 import type { VueCookies } from 'vue-cookies'
 
 export function useCookies(): VueCookies {
@@ -41,4 +41,26 @@ export function bindRefToLocalStorage<T>(
 		}
 	})
 	return ref
+}
+
+export function bindObjectToLocalStorage<T extends object>(
+	obj: T,
+	name: string,
+): T {
+	const active = reactive(obj) as T
+	const s = localStorage.getItem(name)
+	if (s) {
+		try {
+			const parsed = JSON.parse(s)
+			for (const k of Object.keys(parsed)) {
+				if (k in active) {
+					active[k as keyof T] = parsed[k as keyof T]
+				}
+			}
+		} catch (_) {}
+	}
+	watch(active, () => {
+		localStorage.setItem(name, JSON.stringify(active))
+	})
+	return active
 }

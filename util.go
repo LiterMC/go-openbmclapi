@@ -201,6 +201,11 @@ func comparePasswd(p1, p2 string) bool {
 	return subtle.ConstantTimeCompare(a[:], b[:]) == 0
 }
 
+func bytesAsSha256(b []byte) string {
+	buf := sha256.Sum256(b)
+	return base64.RawURLEncoding.EncodeToString(buf[:])
+}
+
 // return a URL encoded base64 string
 func asSha256(s string) string {
 	buf := sha256.Sum256(([]byte)(s))
@@ -214,7 +219,7 @@ func asSha256Hex(s string) string {
 
 func genRandB64(n int) (s string, err error) {
 	buf := make([]byte, n)
-	if _, err = crand.Read(buf); err != nil {
+	if _, err = io.ReadFull(crand.Reader, buf); err != nil {
 		return
 	}
 	s = base64.RawURLEncoding.EncodeToString(buf)

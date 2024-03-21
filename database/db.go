@@ -93,7 +93,7 @@ func (sk *SubscribeRecordKeys) Scan(src any) error {
 	return json.Unmarshal(data, sk)
 }
 
-func (sk *SubscribeRecordKeys) Value() (driver.Value, error) {
+func (sk SubscribeRecordKeys) Value() (driver.Value, error) {
 	return json.Marshal(sk)
 }
 
@@ -116,7 +116,7 @@ const (
 	nsFlagUpdates
 )
 
-func (ns *NotificationScopes) ToInt64() (v int64) {
+func (ns NotificationScopes) ToInt64() (v int64) {
 	if ns.Disabled {
 		v |= nsFlagDisabled
 	}
@@ -148,7 +148,7 @@ func (ns *NotificationScopes) Scan(src any) error {
 	return nil
 }
 
-func (ns *NotificationScopes) Value() (driver.Value, error) {
+func (ns NotificationScopes) Value() (driver.Value, error) {
 	return ns.ToInt64(), nil
 }
 

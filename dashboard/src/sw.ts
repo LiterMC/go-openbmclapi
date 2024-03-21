@@ -25,11 +25,11 @@ self.skipWaiting()
 clientsClaim()
 
 async function onSyncUserSettings(): Promise<void> {
-	axios.get()
+	// axios.get()
 }
 
 async function onNotificationClick(tag: string): Promise<void> {
-	switch (event.notification.tag) {
+	switch (tag) {
 		case 'sync': {
 			const windowClients = await self.clients.matchAll({ type: 'window' })
 			for (const client of windowClients) {
@@ -45,7 +45,7 @@ async function onNotificationClick(tag: string): Promise<void> {
 self.addEventListener('sync', (event: SyncEvent) => {
 	switch (event.tag) {
 		case 'user-settings':
-			event.waitUntil(onSyncUserSettings(event.tag))
+			event.waitUntil(onSyncUserSettings())
 			break
 	}
 })

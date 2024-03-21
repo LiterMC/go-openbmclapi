@@ -25,6 +25,9 @@
 
 		"settings": "设置",
 
+		"i18n": "国际化",
+		"language": "语言",
+
 		"notification": "推送",
 		"notify": {
 			"when.disabled": "下线时发送通知",
@@ -52,6 +55,10 @@
 		},
 		"settings": {
 			"notify": {
+				"cant.enable": "无法启用通知",
+				"denied": "通知已被浏览器拒绝"
+			},
+			"webpush": {
 				"cant.enable": "无法启用推送",
 				"denied": "推送已被浏览器拒绝"
 			}

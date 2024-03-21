@@ -370,7 +370,7 @@ func (db *SqlDB) setupSubscribe(ctx context.Context) (err error) {
 		" `endpoint`=?, `keys`=?, `scopes`=?" +
 		" WHERE `user`=? AND `client`=?"
 	const setUpdateScopesOnlyCmd = "UPDATE " + tableName + " SET" +
-		" scopes`=?" +
+		" `scopes`=?" +
 		" WHERE `user`=? AND `client`=?"
 	if db.subscribeStmts.setInsert, err = db.db.PrepareContext(ctx, setInsertCmd); err != nil {
 		return

@@ -6,7 +6,7 @@ import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
-import { type Lang, avaliableLangs, getLang, setLang, tr } from '@/lang'
+import { type Lang, avaliableLangs, getLang, setLang, tr, langNameMap } from '@/lang'
 
 const toast = useToast()
 const token = inject('token') as Ref<string | null>
@@ -36,11 +36,6 @@ const selectedLang = computed({
 		setLang(value)
 	},
 })
-
-const langNameMap: { [key: string]: string } = {
-	'en-US': 'English',
-	'zh-CN': '简体中文',
-}
 </script>
 
 <template>
@@ -76,6 +71,12 @@ const langNameMap: { [key: string]: string } = {
 				</template>
 			</Dropdown>
 		</div>
+		<RouterLink class="flex-row-center button-link" to="/">
+			<Button icon="pi pi-home" aria-label="Home" />
+		</RouterLink>
+		<RouterLink class="flex-row-center button-link" to="/settings">
+			<Button icon="pi pi-cog" aria-label="Settings" severity="secondary" />
+		</RouterLink>
 		<a
 			class="nav-github"
 			target="_blank"
@@ -147,6 +148,18 @@ const langNameMap: { [key: string]: string } = {
 	font-size: 0.9rem;
 }
 
+.button-link {
+	width: 2.2rem;
+	height: 2.2rem;
+	margin-right: 0.5rem !important;
+	text-decoration: none;
+}
+
+.button-link > button {
+	width: 100%;
+	height: 100%;
+}
+
 .nav-github {
 	display: flex;
 	flex-direction: row;
@@ -215,8 +228,8 @@ const langNameMap: { [key: string]: string } = {
 		left: 1rem;
 	}
 
-	.lang-selector-label {
-		font-size: 0.8rem;
+	.lang-selector-box {
+		display: none;
 	}
 }
 </style>

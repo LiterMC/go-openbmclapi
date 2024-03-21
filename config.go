@@ -125,6 +125,8 @@ type DashboardConfig struct {
 	PwaName      string `yaml:"pwa-name"`
 	PwaShortName string `yaml:"pwa-short_name"`
 	PwaDesc      string `yaml:"pwa-description"`
+
+	NotifySubject string `yaml:"notification-subject"`
 }
 
 type TunnelConfig struct {
@@ -239,10 +241,11 @@ var defaultConfig = Config{
 	},
 
 	Dashboard: DashboardConfig{
-		Enable:       true,
-		PwaName:      "GoOpenBmclApi Dashboard",
-		PwaShortName: "GOBA Dash",
-		PwaDesc:      "Go-Openbmclapi Internal Dashboard",
+		Enable:        true,
+		PwaName:       "GoOpenBmclApi Dashboard",
+		PwaShortName:  "GOBA Dash",
+		PwaDesc:       "Go-Openbmclapi Internal Dashboard",
+		NotifySubject: "mailto:user@example.com",
 	},
 
 	Database: DatabaseConfig{

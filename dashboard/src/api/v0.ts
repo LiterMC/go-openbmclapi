@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
 import { sha256 } from 'js-sha256'
 
 export interface StatInstData {
@@ -62,6 +62,7 @@ async function requestToken(
 		{
 			headers: {
 				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json',
 			},
 		},
 	)
@@ -130,17 +131,64 @@ export async function getPprofURL(token: string, opts: PprofOptions): Promise<st
 	return u.toString()
 }
 
+interface SubscribeKey {
+	publicKey: string
+}
+
+export async function getSubscribePublicKey(): Promise<string> {
+	const res = await axios.get<SubscribeKey>(`/api/v0/subscribeKey`)
+	return res.data.publicKey
+}
+
 export type SubscribeScope = 'disabled' | 'enabled' | 'syncdone' | 'updates'
 
 export interface SubscribeSettings {
-	subscribed: SubscribeScope[] | null
+	scopes: { [key in SubscribeScope]: boolean }
 }
 
-export async function getSubscribeSettings(token: string): Promise<SubscribeSettings> {
-	const res = await axios.get<SubscribeSettings>(`/api/v0/settings/subscribe`, {
+export async function getSubscribeSettings(token: string): Promise<SubscribeSettings | null> {
+	try {
+		const res = await axios.get<SubscribeSettings>(`/api/v0/subscribe`, {
+			headers: {
+				Authorization: `Bearer ${token}`,
+			},
+		})
+		return res.data
+	} catch (e) {
+		if (e instanceof AxiosError) {
+			if (e.status == 404) {
+				return null
+			}
+		}
+		throw e
+	}
+}
+
+export async function setSubscribeSettings(
+	token: string,
+	subscription: PushSubscription | null,
+	scopes: SubscribeScope[],
+): Promise<void> {
+	await axios.post<SubscribeSettings>(
+		`/api/v0/subscribe`,
+		JSON.stringify({
+			endpoint: subscription?.endpoint,
+			keys: subscription?.toJSON().keys,
+			scopes: scopes,
+		}),
+		{
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json',
+			},
+		},
+	)
+}
+
+export async function removeSubscription(token: string): Promise<void> {
+	await axios.delete<SubscribeSettings>(`/api/v0/subscribe`, {
 		headers: {
 			Authorization: `Bearer ${token}`,
 		},
 	})
-	return res.data
 }

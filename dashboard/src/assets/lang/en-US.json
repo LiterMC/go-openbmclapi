@@ -25,6 +25,9 @@
 
 		"settings": "Settings",
 
+		"i18n": "Internationalization",
+		"language": "Language",
+
 		"notification": "Notification",
 		"notify": {
 			"when.disabled": "Notify when disabled",
@@ -54,6 +57,10 @@
 			"notify": {
 				"cant.enable": "Cannot enable notification",
 				"denied": "Notification is denied by the browser"
+			},
+			"webpush": {
+				"cant.enable": "Cannot enable Web Push",
+				"denied": "Web Push is denied by the browser"
 			}
 		}
 	},

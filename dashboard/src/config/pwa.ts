@@ -38,6 +38,11 @@ export default VitePWA({
 				type: 'image/png',
 				purpose: 'maskable',
 			},
+			{
+				src: 'logo.png',
+				sizes: '512x512',
+				type: 'image/png',
+			},
 		],
 	},
 	workbox: {

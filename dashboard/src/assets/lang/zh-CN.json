@@ -54,6 +54,9 @@
 			"login-to-view": "后查看日志"
 		},
 		"settings": {
+			"login": {
+				"first": "启用此功能前请先登录"
+			},
 			"notify": {
 				"cant.enable": "无法启用通知",
 				"denied": "通知已被浏览器拒绝"

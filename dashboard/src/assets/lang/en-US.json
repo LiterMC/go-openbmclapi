@@ -54,6 +54,9 @@
 			"login-to-view": " to view logs"
 		},
 		"settings": {
+			"login": {
+				"first": "Please login first before enable this feature"
+			},
 			"notify": {
 				"cant.enable": "Cannot enable notification",
 				"denied": "Notification is denied by the browser"

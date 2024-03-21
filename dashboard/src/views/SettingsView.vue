@@ -96,6 +96,14 @@ async function onEnableNotify(): Promise<void> {
 		enableNotify.value = false
 		return
 	}
+	if (!token.value) {
+		toast.add({
+			severity: 'error',
+			summary: tr('message.settings.login.first'),
+			life: 5000,
+		})
+		return
+	}
 	requestingPermission.value = true
 	try {
 		if ((await Notification.requestPermission()) !== 'granted') {

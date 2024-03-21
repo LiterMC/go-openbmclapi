@@ -6,6 +6,7 @@ export interface StatInstData {
 	bytes: number
 }
 
+// the range is from 0 to N
 export interface StatTime {
 	hour: number
 	day: number
@@ -140,7 +141,7 @@ export async function getSubscribePublicKey(): Promise<string> {
 	return res.data.publicKey
 }
 
-export type SubscribeScope = 'disabled' | 'enabled' | 'syncdone' | 'updates'
+export type SubscribeScope = 'disabled' | 'enabled' | 'syncdone' | 'updates' | 'dailyreport'
 
 export interface SubscribeSettings {
 	scopes: { [key in SubscribeScope]: boolean }

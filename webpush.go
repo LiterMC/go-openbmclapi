@@ -21,6 +21,7 @@ package main
 
 import (
 	"bytes"
+	"compress/zlib"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -36,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -233,6 +235,7 @@ func (w *WebPushManager) sendMessageIf(ctx context.Context, message []byte, opts
 	var wg sync.WaitGroup
 	w.database.ForEachSubscribe(func(record *database.SubscribeRecord) error {
 		if filter(record) {
+			log.Debugf("Sending notification to %s", record.EndPoint)
 			wg.Add(1)
 			go func(subs *Subscription) {
 				defer wg.Done()
@@ -358,14 +361,37 @@ func (w *WebPushManager) OnReportStat(stats *Stats) {
 	defer w.reportMux.Unlock()
 
 	now := time.Now()
-	if w.nextReportAfter.IsZero() || now.Before(w.nextReportAfter) {
+	if !w.nextReportAfter.IsZero() && now.Before(w.nextReportAfter) {
 		return
 	}
 	w.nextReportAfter = now.Add(time.Minute * 5).Truncate(15 * time.Minute)
 
-	// TOOD: daily report
-	// w.database.ForEachSubscribe(func(record *database.SubscribeRecord) error {
-	// 	record.EndPoint
-	// 	record.Scopes.
-	// })
+	stat, err := stats.MarshalJSON()
+	if err != nil {
+		log.Errorf("Cannot marshal subscribe message: %v", err)
+		return
+	}
+	var buf strings.Builder
+	bw := base64.NewEncoder(base64.StdEncoding, &buf)
+	zw, _ := zlib.NewWriterLevel(bw, zlib.BestCompression)
+	zw.Write(stat)
+	zw.Close()
+	bw.Close()
+	message, err := json.Marshal(Map{
+		"typ":  "daily-report",
+		"data": buf.String(),
+	})
+	if err != nil {
+		log.Errorf("Cannot marshal subscribe message: %v", err)
+		return
+	}
+	opts := &PushOptions{
+		Topic:   "daily-report",
+		TTL:     60 * 60 * 12,
+		Urgency: UrgencyNormal,
+	}
+
+	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.DailyReport })
 }

@@ -590,7 +590,7 @@ func (cr *Cluster) disconnected() bool {
 		cr.cancelKeepalive()
 		cr.cancelKeepalive = nil
 	}
-	go cr.pushManager.OnDisabled()
+	cr.pushManager.OnDisabled()
 	return true
 }
 
@@ -608,9 +608,7 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 		return false
 	}
 
-	defer func() {
-		go cr.pushManager.OnDisabled()
-	}()
+	defer cr.pushManager.OnDisabled()
 
 	if cr.cancelKeepalive != nil {
 		cr.cancelKeepalive()

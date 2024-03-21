@@ -98,10 +98,11 @@ func (sk SubscribeRecordKeys) Value() (driver.Value, error) {
 }
 
 type NotificationScopes struct {
-	Disabled bool `json:"disabled"`
-	Enabled  bool `json:"enabled"`
-	SyncDone bool `json:"syncdone"`
-	Updates  bool `json:"updates"`
+	Disabled    bool `json:"disabled"`
+	Enabled     bool `json:"enabled"`
+	SyncDone    bool `json:"syncdone"`
+	Updates     bool `json:"updates"`
+	DailyReport bool `json:"dailyreport"`
 }
 
 var (
@@ -114,6 +115,7 @@ const (
 	nsFlagEnabled
 	nsFlagSyncDone
 	nsFlagUpdates
+	nsFlagDailyReport
 )
 
 func (ns NotificationScopes) ToInt64() (v int64) {
@@ -129,6 +131,9 @@ func (ns NotificationScopes) ToInt64() (v int64) {
 	if ns.Updates {
 		v |= nsFlagUpdates
 	}
+	if ns.DailyReport {
+		v |= nsFlagDailyReport
+	}
 	return
 }
 
@@ -137,6 +142,7 @@ func (ns *NotificationScopes) FromInt64(v int64) {
 	ns.Enabled = v&nsFlagEnabled != 0
 	ns.SyncDone = v&nsFlagSyncDone != 0
 	ns.Updates = v&nsFlagUpdates != 0
+	ns.DailyReport = v&nsFlagDailyReport != 0
 }
 
 func (ns *NotificationScopes) Scan(src any) error {
@@ -163,6 +169,8 @@ func (ns *NotificationScopes) FromStrings(scopes []string) {
 			ns.SyncDone = true
 		case "updates":
 			ns.Updates = true
+		case "dailyreport":
+			ns.DailyReport = true
 		}
 	}
 }

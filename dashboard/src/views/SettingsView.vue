@@ -36,6 +36,7 @@ const settings = bindObjectToLocalStorage(
 		notifyWhenEnabled: false,
 		notifyWhenSyncFinished: false,
 		notifyUpdates: false,
+		dailyReport: false,
 	},
 	'go-openbmclapi.settings.notify',
 )
@@ -53,6 +54,9 @@ function getSubscribeScopes(): SubscribeScope[] {
 	}
 	if (settings.notifyUpdates) {
 		res.push('updates')
+	}
+	if (settings.dailyReport) {
+		res.push('dailyreport')
 	}
 	return res
 }
@@ -164,6 +168,7 @@ onMounted(() => {
 			settings.notifyWhenEnabled = sets.scopes.enabled
 			settings.notifyWhenSyncFinished = sets.scopes.syncdone
 			settings.notifyUpdates = sets.scopes.updates
+			settings.dailyReport = sets.scopes.dailyreport
 		})
 		.finally(() => {
 			requestingPermission.value = false
@@ -241,6 +246,13 @@ onMounted(() => {
 					<lable class="settings-label">{{ tr('title.notify.when.update.available') }}</lable>
 					<InputSwitch
 						v-model="settings.notifyUpdates"
+						:disabled="requestingPermission || !enableNotify"
+					/>
+				</div>
+				<div class="flex-row-center settings-elem">
+					<lable class="settings-label">{{ tr('title.notify.report.daily') }}</lable>
+					<InputSwitch
+						v-model="settings.dailyReport"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>

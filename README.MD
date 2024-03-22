@@ -222,7 +222,9 @@ github-api:
 database:
   # 数据库驱动, 可选值有:
   # - memory # 内存数据库, 无持久化, 不需 DSN
-  # - sqlite # sqlite 文件存储. DSN 为文件路径
+  # - sqlite   # sqlite 文件存储. DSN 为文件路径
+  # - mysql    # MySQL, DSN 见 <https://github.com/go-sql-driver/mysql?tab=readme-ov-file#dsn-data-source-name>
+  # - postgres # PostgreSQL, DSN 见 <https://pkg.go.dev/github.com/lib/pq#hdr-Connection_String_Parameters>
   driver: sqlite
   # 数据库的 DSN. 请参考上文
   data-source-name: files.db

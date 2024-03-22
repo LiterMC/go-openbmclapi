@@ -372,7 +372,7 @@ func (db *SqlDB) GetFileRecord(path string) (rec *FileRecord, err error) {
 
 	rec = new(FileRecord)
 	rec.Path = path
-	if err = db.fileRecordStmts.get.QueryRowContext(ctx, path).Scan(&rec.Hash, &rec.Size); err != nil {
+	if err = db.fileRecordStmts.get.QueryRowContext(ctx, &rec.Path).Scan(&rec.Hash, &rec.Size); err != nil {
 		if err == sql.ErrNoRows {
 			err = ErrNotFound
 		}
@@ -396,15 +396,15 @@ func (db *SqlDB) SetFileRecord(rec FileRecord) (err error) {
 	}()
 
 	var has int
-	if err = tx.Stmt(db.fileRecordStmts.has).QueryRow(rec.Path).Scan(&has); err != nil && err != sql.ErrNoRows {
+	if err = tx.Stmt(db.fileRecordStmts.has).QueryRow(&rec.Path).Scan(&has); err != nil && err != sql.ErrNoRows {
 		return
 	}
 	if has == 0 {
-		if _, err = tx.Stmt(db.fileRecordStmts.setInsert).Exec(rec.Path, rec.Hash, rec.Size); err != nil {
+		if _, err = tx.Stmt(db.fileRecordStmts.setInsert).Exec(&rec.Path, &rec.Hash, &rec.Size); err != nil {
 			return
 		}
 	} else {
-		if _, err = tx.Stmt(db.fileRecordStmts.setUpdate).Exec(rec.Hash, rec.Size, rec.Path); err != nil {
+		if _, err = tx.Stmt(db.fileRecordStmts.setUpdate).Exec(&rec.Hash, &rec.Size, &rec.Path); err != nil {
 			return
 		}
 	}

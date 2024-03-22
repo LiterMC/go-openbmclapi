@@ -831,13 +831,6 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	fileset := make(map[string]int64, len(files))
 	for _, f := range files {
 		fileset[f.Hash] = f.Size
-		if config.Hijack.Enable && !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
-			cr.database.SetFileRecord(database.FileRecord{
-				Path: f.Path,
-				Hash: f.Hash,
-				Size: f.Size,
-			})
-		}
 	}
 	cr.filesetMux.Lock()
 	cr.fileset = fileset

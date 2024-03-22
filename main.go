@@ -41,6 +41,7 @@ import (
 
 	"runtime/pprof"
 
+	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/lang"
 	"github.com/LiterMC/go-openbmclapi/limited"
@@ -358,6 +359,20 @@ func (r *Runner) InitCluster(ctx context.Context) {
 	}
 }
 
+func (r *Runner) UpdateFileRecords(files []FileInfo) {
+	log.Info("Begin to update file records")
+	for _, f := range files {
+		if config.Hijack.Enable && !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
+			r.cluster.database.SetFileRecord(database.FileRecord{
+				Path: f.Path,
+				Hash: f.Hash,
+				Size: f.Size,
+			})
+		}
+	}
+	log.Info("All file records are updated")
+}
+
 func (r *Runner) InitSynchronizer(ctx context.Context) {
 	log.Info(Tr("info.filelist.fetching"))
 	fl, err := r.cluster.GetFileList(ctx)
@@ -383,6 +398,7 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		go r.UpdateFileRecords(fl)
 
 		if !config.Advanced.NoGC {
 			go r.cluster.Gc()
@@ -401,6 +417,7 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		}
 		checkCount = (checkCount + 1) % heavyCheckInterval
 		r.cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
+		go r.UpdateFileRecords(fl)
 		if !config.Advanced.NoGC && !config.OnlyGcWhenStart {
 			go r.cluster.Gc()
 		}

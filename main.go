@@ -111,7 +111,7 @@ func main() {
 		lang.SetLang("en-us")
 	}
 	lang.ParseSystemLanguage()
-	log.Info("language:", lang.GetLang().Code())
+	log.Debug("language:", lang.GetLang().Code())
 
 	printShortLicense()
 	parseArgs()
@@ -142,18 +142,6 @@ func main() {
 	log.StartFlushLogFile()
 
 	r := new(Runner)
-
-	if config.Advanced.DebugLog {
-		var err error
-		dumpCmdFile := filepath.Join(os.TempDir(), fmt.Sprintf("go-openbmclapi-dump-command.%d.in", os.Getpid()))
-		if r.dumpCmdFd, err = os.OpenFile(dumpCmdFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC|os.O_SYNC, 0660); err != nil {
-			log.Errorf("Cannot create %q: %v", dumpCmdFile, err)
-		} else {
-			defer os.Remove(dumpCmdFile)
-			defer r.dumpCmdFd.Close()
-			log.Infof("Dump command file %s has created", dumpCmdFile)
-		}
-	}
 
 START:
 	ctx, cancel := context.WithCancel(context.Background())
@@ -241,7 +229,6 @@ START:
 type Runner struct {
 	restartFlag bool
 
-	dumpCmdFd  *os.File
 	cluster    *Cluster
 	clusterSvr *http.Server
 
@@ -279,16 +266,18 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 			if s == syscall.SIGQUIT {
 				// avaliable commands see <https://pkg.go.dev/runtime/pprof#Profile>
 				dumpCommand := "heap"
-				if r.dumpCmdFd != nil {
-					var buf [256]byte
-					if _, err := r.dumpCmdFd.Seek(0, io.SeekStart); err != nil {
-						log.Errorf("Cannot read dump command file: %v", err)
-					} else if n, err := r.dumpCmdFd.Read(buf[:]); err != nil {
-						log.Errorf("Cannot read dump command file: %v", err)
-					} else {
-						dumpCommand = (string)(bytes.TrimSpace(buf[:n]))
-					}
-					r.dumpCmdFd.Truncate(0)
+				dumpFileName := filepath.Join(os.TempDir(), fmt.Sprintf("go-openbmclapi-dump-command.%d.in", os.Getpid()))
+				log.Infof("Reading dump command file at %q", dumpFileName)
+				var buf [128]byte
+				if dumpFile, err := os.Open(dumpFileName); err != nil {
+					log.Errorf("Cannot open dump command file: %v", err)
+				} else if n, err := dumpFile.Read(buf[:]); err != nil {
+					dumpFile.Close()
+					log.Errorf("Cannot read dump command file: %v", err)
+				} else {
+					dumpFile.Truncate(0)
+					dumpFile.Close()
+					dumpCommand = (string)(bytes.TrimSpace(buf[:n]))
 				}
 				name := fmt.Sprintf(time.Now().Format("dump-%s-20060102-150405.txt"), dumpCommand)
 				log.Infof("Creating goroutine dump file at %s", name)

@@ -233,24 +233,41 @@ func (w *WebPushManager) SendNotification(ctx context.Context, message []byte, s
 func (w *WebPushManager) sendMessageIf(ctx context.Context, message []byte, opts *PushOptions, filter func(*database.SubscribeRecord) bool) {
 	log.Debugf("Sending notification: %s", message)
 	var wg sync.WaitGroup
+	var mux sync.Mutex
+	var outdated []database.SubscribeRecord
 	w.database.ForEachSubscribe(func(record *database.SubscribeRecord) error {
 		if filter(record) {
 			log.Debugf("Sending notification to %s", record.EndPoint)
 			wg.Add(1)
-			go func(subs *Subscription) {
+			go func(record database.SubscribeRecord) {
 				defer wg.Done()
+				subs := &Subscription{
+					EndPoint: record.EndPoint,
+					Keys:     record.Keys,
+				}
 				err := w.SendNotification(ctx, message, subs, opts)
 				if err != nil {
 					log.Warnf("Error when sending notification: %v", err)
+					var herr *utils.HTTPStatusError
+					if errors.As(err, &herr) && herr != nil {
+						if herr.Code == http.StatusForbidden {
+							mux.Lock()
+							outdated = append(outdated, record)
+							mux.Unlock()
+						}
+					}
 				}
-			}(&Subscription{
-				EndPoint: record.EndPoint,
-				Keys:     record.Keys,
-			})
+			}(*record)
 		}
 		return nil
 	})
 	wg.Wait()
+	if len(outdated) > 0 {
+		log.Warnf("Found %d forbidden push endpoint", len(outdated))
+		for _, r := range outdated {
+			w.database.RemoveSubscribe(r.User, r.Client)
+		}
+	}
 }
 
 func (w *WebPushManager) OnEnabled() {

@@ -36,6 +36,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -236,6 +237,8 @@ type Runner struct {
 	tlsConfig   *tls.Config
 	listener    net.Listener
 	publicHosts []string
+
+	updating atomic.Bool
 }
 
 func (r *Runner) getPublicPort() uint16 {
@@ -302,7 +305,7 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 			}
 
 			cancel()
-			shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Minute)
+			shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Second * 15)
 			log.Warn(Tr("warn.server.closing"))
 			shutExit := make(chan struct{}, 0)
 			go func() {
@@ -360,15 +363,30 @@ func (r *Runner) InitCluster(ctx context.Context) {
 }
 
 func (r *Runner) UpdateFileRecords(files []FileInfo) {
+	if !config.Hijack.Enable {
+		return
+	}
+	if !r.updating.CompareAndSwap(false, true) {
+		return
+	}
+	defer r.updating.Store(false)
+	sem := limited.NewSemaphore(10)
 	log.Info("Begin to update file records")
 	for _, f := range files {
-		if config.Hijack.Enable && !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
-			r.cluster.database.SetFileRecord(database.FileRecord{
+		if !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
+			sem.Acquire()
+			go func(rec database.FileRecord) {
+				defer sem.Release()
+				r.cluster.database.SetFileRecord(rec)
+			}(database.FileRecord{
 				Path: f.Path,
 				Hash: f.Hash,
 				Size: f.Size,
 			})
 		}
+	}
+	for i := sem.Cap(); i > 0; i-- {
+		sem.Acquire()
 	}
 	log.Info("All file records are updated")
 }

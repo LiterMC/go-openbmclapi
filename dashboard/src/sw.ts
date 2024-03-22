@@ -91,6 +91,7 @@ async function onRecvPush(data: PushData): Promise<void> {
 		case 'daily-report': {
 			const compressed = decodeB64(data.data)
 			const stats: Stats = JSON.parse(pako.inflate(compressed, { to: 'string' }))
+			console.debug('daily-report stats:', stats)
 			const lastDay = new Date(
 				Date.UTC(stats.date.year, stats.date.month + 1, stats.date.day, stats.date.hour),
 			)
@@ -99,12 +100,12 @@ async function onRecvPush(data: PushData): Promise<void> {
 			)
 			const lastStat =
 				lastDay.getUTCMonth() === stats.date.month + 1
-					? stats.days[lastDay.getUTCDate()]
-					: stats.prev.days[lastDay.getUTCDate()]
+					? stats.days[lastDay.getUTCDate() - 1]
+					: stats.prev.days[lastDay.getUTCDate() - 1]
 			const lastTwoStat =
 				lastTwoDay.getUTCMonth() === stats.date.month + 1
-					? stats.days[lastTwoDay.getUTCDate()]
-					: stats.prev.days[lastTwoDay.getUTCDate()]
+					? stats.days[lastTwoDay.getUTCDate() - 1]
+					: stats.prev.days[lastTwoDay.getUTCDate() - 1]
 			await self.registration
 				.showNotification('OpenBmclApi', {
 					icon: ICON_URL,

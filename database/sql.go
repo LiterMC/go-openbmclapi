@@ -22,6 +22,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/LiterMC/go-openbmclapi/log"
@@ -385,31 +386,10 @@ func (db *SqlDB) SetFileRecord(rec FileRecord) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	tx, err := db.db.BeginTx(ctx, nil)
-	if err != nil {
-		return
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
+	if _, err = db.fileRecordStmts.setUpdate.ExecContext(ctx, &rec.Hash, &rec.Size, &rec.Path); err != nil {
+		if _, er := db.fileRecordStmts.setInsert.ExecContext(ctx, &rec.Path, &rec.Hash, &rec.Size); er != nil {
+			return errors.Join(err, er)
 		}
-	}()
-
-	var has int
-	if err = tx.Stmt(db.fileRecordStmts.has).QueryRow(&rec.Path).Scan(&has); err != nil && err != sql.ErrNoRows {
-		return
-	}
-	if has == 0 {
-		if _, err = tx.Stmt(db.fileRecordStmts.setInsert).Exec(&rec.Path, &rec.Hash, &rec.Size); err != nil {
-			return
-		}
-	} else {
-		if _, err = tx.Stmt(db.fileRecordStmts.setUpdate).Exec(&rec.Hash, &rec.Size, &rec.Path); err != nil {
-			return
-		}
-	}
-	if err = tx.Commit(); err != nil {
-		return
 	}
 	return
 }

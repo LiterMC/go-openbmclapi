@@ -279,12 +279,17 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 					dumpFile.Close()
 					dumpCommand = (string)(bytes.TrimSpace(buf[:n]))
 				}
+				pcmd := pprof.Lookup(dumpCommand)
+				if pcmd == nil {
+					log.Errorf("No pprof command is named %q", dumpCommand)
+					continue
+				}
 				name := fmt.Sprintf(time.Now().Format("dump-%s-20060102-150405.txt"), dumpCommand)
 				log.Infof("Creating goroutine dump file at %s", name)
 				if fd, err := os.Create(name); err != nil {
 					log.Infof("Cannot create dump file: %v", err)
 				} else {
-					err := pprof.Lookup(dumpCommand).WriteTo(fd, 1)
+					err := pcmd.WriteTo(fd, 1)
 					fd.Close()
 					if err != nil {
 						log.Infof("Cannot write dump file: %v", err)

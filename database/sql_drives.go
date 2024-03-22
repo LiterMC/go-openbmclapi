@@ -22,5 +22,5 @@ package database
 import (
 	_ "github.com/glebarez/go-sqlite"  // sqlite
 	_ "github.com/go-sql-driver/mysql" // mysql
-	// _ "github.com/lib/pq" // postgres // TODO: query with $1, $2 ... format
+	_ "github.com/lib/pq"              // postgres
 )

@@ -37,7 +37,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 	"github.com/LiterMC/go-openbmclapi/log"
-	. "github.com/LiterMC/go-openbmclapi/utils"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 var errNotWorking = errors.New("storage is down")
@@ -154,31 +154,32 @@ func (s *MountStorage) Remove(hash string) error {
 }
 
 func (s *MountStorage) WalkDir(walker func(hash string, size int64) error) error {
-	return WalkCacheDir(s.opt.CachePath(), walker)
+	return utils.WalkCacheDir(s.opt.CachePath(), walker)
 }
 
-func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
+func (s *MountStorage) preServe(ctx context.Context) bool {
+	const checkInterval = time.Minute * 3
 	now := time.Now()
 	if s.working.Load() != 1 {
 		if !s.working.CompareAndSwap(0, 2) {
-			return 0, errNotWorking
+			return false
 		}
 		s.checkMux.Lock()
-		needCheck := now.Sub(s.lastCheck) > time.Minute*3
+		needCheck := now.Sub(s.lastCheck) > checkInterval
 		if needCheck {
 			s.lastCheck = now
 		}
 		s.checkMux.Unlock()
 		if !needCheck {
 			s.working.Store(0)
-			return 0, errNotWorking
+			return false
 		}
-		tctx, cancel := context.WithTimeout(req.Context(), time.Second*5)
+		tctx, cancel := context.WithTimeout(ctx, time.Second*5)
 		supportRange, err := s.checkAlive(tctx, 0)
 		cancel()
 		if err != nil {
 			s.working.Store(0)
-			return 0, errNotWorking
+			return false
 		}
 		s.supportRange.Store(supportRange)
 		s.working.Store(1)
@@ -186,7 +187,7 @@ func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		s.checkMux.RLock()
 		lastCheck := s.lastCheck
 		s.checkMux.RUnlock()
-		if now.Sub(lastCheck) > time.Minute*3 {
+		if now.Sub(lastCheck) > checkInterval {
 			go func() {
 				s.checkMux.Lock()
 				if s.lastCheck != lastCheck {
@@ -207,7 +208,17 @@ func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 			}()
 		}
 	}
+	return true
+}
 
+func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
+	if !s.preServe(req.Context()) {
+		return 0, errNotWorking
+	}
+	return s.serveDownload(rw, req, hash, size)
+}
+
+func (s *MountStorage) serveDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
 	target, err := url.JoinPath(s.opt.RedirectBase, "download", hash[:2], hash)
 	if err != nil {
 		return 0, err
@@ -245,7 +256,7 @@ func (s *MountStorage) createMeasureFile(size int) (err error) {
 	t := filepath.Join(s.opt.Path, "measure", strconv.Itoa(size))
 	log.Debugf("Checking measure file %q", t)
 	if stat, err := os.Stat(t); err == nil {
-		tsz := (int64)(size) * MbChunkSize
+		tsz := (int64)(size) * utils.MbChunkSize
 		if size == 0 {
 			tsz = 2
 		}
@@ -265,13 +276,13 @@ func (s *MountStorage) createMeasureFile(size int) (err error) {
 	}
 	defer fd.Close()
 	if size == 0 {
-		if _, err = fd.Write(MbChunk[:2]); err != nil {
+		if _, err = fd.Write(utils.MbChunk[:2]); err != nil {
 			log.Errorf("Cannot write mirror measure file %q: %v", t, err)
 			return
 		}
 	} else {
 		for j := 0; j < size; j++ {
-			if _, err = fd.Write(MbChunk[:]); err != nil {
+			if _, err = fd.Write(utils.MbChunk[:]); err != nil {
 				log.Errorf("Cannot write mirror measure file %q: %v", t, err)
 				return
 			}
@@ -308,9 +319,9 @@ func (s *MountStorage) checkAlive(ctx context.Context, size int) (supportRange b
 		return false, fmt.Errorf("Check request failed %q: %w", target, err)
 	}
 	defer res.Body.Close()
-	log.Debugf("Webdav check response status code %d %s", res.StatusCode, res.Status)
+	log.Debugf("MountStorage check response status code %d %s", res.StatusCode, res.Status)
 	if supportRange = res.StatusCode == http.StatusPartialContent; supportRange {
-		log.Debug("Webdav support Range header!")
+		log.Debug("MountStorage support Range header!")
 		targetSize--
 	} else if res.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("Check request failed %q: %d %s", target, res.StatusCode, res.Status)
@@ -320,23 +331,23 @@ func (s *MountStorage) checkAlive(ctx context.Context, size int) (supportRange b
 			log.Warn("Non standard http response detected, responsed 'Content-Range' header with status 200, expected status 206")
 			fields := strings.Fields(crange)
 			if len(fields) >= 2 && fields[0] == "bytes" && strings.HasPrefix(fields[1], "1-") {
-				log.Debug("Webdav support Range header?")
+				log.Debug("MountStorage support Range header?")
 				supportRange = true
 				targetSize--
 			}
 		}
 	}
-	log.Debug("reading webdav server response")
+	log.Debug("reading MountStorage's server response")
 	start := time.Now()
 	n, err := io.Copy(io.Discard, res.Body)
 	if err != nil {
-		return false, fmt.Errorf("Webdav check request failed %q: %w", target, err)
+		return false, fmt.Errorf("MountStorage check request failed %q: %w", target, err)
 	}
 	used := time.Since(start)
 	if n != targetSize {
-		return false, fmt.Errorf("Webdav check request failed %q: expected %d bytes, but got %d bytes", target, targetSize, n)
+		return false, fmt.Errorf("MountStorage check request failed %q: expected %d bytes, but got %d bytes", target, targetSize, n)
 	}
 	rate := (float64)(n) / used.Seconds()
-	log.Infof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, BytesToUnit(rate), supportRange)
+	log.Infof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, utils.BytesToUnit(rate), supportRange)
 	return
 }

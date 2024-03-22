@@ -30,6 +30,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/studio-b12/gowebdav"
@@ -44,12 +46,12 @@ import (
 )
 
 type WebDavStorageOption struct {
-	MaxConn           int          `yaml:"max-conn"`
-	MaxUploadRate     int          `yaml:"max-upload-rate"`
-	MaxDownloadRate   int          `yaml:"max-download-rate"`
-	PreGenMeasures    bool         `yaml:"pre-gen-measures"`
-	FollowRedirect    bool         `yaml:"follow-redirect"`
-	RedirectLinkCache YAMLDuration `yaml:"redirect-link-cache"`
+	MaxConn           int                `yaml:"max-conn"`
+	MaxUploadRate     int                `yaml:"max-upload-rate"`
+	MaxDownloadRate   int                `yaml:"max-download-rate"`
+	PreGenMeasures    bool               `yaml:"pre-gen-measures"`
+	FollowRedirect    bool               `yaml:"follow-redirect"`
+	RedirectLinkCache utils.YAMLDuration `yaml:"redirect-link-cache"`
 
 	Alias      string `yaml:"alias,omitempty"`
 	WebDavUser `yaml:",inline,omitempty"`
@@ -125,6 +127,10 @@ type WebDavStorage struct {
 	limitedDialer *limited.LimitedDialer
 	httpCli       *http.Client
 	noRedCli      *http.Client // no redirect client
+
+	working   atomic.Int32
+	checkMux  sync.RWMutex
+	lastCheck time.Time
 }
 
 var _ Storage = (*WebDavStorage)(nil)
@@ -202,6 +208,7 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		}
 		log.Info("Measure files created")
 	}
+	s.working.Store(1)
 	return
 }
 
@@ -221,6 +228,7 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 		return err
 	}
 	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
+	req.Header.Set("User-Agent", build.ClusterUserAgentFull)
 	req.ContentLength = size
 
 	res, err := s.httpCli.Do(req)
@@ -293,7 +301,66 @@ func copyHeader(key string, dst, src http.Header) {
 	}
 }
 
+func (s *WebDavStorage) preServe(ctx context.Context) bool {
+	const checkInterval = time.Minute * 3
+	now := time.Now()
+	if s.working.Load() != 1 {
+		if !s.working.CompareAndSwap(0, 2) {
+			return false
+		}
+		s.checkMux.Lock()
+		needCheck := now.Sub(s.lastCheck) > checkInterval
+		if needCheck {
+			s.lastCheck = now
+		}
+		s.checkMux.Unlock()
+		if !needCheck {
+			s.working.Store(0)
+			return false
+		}
+		tctx, cancel := context.WithTimeout(ctx, time.Second*5)
+		err := s.checkAlive(tctx, 0)
+		cancel()
+		if err != nil {
+			s.working.Store(0)
+			return false
+		}
+		s.working.Store(1)
+	} else {
+		s.checkMux.RLock()
+		lastCheck := s.lastCheck
+		s.checkMux.RUnlock()
+		if now.Sub(lastCheck) > checkInterval {
+			go func() {
+				s.checkMux.Lock()
+				if s.lastCheck != lastCheck {
+					s.checkMux.Unlock()
+					return
+				}
+				s.lastCheck = now
+				s.checkMux.Unlock()
+
+				tctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+				defer cancel()
+				if err := s.checkAlive(tctx, 0); err == nil {
+					s.working.Store(1)
+				} else {
+					s.working.Store(0)
+				}
+			}()
+		}
+	}
+	return true
+}
+
 func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
+	if !s.preServe(req.Context()) {
+		return 0, errNotWorking
+	}
+	return s.serveDownload(rw, req, hash, size)
+}
+
+func (s *WebDavStorage) serveDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
 	if !s.opt.FollowRedirect && s.opt.RedirectLinkCache > 0 {
 		if location, ok := s.cache.Get(hash); ok {
 			// fix the size for Ranged request
@@ -323,6 +390,7 @@ func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request,
 		return 0, err
 	}
 	tgReq.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
+	tgReq.Header.Set("User-Agent", build.ClusterUserAgentFull)
 	rangeH := req.Header.Get("Range")
 	if rangeH != "" {
 		tgReq.Header.Set("Range", rangeH)
@@ -471,25 +539,50 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) (err er
 	return nil
 }
 
-type YAMLDuration time.Duration
+func (s *WebDavStorage) checkAlive(ctx context.Context, size int) (err error) {
+	var targetSize int64
+	if size == 0 {
+		targetSize = 2
+	} else {
+		targetSize = (int64)(size) * 1024 * 1024
+	}
+	log.Infof("Checking %s for %d bytes ...", s.String(), targetSize)
 
-func (d YAMLDuration) Dur() time.Duration {
-	return (time.Duration)(d)
-}
+	if err := s.createMeasureFile(ctx, size); err != nil {
+		return err
+	}
+	target, err := url.JoinPath(s.opt.GetEndPoint(), "measure", strconv.Itoa(size))
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
+	req.Header.Set("User-Agent", build.ClusterUserAgentFull)
 
-func (d YAMLDuration) MarshalYAML() (any, error) {
-	return (time.Duration)(d).String(), nil
-}
-
-func (d *YAMLDuration) UnmarshalYAML(n *yaml.Node) (err error) {
-	var v string
-	if err = n.Decode(&v); err != nil {
+	resp, err := s.httpCli.Do(req)
+	if err != nil {
 		return
 	}
-	var td time.Duration
-	if td, err = time.ParseDuration(v); err != nil {
-		return
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return utils.NewHTTPStatusErrorFromResponse(resp)
 	}
-	*d = (YAMLDuration)(td)
-	return nil
+	if resp.ContentLength >= 0 && resp.ContentLength != targetSize {
+		return fmt.Errorf("Content-Length not match, got %d, expect %d", resp.ContentLength, targetSize)
+	}
+	start := time.Now()
+	n, err := io.Copy(io.Discard, resp.Body)
+	used := time.Since(start)
+	if err != nil {
+		return fmt.Errorf("WebDavStorage check failed %q: %w", target, err)
+	}
+	if n != targetSize {
+		return fmt.Errorf("Content-Length not match, got %d, expect %d", resp.ContentLength, targetSize)
+	}
+	rate := (float64)(n) / used.Seconds()
+	log.Infof("Check finished for %q, used %v, %s/s", target, used, utils.BytesToUnit(rate))
+	return
 }

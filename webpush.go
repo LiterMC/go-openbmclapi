@@ -381,7 +381,8 @@ func (w *WebPushManager) OnReportStat(stats *Stats) {
 	if !w.nextReportAfter.IsZero() && now.Before(w.nextReportAfter) {
 		return
 	}
-	w.nextReportAfter = now.Add(time.Minute * 5).Truncate(15 * time.Minute)
+	w.nextReportAfter = now.Add(time.Minute * 5).Truncate(15 * time.Minute).Add(24 * time.Hour)
+	// TODO: seprate report after
 
 	stat, err := stats.MarshalJSON()
 	if err != nil {

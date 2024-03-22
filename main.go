@@ -305,7 +305,7 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 			}
 
 			cancel()
-			shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Second * 15)
+			shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Second*15)
 			log.Warn(Tr("warn.server.closing"))
 			shutExit := make(chan struct{}, 0)
 			go func() {

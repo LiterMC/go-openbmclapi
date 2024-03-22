@@ -48,12 +48,17 @@ func (cr *Cluster) checkUpdate() (err error) {
 		return
 	}
 
+	log.Info("Checking for Go-OpenBmclAPI latest release")
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
 	req, err := http.NewRequest(http.MethodGet, lastetReleaseEndPoint, nil)
 	if err != nil {
 		return
+	}
+	if config.GithubAPI.Authorization != "" {
+		req.Header.Set("Authorization", config.GithubAPI.Authorization)
 	}
 	var resp *http.Response
 	{

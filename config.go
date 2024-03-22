@@ -29,6 +29,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -118,6 +119,11 @@ func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 	return nil
 }
 
+type GithubAPIConfig struct {
+	UpdateCheckInterval utils.YAMLDuration `yaml:"update-check-interval"`
+	Authorization       string             `yaml:"authorization"`
+}
+
 type DashboardConfig struct {
 	Enable       bool   `yaml:"enable"`
 	Username     string `yaml:"username"`
@@ -184,6 +190,7 @@ type Config struct {
 	Cache        CacheConfig                    `yaml:"cache"`
 	ServeLimit   ServeLimitConfig               `yaml:"serve-limit"`
 	Dashboard    DashboardConfig                `yaml:"dashboard"`
+	GithubAPI    GithubAPIConfig                `yaml:"github-api"`
 	Database     DatabaseConfig                 `yaml:"database"`
 	Hijack       HijackConfig                   `yaml:"hijack"`
 	Storages     []storage.StorageOption        `yaml:"storages"`
@@ -246,6 +253,10 @@ var defaultConfig = Config{
 		PwaShortName:  "GOBA Dash",
 		PwaDesc:       "Go-Openbmclapi Internal Dashboard",
 		NotifySubject: "mailto:user@example.com",
+	},
+
+	GithubAPI: GithubAPIConfig{
+		UpdateCheckInterval: (utils.YAMLDuration)(time.Hour),
 	},
 
 	Database: DatabaseConfig{

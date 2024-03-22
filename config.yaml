@@ -35,6 +35,9 @@ dashboard:
   pwa-short_name: GOBA Dash
   pwa-description: Go-Openbmclapi Internal Dashboard
   notification-subject: mailto:user@example.com
+github-api:
+  update-check-interval: 1h0m0s
+  authorization: ""
 database:
   driver: sqlite
   data-source-name: files.db

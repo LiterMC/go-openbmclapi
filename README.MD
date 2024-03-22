@@ -210,6 +210,14 @@ dashboard:
   # 签名推送 JWT 时的 subject, 请将其设为 "mailto:<您的邮箱>" 或 "https://<您的域名>"
   notification-subject: mailto:user@example.com
 
+# Github API 客户端配置
+github-api:
+  # 更新检测间隔
+  update-check-interval: 1h0m0s
+  # Github API 访问令牌, 绕过IP速率限制
+  # 请访问 <https://github.com/settings/tokens> 生成新的无权限令牌
+  authorization: Bearer ghp_xxxx
+
 # 数据库
 database:
   # 数据库驱动, 可选值有:

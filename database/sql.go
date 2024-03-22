@@ -178,7 +178,7 @@ func (db *SqlDB) AddJTI(jti string, expire time.Time) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	if _, err = db.jtiStmts.add.ExecContext(ctx, jti, expire); err != nil {
+	if _, err = db.jtiStmts.add.ExecContext(ctx, jti, expire.UTC().Format("2006-01-02 15:04:05")); err != nil {
 		return
 	}
 	return

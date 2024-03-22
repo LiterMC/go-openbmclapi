@@ -67,13 +67,8 @@ func NewSqlDB(driverName string, dataSourceName string) (db *SqlDB, err error) {
 		return
 	}
 	ddb.SetConnMaxLifetime(time.Minute * 3)
-	if driverName == "sqlite" || driverName == "sqlite3" {
-		ddb.SetMaxOpenConns(1)
-		ddb.SetMaxIdleConns(1)
-	} else {
-		ddb.SetMaxOpenConns(16)
-		ddb.SetMaxIdleConns(16)
-	}
+	ddb.SetMaxOpenConns(16)
+	ddb.SetMaxIdleConns(16)
 
 	db = &SqlDB{
 		db: ddb,

@@ -51,7 +51,7 @@ function activeScroller(): void {
 	}
 	scrolling = true
 
-	const MIN_SCROLL_SPEED = 100 // 100px per second
+	const MIN_SCROLL_SPEED = 500 // 500px per second
 	registerAnimationFrame((dt: number): boolean => {
 		if (!focusLastLog || !scrollYTarget || document.hidden || !box.value) {
 			scrolling = false

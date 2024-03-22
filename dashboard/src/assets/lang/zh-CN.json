@@ -33,7 +33,11 @@
 			"when.disabled": "下线时发送通知",
 			"when.enabled": "上线时发送通知",
 			"when.sync.done": "同步完成时发送通知",
-			"when.update.available": "有更新时发送通知"
+			"when.update.available": "有更新时发送通知",
+			"report": {
+				"daily": "报告每日请求",
+				"at": "报告时间"
+			}
 		}
 	},
 	"message": {

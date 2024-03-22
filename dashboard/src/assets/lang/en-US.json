@@ -33,7 +33,11 @@
 			"when.disabled": "Notify when disabled",
 			"when.enabled": "Notify when enabled",
 			"when.sync.done": "Notify when sync finished",
-			"when.update.available": "Notify when updates available"
+			"when.update.available": "Notify when updates available",
+			"report": {
+				"daily": "Report daily requests",
+				"at": "Report at"
+			}
 		}
 	},
 	"message": {

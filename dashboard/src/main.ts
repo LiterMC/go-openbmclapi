@@ -23,7 +23,7 @@ registerSW({
 		if (!registration) {
 			return
 		}
-		registration.sync.register('poll-state')
+		// registration.sync.register('poll-state')
 	},
 })
 

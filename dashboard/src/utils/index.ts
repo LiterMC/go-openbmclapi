@@ -5,10 +5,18 @@ const _ZH = new Lang('zh')
 
 export function formatNumber(num: number): string {
 	const lang = getLang()
-	if (_ZH.match(lang)) {
-		return formatNumberZH(num)
+	var neg = ''
+	if (num < 0) {
+		neg = '-'
+		num = -num
 	}
-	return formatNumberEN(num)
+	var res: string
+	if (_ZH.match(lang)) {
+		res = formatNumberZH(num)
+	} else {
+		res = formatNumberEN(num)
+	}
+	return neg + res
 }
 
 const nUnitsUS = ['k', 'm', 'B', 'T', 'Q']
@@ -34,7 +42,7 @@ function formatNumberZH(num: number): string {
 	if (num < 9000) {
 		return num.toString()
 	}
-	var unit
+	var unit = ''
 	for (const u of nUnitsZH) {
 		unit = u
 		num /= 10000
@@ -48,10 +56,15 @@ function formatNumberZH(num: number): string {
 const bUnits = ['KB', 'MB', 'GB', 'TB']
 
 export function formatBytes(bytes: number): string {
-	if (bytes < 1000) {
-		return bytes.toString()
+	var neg = ''
+	if (bytes < 0) {
+		neg = '-'
+		bytes = -bytes
 	}
-	var unit
+	if (bytes < 1000) {
+		return `${neg}${bytes} B`
+	}
+	var unit = ''
 	for (const u of bUnits) {
 		unit = u
 		bytes /= 1024
@@ -59,10 +72,15 @@ export function formatBytes(bytes: number): string {
 			break
 		}
 	}
-	return `${bytes.toFixed(2)} ${unit}`
+	return `${neg}${bytes.toFixed(2)} ${unit}`
 }
 
 export function formatTime(ms: number): string {
+	var neg = ''
+	if (ms < 0) {
+		neg = '-'
+		ms = -ms
+	}
 	var unit = tr('unit.time.ms')
 	if (ms > 800) {
 		ms /= 1000
@@ -84,5 +102,5 @@ export function formatTime(ms: number): string {
 			}
 		}
 	}
-	return `${ms.toFixed(2)} ${unit}`
+	return `${neg}${ms.toFixed(2)} ${unit}`
 }

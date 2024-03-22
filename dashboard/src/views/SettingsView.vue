@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, inject, onMounted, type Ref } from 'vue'
 import Card from 'primevue/card'
+import Calendar from 'primevue/calendar'
 import Dropdown from 'primevue/dropdown'
+import InputIcon from 'primevue/inputicon'
 import InputSwitch from 'primevue/inputswitch'
 import { useToast } from 'primevue/usetoast'
 import {
@@ -37,9 +39,25 @@ const settings = bindObjectToLocalStorage(
 		notifyWhenSyncFinished: false,
 		notifyUpdates: false,
 		dailyReport: false,
+		dailyReportAt: '00:00',
 	},
 	'go-openbmclapi.settings.notify',
 )
+const dailyReportAt = ref(
+	new Date(
+		0,
+		0,
+		0,
+		parseInt(settings.dailyReportAt.substr(0, 2)),
+		parseInt(settings.dailyReportAt.substr(3, 2)),
+	),
+)
+watch(dailyReportAt, (v: Date) => {
+	settings.dailyReportAt = `${v.getHours().toString().padStart(2, '0')}:${v
+		.getMinutes()
+		.toString()
+		.padStart(2, '0')}`
+})
 
 function getSubscribeScopes(): SubscribeScope[] {
 	const res: SubscribeScope[] = []
@@ -93,19 +111,17 @@ async function subscribe(): Promise<void> {
 }
 
 async function onEnableNotify(): Promise<void> {
-	if (enableNotify.value) {
-		if (token.value) {
-			removeSubscription(token.value).catch(console.error)
-		}
-		enableNotify.value = false
-		return
-	}
 	if (!token.value) {
 		toast.add({
 			severity: 'error',
 			summary: tr('message.settings.login.first'),
 			life: 5000,
 		})
+		return
+	}
+	if (enableNotify.value) {
+		removeSubscription(token.value).catch(console.error)
+		enableNotify.value = false
 		return
 	}
 	requestingPermission.value = true
@@ -221,40 +237,57 @@ onMounted(() => {
 				</div>
 			</template>
 			<template #content>
-				<div class="flex-row-center settings-elem">
+				<div class="settings-elem">
 					<lable class="settings-label">{{ tr('title.notify.when.disabled') }}</lable>
 					<InputSwitch
 						v-model="settings.notifyWhenDisabled"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
-				<div class="flex-row-center settings-elem">
+				<div class="settings-elem">
 					<lable class="settings-label">{{ tr('title.notify.when.enabled') }}</lable>
 					<InputSwitch
 						v-model="settings.notifyWhenEnabled"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
-				<div class="flex-row-center settings-elem">
+				<div class="settings-elem">
 					<lable class="settings-label">{{ tr('title.notify.when.sync.done') }}</lable>
 					<InputSwitch
 						v-model="settings.notifyWhenSyncFinished"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
-				<div class="flex-row-center settings-elem">
+				<div class="settings-elem">
 					<lable class="settings-label">{{ tr('title.notify.when.update.available') }}</lable>
 					<InputSwitch
 						v-model="settings.notifyUpdates"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
-				<div class="flex-row-center settings-elem">
+				<div class="settings-elem">
 					<lable class="settings-label">{{ tr('title.notify.report.daily') }}</lable>
 					<InputSwitch
 						v-model="settings.dailyReport"
 						:disabled="requestingPermission || !enableNotify"
 					/>
+				</div>
+				<div class="settings-elem">
+					<lable class="settings-label" style="margin-left: 1.5rem"
+						>{{ tr('title.notify.report.at') }}(TODO)</lable
+					>
+					<Calendar
+						class="time-input"
+						v-model="dailyReportAt"
+						showIcon
+						iconDisplay="input"
+						timeOnly
+						:stepMinute="15"
+					>
+						<template #inputicon="{ clickCallback }">
+							<InputIcon class="pi pi-clock pointer" @click="clickCallback" />
+						</template>
+					</Calendar>
 				</div>
 			</template>
 		</Card>
@@ -274,6 +307,9 @@ onMounted(() => {
 }
 
 .settings-elem {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
 	justify-content: space-between;
 	width: 100%;
 	padding: 0.4rem 1rem;
@@ -285,7 +321,7 @@ onMounted(() => {
 }
 
 .settings-label {
-	width: calc(100% - 3rem);
+	max-width: calc(100% - 3rem);
 }
 
 .lang-selector .pi-globe {
@@ -294,6 +330,10 @@ onMounted(() => {
 
 .lang-selector-label {
 	font-size: 0.9rem;
+}
+
+.time-input {
+	width: 7.5rem;
 }
 
 @media (max-width: 60rem) {

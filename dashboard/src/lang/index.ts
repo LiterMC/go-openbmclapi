@@ -1,8 +1,11 @@
 import { type Ref, ref, watch } from 'vue'
 import { Lang } from './lang'
 export * from './lang'
+import EN_US_JSON from '@/assets/lang/en-US.json'
+import ZH_CN_JSON from '@/assets/lang/zh-CN.json'
 
 // keys use with window.localStorage
+const HAS_LOCAL_STORAGE = 'localStorage' in globalThis
 const TR_LANG_CACHE_KEY = 'go-openbmclapi.dashboard.tr.lang'
 const TR_DATA_CACHE_KEY = 'go-openbmclapi.dashboard.tr.map'
 
@@ -16,8 +19,9 @@ interface langItem {
 }
 
 export const avaliableLangs = [
-	{ code: new Lang('en-US'), tr: () => import('@/assets/lang/en-US.json') },
-	{ code: new Lang('zh-CN'), tr: () => import('@/assets/lang/zh-CN.json') },
+	{ code: new Lang('en-US'), tr: () => EN_US_JSON },
+	{ code: new Lang('zh-CN'), tr: () => ZH_CN_JSON },
+	// { code: new Lang('zh-CN'), tr: () => import('@/assets/lang/zh-CN.json') },
 ]
 
 export const defaultLang = avaliableLangs[0]
@@ -25,6 +29,9 @@ const currentLang = ref(defaultLang)
 const currentTr: Ref<LangMap | null> = ref(null)
 
 ;(async function () {
+	if (!HAS_LOCAL_STORAGE) {
+		return
+	}
 	const langCache = localStorage.getItem(TR_LANG_CACHE_KEY)
 	if (langCache) {
 		for (let a of avaliableLangs) {
@@ -53,11 +60,15 @@ export function getLang(): Lang {
 export function setLang(lang: Lang | string): Lang | null {
 	for (let a of avaliableLangs) {
 		if (a.code.match(lang)) {
-			localStorage.setItem(TR_LANG_CACHE_KEY, a.code.toString())
+			if (HAS_LOCAL_STORAGE) {
+				localStorage.setItem(TR_LANG_CACHE_KEY, a.code.toString())
+			}
 			currentLang.value = a
-			a.tr().then((map) => {
+			Promise.resolve(a.tr()).then((map) => {
 				currentTr.value = map
-				localStorage.setItem(TR_DATA_CACHE_KEY, JSON.stringify(map))
+				if (HAS_LOCAL_STORAGE) {
+					localStorage.setItem(TR_DATA_CACHE_KEY, JSON.stringify(map))
+				}
 			})
 			return a.code
 		}

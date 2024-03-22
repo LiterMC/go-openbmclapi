@@ -181,6 +181,7 @@ func (s *MountStorage) preServe(ctx context.Context) bool {
 			s.working.Store(0)
 			return false
 		}
+		log.Warnf("Re-enabled storage %s", s.String())
 		s.supportRange.Store(supportRange)
 		s.working.Store(1)
 	} else {
@@ -203,6 +204,7 @@ func (s *MountStorage) preServe(ctx context.Context) bool {
 					s.supportRange.Store(supportRange)
 					s.working.Store(1)
 				} else {
+					log.Errorf("Disabled storage %s: %v", s.String(), err)
 					s.working.Store(0)
 				}
 			}()

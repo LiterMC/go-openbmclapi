@@ -325,6 +325,7 @@ func (s *WebDavStorage) preServe(ctx context.Context) bool {
 			s.working.Store(0)
 			return false
 		}
+		log.Warnf("Re-enabled storage %s", s.String())
 		s.working.Store(1)
 	} else {
 		s.checkMux.RLock()
@@ -345,6 +346,7 @@ func (s *WebDavStorage) preServe(ctx context.Context) bool {
 				if err := s.checkAlive(tctx, 0); err == nil {
 					s.working.Store(1)
 				} else {
+					log.Errorf("Disabled storage %s: %v", s.String(), err)
 					s.working.Store(0)
 				}
 			}()

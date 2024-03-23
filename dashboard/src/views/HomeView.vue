@@ -37,7 +37,7 @@ const { data, error, loading } = useRequest(getStatus, {
 	loadingDelay: 500,
 	loadingKeep: 2000,
 })
-error.value = 'Loading ...'
+error.value = new Error('Loading ...')
 
 var requestingLogIO = false
 var logIO: LogIO | null = null

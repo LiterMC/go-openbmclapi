@@ -273,9 +273,9 @@ onMounted(() => {
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label" style="margin-left: 1.5rem"
-						>{{ tr('title.notify.report.at') }}</lable
-					>
+					<lable class="settings-label" style="margin-left: 1.5rem">{{
+						tr('title.notify.report.at')
+					}}</lable>
 					<Calendar
 						class="time-input"
 						v-model="dailyReportAt"

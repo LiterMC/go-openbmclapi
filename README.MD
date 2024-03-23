@@ -53,6 +53,9 @@ A: 如果您确定您的存储稳定, 将 `config.yaml` 下的 `no-heavy-check` 
 Q: 程序无法运行 / 直接退出怎么办?  
 A: 请将运行目录下 `logs` 文件夹内最新的日志上传到 [Github Issue](https://github.com/LiterMC/go-openbmclapi/issues/new)
 
+Q: 面板日志一直无法连接?  
+A: 请确认中间所有的反向代理都支持 WebSocket
+
 ## 安装
 
 注意: LiterMC-RootCA 的 SHA1 指纹为 `A2:CB:34:70:25:CF:5D:F6:57:1C:67:81:35:49:7D:6D:A7:26:F7:0E`

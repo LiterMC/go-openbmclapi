@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
 	position: relative;
 	border-radius: 1rem;
 	background: #555;
-	overflow: auto;
+	overflow: hidden;
 }
 
 .inner {
@@ -177,6 +177,7 @@ onBeforeUnmount(() => {
 	height: 100%;
 	padding: 1rem;
 	overflow: auto;
+	overflow-anchor: none;
 }
 
 .shadow {

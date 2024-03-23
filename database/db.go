@@ -24,6 +24,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -63,11 +64,13 @@ type FileRecord struct {
 }
 
 type SubscribeRecord struct {
-	User     string
-	Client   string
-	EndPoint string
-	Keys     SubscribeRecordKeys
-	Scopes   NotificationScopes
+	User       string
+	Client     string
+	EndPoint   string
+	Keys       SubscribeRecordKeys
+	Scopes     NotificationScopes
+	ReportAt   Schedule
+	LastReport sql.NullTime
 }
 
 type SubscribeRecordKeys struct {
@@ -173,4 +176,30 @@ func (ns *NotificationScopes) FromStrings(scopes []string) {
 			ns.DailyReport = true
 		}
 	}
+}
+
+type Schedule struct {
+	Hour   int
+	Minute int
+}
+
+var (
+	_ sql.Scanner   = (*Schedule)(nil)
+	_ driver.Valuer = (*Schedule)(nil)
+)
+
+func (s *Schedule) Scan(src any) error {
+	var v string
+	switch w := src.(type) {
+	case []byte:
+		v = (string)(w)
+	case string:
+		v = w
+	}
+	_, err := fmt.Sscanf(v, "%02d:%02d", &s.Hour, &s.Minute)
+	return err
+}
+
+func (s Schedule) Value() (driver.Value, error) {
+	return fmt.Sprintf("%02d:%02d", s.Hour, s.Minute), nil
 }

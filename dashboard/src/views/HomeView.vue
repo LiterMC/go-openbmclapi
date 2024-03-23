@@ -13,6 +13,7 @@ import { formatNumber, formatBytes, formatTime } from '@/utils'
 import HitsChart from '@/components/HitsChart.vue'
 import UAChart from '@/components/UAChart.vue'
 import LogBlock from '@/components/LogBlock.vue'
+import StatusButton from '@/components/StatusButton.vue'
 import { getStatus, getPprofURL, type StatInstData, type PprofLookups } from '@/api/v0'
 import { LogIO, type LogMsg } from '@/api/log.io'
 import { bindRefToLocalStorage } from '@/cookies'
@@ -36,6 +37,7 @@ const { data, error, loading } = useRequest(getStatus, {
 	loadingDelay: 500,
 	loadingKeep: 2000,
 })
+error.value = 'Loading ...'
 
 var requestingLogIO = false
 var logIO: LogIO | null = null
@@ -225,10 +227,7 @@ onMounted(() => {
 		<div class="main">
 			<div class="flex-row-center basic-info">
 				<div class="flex-row-center" style="height: 4rem">
-					<Button class="info-status" :status="status">
-						{{ tr(`badge.server.status.${status}`) }}
-					</Button>
-
+					<StatusButton :status="status" />
 					<ProgressSpinner v-if="loading" class="polling" strokeWidth="6" />
 				</div>
 				<div v-if="error">
@@ -383,59 +382,6 @@ onMounted(() => {
 
 .info-chart-box {
 	grid-area: c;
-}
-
-.info-status {
-	--flash-from: unset;
-	--flash-out: var(--flash-from);
-	display: inline-flex !important;
-	flex-direction: row;
-	align-items: center;
-	width: 10rem;
-	height: 2.7rem;
-	padding: 0.5rem;
-	margin: 0.5rem;
-	border: none;
-	border-radius: 0.2rem;
-	font-weight: 800;
-	user-select: none;
-	cursor: pointer;
-	transition: 1s background-color ease-out;
-}
-
-.info-status[status='enabled'] {
-	--flash-from: #fff;
-	--flash-to: #11dfc3;
-	color: #fff;
-	background-color: #28a745;
-	animation: flash 1s infinite;
-}
-
-.info-status[status='disabled'] {
-	--flash-from: #fff;
-	--flash-to: #e61a05;
-	color: #fff;
-	background-color: #f89f1b;
-	animation: flash 3s infinite;
-}
-
-.info-status[status='error'] {
-	--flash-from: #8a8dac;
-	color: #fff;
-	background-color: #bfadad;
-}
-
-.info-status::before {
-	content: ' ';
-	display: inline-block;
-	width: 1.05rem;
-	height: 1.05rem;
-	margin-right: 0.5rem;
-	border: solid #fff 0.25rem;
-	border-radius: 50%;
-	background-color: var(--flash-out);
-	box-shadow: #fff8 inset 0 0 2px;
-	transition: background-color 0.15s;
 }
 
 .polling {

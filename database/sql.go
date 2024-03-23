@@ -49,14 +49,15 @@ type SqlDB struct {
 	}
 
 	subscribeStmts struct {
-		get                 *sql.Stmt
-		has                 *sql.Stmt
-		setInsert           *sql.Stmt
-		setUpdate           *sql.Stmt
-		setUpdateScopesOnly *sql.Stmt
-		remove              *sql.Stmt
-		removeUser          *sql.Stmt
-		forEach             *sql.Stmt
+		get                     *sql.Stmt
+		has                     *sql.Stmt
+		setInsert               *sql.Stmt
+		setUpdate               *sql.Stmt
+		setUpdateScopesOnly     *sql.Stmt
+		setUpdateLastReportOnly *sql.Stmt
+		remove                  *sql.Stmt
+		removeUser              *sql.Stmt
+		forEach                 *sql.Stmt
 	}
 
 	jtiCleaner *time.Timer
@@ -449,13 +450,21 @@ func (db *SqlDB) setupSubscribeQuestionMark(ctx context.Context) (err error) {
 		" `endpoint` VARCHAR(255) NOT NULL," +
 		" `keys` VARCHAR(255) NOT NULL," +
 		" `scopes` INTEGER NOT NULL," +
+		" `report_at` CHAR(5) NOT NULL," +
+		" `last_reported` TIMESTAMP NOT NULL," +
 		" PRIMARY KEY (`user`,`client`)" +
 		")"
 	if _, err = db.db.ExecContext(ctx, createTable); err != nil {
 		return
 	}
+	if _, err = db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD `report_at` CHAR(5) DEFAULT '00:00' NOT NULL"); err != nil {
+		return
+	}
+	if _, err = db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD `last_reported` TIMESTAMP DEFAULT NULL"); err != nil {
+		return
+	}
 
-	const getSelectCmd = "SELECT `endpoint`,`keys`,`scopes` FROM " + tableName +
+	const getSelectCmd = "SELECT `endpoint`,`keys`,`scopes`,`report_at` FROM " + tableName +
 		" WHERE `user`=? AND `client`=?"
 	if db.subscribeStmts.get, err = db.db.PrepareContext(ctx, getSelectCmd); err != nil {
 		return
@@ -468,13 +477,16 @@ func (db *SqlDB) setupSubscribeQuestionMark(ctx context.Context) (err error) {
 	}
 
 	const setInsertCmd = "INSERT INTO " + tableName +
-		" (`user`,`client`,`endpoint`,`keys`,`scopes`) VALUES" +
-		" (?,?,?,?,?)"
+		" (`user`,`client`,`endpoint`,`keys`,`scopes`,`report_at`) VALUES" +
+		" (?,?,?,?,?,?)"
 	const setUpdateCmd = "UPDATE " + tableName + " SET" +
-		" `endpoint`=?, `keys`=?, `scopes`=?" +
+		" `endpoint`=?, `keys`=?, `scopes`=?, `report_at`=?" +
 		" WHERE `user`=? AND `client`=?"
 	const setUpdateScopesOnlyCmd = "UPDATE " + tableName + " SET" +
-		" `scopes`=?" +
+		" `scopes`=?, `report_at`=?" +
+		" WHERE `user`=? AND `client`=?"
+	const setUpdateLastReportOnlyCmd = "UPDATE " + tableName + " SET" +
+		" `last_reported`=?" +
 		" WHERE `user`=? AND `client`=?"
 	if db.subscribeStmts.setInsert, err = db.db.PrepareContext(ctx, setInsertCmd); err != nil {
 		return
@@ -498,7 +510,7 @@ func (db *SqlDB) setupSubscribeQuestionMark(ctx context.Context) (err error) {
 		return
 	}
 
-	const forEachSelectCmd = "SELECT `user`,`client`,`endpoint`,`keys`,`scopes` FROM " + tableName
+	const forEachSelectCmd = "SELECT `user`,`client`,`endpoint`,`keys`,`scopes`,`report_at`,`last_reported` FROM " + tableName
 	if db.subscribeStmts.forEach, err = db.db.PrepareContext(ctx, forEachSelectCmd); err != nil {
 		return
 	}
@@ -514,13 +526,21 @@ func (db *SqlDB) setupSubscribeDollarMark(ctx context.Context) (err error) {
 		" endpoint VARCHAR(255) NOT NULL," +
 		" keys VARCHAR(255) NOT NULL," +
 		" scopes INTEGER NOT NULL," +
+		" report_at CHAR(5) NOT NULL," +
+		" last_reported TIMESTAMP NOT NULL," +
 		` PRIMARY KEY ("user",client)` +
 		")"
 	if _, err = db.db.ExecContext(ctx, createTable); err != nil {
 		return
 	}
+	if _, err = db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD report_at CHAR(5) DEFAULT '00:00' NOT NULL"); err != nil {
+		return
+	}
+	if _, err = db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD last_reported TIMESTAMP DEFAULT NULL"); err != nil {
+		return
+	}
 
-	const getSelectCmd = "SELECT endpoint,keys,scopes FROM " + tableName +
+	const getSelectCmd = "SELECT endpoint,keys,scopes,report_at FROM " + tableName +
 		` WHERE "user"=$1 AND client=$2`
 	if db.subscribeStmts.get, err = db.db.PrepareContext(ctx, getSelectCmd); err != nil {
 		return
@@ -533,13 +553,16 @@ func (db *SqlDB) setupSubscribeDollarMark(ctx context.Context) (err error) {
 	}
 
 	const setInsertCmd = "INSERT INTO " + tableName +
-		` ("user",client,endpoint,keys,scopes) VALUES` +
-		" ($1,$2,$3,$4,$5)"
+		` ("user",client,endpoint,keys,scopes,report_at) VALUES` +
+		" ($1,$2,$3,$4,$5,$6)"
 	const setUpdateCmd = "UPDATE " + tableName + " SET" +
-		" endpoint=$1, keys=$2, scopes=$3" +
-		` WHERE "user"=$4 AND client=$5`
+		" endpoint=$1, keys=$2, scopes=$3, report_at=$4" +
+		` WHERE "user"=$5 AND client=$6`
 	const setUpdateScopesOnlyCmd = "UPDATE " + tableName + " SET" +
-		" scopes=$1" +
+		" scopes=$1, report_at=$2" +
+		` WHERE "user"=$3 AND client=$4`
+	const setUpdateLastReportOnlyCmd = "UPDATE " + tableName + " SET" +
+		" last_reported=$1" +
 		` WHERE "user"=$2 AND client=$3`
 	if db.subscribeStmts.setInsert, err = db.db.PrepareContext(ctx, setInsertCmd); err != nil {
 		return
@@ -548,6 +571,9 @@ func (db *SqlDB) setupSubscribeDollarMark(ctx context.Context) (err error) {
 		return
 	}
 	if db.subscribeStmts.setUpdateScopesOnly, err = db.db.PrepareContext(ctx, setUpdateScopesOnlyCmd); err != nil {
+		return
+	}
+	if db.subscribeStmts.setUpdateLastReportOnly, err = db.db.PrepareContext(ctx, setUpdateLastReportOnlyCmd); err != nil {
 		return
 	}
 
@@ -563,7 +589,7 @@ func (db *SqlDB) setupSubscribeDollarMark(ctx context.Context) (err error) {
 		return
 	}
 
-	const forEachSelectCmd = `SELECT "user",client,endpoint,keys,scopes FROM ` + tableName
+	const forEachSelectCmd = `SELECT "user",client,endpoint,keys,scopes,report_at,last_reported FROM ` + tableName
 	if db.subscribeStmts.forEach, err = db.db.PrepareContext(ctx, forEachSelectCmd); err != nil {
 		return
 	}
@@ -577,7 +603,7 @@ func (db *SqlDB) GetSubscribe(user string, client string) (rec *SubscribeRecord,
 	rec = new(SubscribeRecord)
 	rec.User = user
 	rec.Client = client
-	if err = db.subscribeStmts.get.QueryRowContext(ctx, user, client).Scan(&rec.EndPoint, &rec.Keys, &rec.Scopes); err != nil {
+	if err = db.subscribeStmts.get.QueryRowContext(ctx, user, client).Scan(&rec.EndPoint, &rec.Keys, &rec.Scopes, &rec.ReportAt); err != nil {
 		if err == sql.ErrNoRows {
 			err = ErrNotFound
 		}
@@ -600,26 +626,33 @@ func (db *SqlDB) SetSubscribe(rec SubscribeRecord) (err error) {
 		}
 	}()
 
-	if rec.EndPoint == "" {
-		if _, err = tx.Stmt(db.subscribeStmts.setUpdateScopesOnly).Exec(rec.Scopes, rec.User, rec.Client); err != nil {
+	if rec.EndPoint != "" {
+		var has int
+		if err = tx.Stmt(db.subscribeStmts.has).QueryRow(rec.User, rec.Client).Scan(&has); err != nil && err != sql.ErrNoRows {
+			return
+		}
+		if has == 0 {
+			if _, err = tx.Stmt(db.subscribeStmts.setInsert).Exec(rec.User, rec.Client, rec.EndPoint, rec.Keys, rec.Scopes, rec.ReportAt); err != nil {
+				return
+			}
+		} else {
+			if _, err = tx.Stmt(db.subscribeStmts.setUpdate).Exec(rec.EndPoint, rec.Keys, rec.Scopes, rec.ReportAt, rec.User, rec.Client); err != nil {
+				return
+			}
+		}
+	} else if rec.LastReport.Valid {
+		if _, err = tx.Stmt(db.subscribeStmts.setUpdateLastReportOnly).Exec(rec.LastReport, rec.User, rec.Client); err != nil {
 			if err == sql.ErrNoRows {
 				err = ErrNotFound
 			}
 			return
 		}
 	} else {
-		var has int
-		if err = tx.Stmt(db.subscribeStmts.has).QueryRow(rec.User, rec.Client).Scan(&has); err != nil && err != sql.ErrNoRows {
+		if _, err = tx.Stmt(db.subscribeStmts.setUpdateScopesOnly).Exec(rec.Scopes, rec.ReportAt, rec.User, rec.Client); err != nil {
+			if err == sql.ErrNoRows {
+				err = ErrNotFound
+			}
 			return
-		}
-		if has == 0 {
-			if _, err = tx.Stmt(db.subscribeStmts.setInsert).Exec(rec.User, rec.Client, rec.EndPoint, rec.Keys, rec.Scopes); err != nil {
-				return
-			}
-		} else {
-			if _, err = tx.Stmt(db.subscribeStmts.setUpdate).Exec(rec.EndPoint, rec.Keys, rec.Scopes, rec.User, rec.Client); err != nil {
-				return
-			}
 		}
 	}
 	if err = tx.Commit(); err != nil {
@@ -652,7 +685,7 @@ func (db *SqlDB) ForEachSubscribe(cb func(*SubscribeRecord) error) (err error) {
 	defer rows.Close()
 	var rec SubscribeRecord
 	for rows.Next() {
-		if err = rows.Scan(&rec.User, &rec.Client, &rec.EndPoint, &rec.Keys, &rec.Scopes); err != nil {
+		if err = rows.Scan(&rec.User, &rec.Client, &rec.EndPoint, &rec.Keys, &rec.Scopes, &rec.ReportAt, &rec.LastReport); err != nil {
 			return
 		}
 		cb(&rec)

@@ -118,7 +118,7 @@ watch(
 	display: flex;
 	flex-direction: column;
 	align-items: baseline;
-	height: 2.7rem;
+	height: calc(2.7rem * 3);
 	padding-right: 0.2rem;
 	position: relative;
 	top: -2.7rem;

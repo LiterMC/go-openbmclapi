@@ -240,7 +240,7 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
 		return nil
 	default:
-		return &utils.HTTPStatusError{Code: res.StatusCode}
+		return utils.NewHTTPStatusErrorFromResponse(res)
 	}
 }
 
@@ -458,7 +458,7 @@ func (s *WebDavStorage) serveDownload(rw http.ResponseWriter, req *http.Request,
 		n, _ := io.Copy(rw, resp.Body)
 		return n, nil
 	default:
-		return 0, &utils.HTTPStatusError{Code: resp.StatusCode}
+		return 0, utils.NewHTTPStatusErrorFromResponse(resp)
 	}
 }
 

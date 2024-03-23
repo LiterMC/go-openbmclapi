@@ -37,9 +37,18 @@ func NewHTTPStatusErrorFromResponse(res *http.Response) (e *HTTPStatusError) {
 	if res.Request != nil {
 		e.URL = res.Request.URL.String()
 	}
-	var buf [512]byte
-	n, _ := res.Body.Read(buf[:])
-	e.Message = (string)(buf[:n])
+	if res.Body != nil {
+		var buf [512]byte
+		n, _ := res.Body.Read(buf[:])
+		msg := (string)(buf[:n])
+		for _, b := range msg {
+			if b < 0x20 && b != '\r' && b != '\n' && b != '\t' || b == 0x7f {
+				msg = fmt.Sprintf("<binary data %x>", buf[:n])
+				break
+			}
+		}
+		e.Message = msg
+	}
 	return
 }
 

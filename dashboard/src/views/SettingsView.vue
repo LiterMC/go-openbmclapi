@@ -120,7 +120,7 @@ async function onEnableNotify(): Promise<void> {
 		return
 	}
 	if (enableNotify.value) {
-		removeSubscription(token.value).catch(console.error)
+		removeSubscription(token.value)
 		enableNotify.value = false
 		return
 	}
@@ -274,7 +274,7 @@ onMounted(() => {
 				</div>
 				<div class="settings-elem">
 					<lable class="settings-label" style="margin-left: 1.5rem"
-						>{{ tr('title.notify.report.at') }}(TODO)</lable
+						>{{ tr('title.notify.report.at') }}</lable
 					>
 					<Calendar
 						class="time-input"

@@ -1305,10 +1305,6 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 	return pathRes, nil
 }
 
-var noOpenQuery = url.Values{
-	"noopen": {"1"},
-}
-
 func (cr *Cluster) fetchFileWithBuf(
 	ctx context.Context, f FileInfo,
 	hashMethod crypto.Hash, buf []byte,
@@ -1316,16 +1312,16 @@ func (cr *Cluster) fetchFileWithBuf(
 	wrapper func(io.Reader) io.Reader,
 ) (path string, err error) {
 	var (
-		query url.Values = nil
-		req   *http.Request
-		res   *http.Response
-		fd    *os.File
-		r     io.Reader
+		reqPath = f.Path
+		req     *http.Request
+		res     *http.Response
+		fd      *os.File
+		r       io.Reader
 	)
 	if noOpen {
-		query = noOpenQuery
+		reqPath = "/openbmclapi/download/" + f.Hash
 	}
-	if req, err = cr.makeReqWithAuth(ctx, http.MethodGet, f.Path, query); err != nil {
+	if req, err = cr.makeReqWithAuth(ctx, http.MethodGet, reqPath, nil); err != nil {
 		return
 	}
 	req.Header.Set("Accept-Encoding", "gzip, deflate")

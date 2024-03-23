@@ -381,8 +381,7 @@ func (w *WebPushManager) OnReportStat(stats *Stats) {
 	if !w.nextReportAfter.IsZero() && now.Before(w.nextReportAfter) {
 		return
 	}
-	w.nextReportAfter = now.Add(time.Minute * 5).Truncate(15 * time.Minute).Add(24 * time.Hour)
-	// TODO: seprate report after
+	w.nextReportAfter = now.Add(time.Minute * 8).Truncate(15 * time.Minute).Add(16 * time.Minute)
 
 	stat, err := stats.MarshalJSON()
 	if err != nil {
@@ -411,5 +410,26 @@ func (w *WebPushManager) OnReportStat(stats *Stats) {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.DailyReport })
+	now = now.UTC()
+	var sent []database.SubscribeRecord
+	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool {
+		if !record.Scopes.DailyReport {
+			return false
+		}
+		var t time.Time
+		if record.LastReport.Valid {
+			t = record.LastReport.Time.UTC()
+		}
+		if !record.ReportAt.ReadySince(t, now) {
+			return false
+		}
+		sent = append(sent, *record)
+		return true
+	})
+	for _, rec := range sent {
+		rec.EndPoint = ""
+		rec.LastReport.Valid = true
+		rec.LastReport.Time = now
+		w.database.SetSubscribe(rec)
+	}
 }

@@ -145,6 +145,7 @@ export type SubscribeScope = 'disabled' | 'enabled' | 'syncdone' | 'updates' | '
 
 export interface SubscribeSettings {
 	scopes: { [key in SubscribeScope]: boolean }
+	reportAt: string
 }
 
 export async function getSubscribeSettings(token: string): Promise<SubscribeSettings | null> {
@@ -169,6 +170,7 @@ export async function setSubscribeSettings(
 	token: string,
 	subscription: PushSubscription | null,
 	scopes: SubscribeScope[],
+	reportAt?: string | undefined,
 ): Promise<void> {
 	await axios.post<SubscribeSettings>(
 		`/api/v0/subscribe`,
@@ -176,6 +178,7 @@ export async function setSubscribeSettings(
 			endpoint: subscription?.endpoint,
 			keys: subscription?.toJSON().keys,
 			scopes: scopes,
+			reportAt: reportAt,
 		}),
 		{
 			headers: {

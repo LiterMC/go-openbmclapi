@@ -188,18 +188,50 @@ var (
 	_ driver.Valuer = (*Schedule)(nil)
 )
 
+func (s *Schedule) UnmarshalText(buf []byte) (err error) {
+	if _, err = fmt.Sscanf((string)(buf), "%02d:%02d", &s.Hour, &s.Minute); err != nil {
+		return
+	}
+	if s.Hour < 0 || s.Hour >= 24 {
+		return fmt.Errorf("Hour %d out of range [0, 24)", s.Hour)
+	}
+	if s.Minute < 0 || s.Minute >= 60 {
+		return fmt.Errorf("Minute %d out of range [0, 60)", s.Minute)
+	}
+	return
+}
+
 func (s *Schedule) Scan(src any) error {
-	var v string
+	var v []byte
 	switch w := src.(type) {
 	case []byte:
-		v = (string)(w)
-	case string:
 		v = w
+	case string:
+		v = ([]byte)(w)
+	default:
+		return fmt.Errorf("Unexpected type %T", src)
 	}
-	_, err := fmt.Sscanf(v, "%02d:%02d", &s.Hour, &s.Minute)
-	return err
+	return s.UnmarshalText(v)
 }
 
 func (s Schedule) Value() (driver.Value, error) {
 	return fmt.Sprintf("%02d:%02d", s.Hour, s.Minute), nil
+}
+
+func (s Schedule) ReadySince(last, now time.Time) bool {
+	if last.IsZero() {
+		last = now.Add(-time.Hour*24 + 1)
+	}
+	mustAfter := last.Add(time.Hour * 12)
+	if now.Before(mustAfter) {
+		return false
+	}
+	if !now.Before(last.Add(time.Hour * 24)) {
+		return true
+	}
+	hour, min := now.Hour(), now.Minute()
+	if s.Hour < hour && s.Hour+3 > hour || s.Hour == hour && s.Minute <= min {
+		return true
+	}
+	return false
 }

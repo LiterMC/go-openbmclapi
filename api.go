@@ -621,15 +621,17 @@ func (cr *Cluster) apiV0SubscribeGET(rw http.ResponseWriter, req *http.Request, 
 		return
 	}
 	writeJson(rw, http.StatusOK, Map{
-		"scopes": record.Scopes,
+		"scopes":   record.Scopes,
+		"reportAt": record.ReportAt,
 	})
 }
 
 func (cr *Cluster) apiV0SubscribePOST(rw http.ResponseWriter, req *http.Request, user string, client string) {
 	type T = struct {
-		EndPoint string                       `json:"endpoint,omitempty"`
-		Keys     database.SubscribeRecordKeys `json:"keys,omitempty"`
+		EndPoint string                       `json:"endpoint"`
+		Keys     database.SubscribeRecordKeys `json:"keys"`
 		Scopes   []string                     `json:"scopes"`
+		ReportAt string                       `json:"reportAt"`
 	}
 	rec := database.SubscribeRecord{
 		User:   user,
@@ -643,8 +645,13 @@ func (cr *Cluster) apiV0SubscribePOST(rw http.ResponseWriter, req *http.Request,
 	rec.EndPoint = data.EndPoint
 	rec.Keys = data.Keys
 	rec.Scopes.FromStrings(data.Scopes)
-	err := cr.database.SetSubscribe(rec)
-	if err != nil {
+	if err := rec.ReportAt.UnmarshalText(([]byte)(data.ReportAt)); err != nil {
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":   "'reportAt' encoding error",
+			"message": err.Error(),
+		})
+	}
+	if err := cr.database.SetSubscribe(rec); err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Database update failed",
 			"message": err.Error(),

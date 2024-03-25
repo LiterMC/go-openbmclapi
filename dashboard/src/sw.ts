@@ -70,11 +70,25 @@ async function onRecvPush(data: PushData): Promise<void> {
 	switch (data.typ) {
 		case 'enabled':
 		case 'disabled':
+			const lasts = await self.registration.getNotifications({
+				tag: 'status',
+			})
+			for (const n of lasts) {
+				n.close()
+			}
+			await self.registration
+				.showNotification('OpenBmclApi', {
+					icon: ICON_URL,
+					tag: 'status',
+					body: `Cluster ${data.typ}`,
+				})
+				.catch((err) => console.error('notify error:', err))
+			break
 		case 'syncdone':
 			await self.registration
 				.showNotification('OpenBmclApi', {
 					icon: ICON_URL,
-					tag: `status-${data.typ}`,
+					tag: 'status-sync',
 					body: `Cluster ${data.typ}`,
 				})
 				.catch((err) => console.error('notify error:', err))
@@ -85,6 +99,7 @@ async function onRecvPush(data: PushData): Promise<void> {
 					icon: ICON_URL,
 					tag: 'update-notify',
 					body: `New version (${data.tag}) avaliable`,
+					renotify: true,
 				})
 				.catch((err) => console.error('notify error:', err))
 			break
@@ -109,7 +124,7 @@ async function onRecvPush(data: PushData): Promise<void> {
 			await self.registration
 				.showNotification('OpenBmclApi', {
 					icon: ICON_URL,
-					tag: `daily-report`,
+					tag: `daily-report-${new Date().getDate()}`,
 					body: `昨日数据: 流量 ${formatBytes(lastStat.bytes)}, 请求 ${formatNumber(
 						lastStat.hits,
 					)}\n增长 ${formatBytes(lastStat.bytes - lastTwoStat.bytes)}`,

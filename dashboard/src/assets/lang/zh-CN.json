@@ -24,6 +24,8 @@
 		},
 
 		"settings": "设置",
+		"edit": "修改",
+		"operation": "操作",
 
 		"i18n": "国际化",
 		"language": "语言",
@@ -37,8 +39,27 @@
 			"report": {
 				"daily": "报告每日请求",
 				"at": "报告时间"
-			}
+			},
+			"advanced": "高级选项"
+		},
+
+		"emails": "邮件",
+		"email": {
+			"addr": "邮件地址"
+		},
+
+		"webhooks": "网络钩子",
+		"webhook": {
+			"name": "名称",
+			"endpoint": "端点",
+			"scopes": "域",
+			"auth-header": "授权标头",
+			"configure": "配置网络钩子"
 		}
+	},
+	"button": {
+		"enable": "启用",
+		"disable": "禁用"
 	},
 	"message": {
 		"server": {

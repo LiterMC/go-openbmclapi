@@ -457,12 +457,8 @@ func (db *SqlDB) setupSubscribeQuestionMark(ctx context.Context) (err error) {
 	if _, err = db.db.ExecContext(ctx, createTable); err != nil {
 		return
 	}
-	if _, err = db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD `report_at` CHAR(5) DEFAULT '00:00' NOT NULL"); err != nil {
-		return
-	}
-	if _, err = db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD `last_reported` TIMESTAMP DEFAULT NULL"); err != nil {
-		return
-	}
+	db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD `report_at` CHAR(5) DEFAULT '00:00' NOT NULL")
+	db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD `last_reported` TIMESTAMP DEFAULT NULL")
 
 	const getSelectCmd = "SELECT `endpoint`,`keys`,`scopes`,`report_at` FROM " + tableName +
 		" WHERE `user`=? AND `client`=?"
@@ -533,12 +529,8 @@ func (db *SqlDB) setupSubscribeDollarMark(ctx context.Context) (err error) {
 	if _, err = db.db.ExecContext(ctx, createTable); err != nil {
 		return
 	}
-	if _, err = db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD report_at CHAR(5) DEFAULT '00:00' NOT NULL"); err != nil {
-		return
-	}
-	if _, err = db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD last_reported TIMESTAMP DEFAULT NULL"); err != nil {
-		return
-	}
+	db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD report_at CHAR(5) DEFAULT '00:00' NOT NULL")
+	db.db.ExecContext(ctx, "ALTER TABLE "+tableName+" ADD last_reported TIMESTAMP DEFAULT NULL")
 
 	const getSelectCmd = "SELECT endpoint,keys,scopes,report_at FROM " + tableName +
 		` WHERE "user"=$1 AND client=$2`

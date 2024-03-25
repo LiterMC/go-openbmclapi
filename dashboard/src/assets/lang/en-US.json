@@ -24,6 +24,8 @@
 		},
 
 		"settings": "Settings",
+		"edit": "Edit",
+		"operation": "Operation",
 
 		"i18n": "Internationalization",
 		"language": "Language",
@@ -37,8 +39,27 @@
 			"report": {
 				"daily": "Report daily requests",
 				"at": "Report at"
-			}
+			},
+			"advanced": "Advanced options"
+		},
+
+		"emails": "Emails",
+		"email": {
+			"addr": "Email Addr"
+		},
+
+		"webhooks": "Webhooks",
+		"webhook": {
+			"name": "Name",
+			"endpoint": "EndPoint",
+			"scopes": "Scopes",
+			"auth-header": "Auth Header",
+			"configure": "Configure webhook"
 		}
+	},
+	"button": {
+		"enable": "Enable",
+		"disable": "Disable"
 	},
 	"message": {
 		"server": {

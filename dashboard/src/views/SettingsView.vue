@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, inject, onMounted, type Ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import Card from 'primevue/card'
 import Calendar from 'primevue/calendar'
 import Dropdown from 'primevue/dropdown'
@@ -288,6 +289,11 @@ onMounted(() => {
 							<InputIcon class="pi pi-clock pointer" @click="clickCallback" />
 						</template>
 					</Calendar>
+				</div>
+				<div class="settings-elem">
+					<RouterLink to="/settings/notifications" style="color: inherit">
+						{{ tr('title.notify.advanced') }}
+					</RouterLink>
 				</div>
 			</template>
 		</Card>

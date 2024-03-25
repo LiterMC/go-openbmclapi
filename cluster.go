@@ -107,12 +107,13 @@ type Cluster struct {
 	authTokenMux    sync.RWMutex
 	authToken       *ClusterToken
 
-	client        *http.Client
-	cachedCli     *http.Client
-	bufSlots      *limited.BufSlots
-	database      database.DB
-	pushManager   *WebPushManager
-	updateChecker *time.Timer
+	client         *http.Client
+	cachedCli      *http.Client
+	bufSlots       *limited.BufSlots
+	database       database.DB
+	pushManager    *WebPushManager
+	updateChecker  *time.Timer
+	apiRateLimiter *limited.APIRateMiddleWare
 
 	wsUpgrader    *websocket.Upgrader
 	handlerAPIv0  http.Handler
@@ -253,11 +254,14 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	return
 }
 
-func (cr *Cluster) Destory(ctx context.Context) {
+func (cr *Cluster) Destroy(ctx context.Context) {
 	if cr.database != nil {
 		cr.database.Cleanup()
 	}
 	cr.updateChecker.Stop()
+	if cr.apiRateLimiter != nil {
+		cr.apiRateLimiter.Destroy()
+	}
 }
 
 func (cr *Cluster) allocBuf(ctx context.Context) (slotId int, buf []byte, free func()) {

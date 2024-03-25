@@ -1,20 +1,17 @@
 @import './base.css';
+@import './utils.css';
 
 #app {
 	width: 100vw;
 	margin: 0 auto;
 
 	font-weight: normal;
+	background-color: var(--surface-ground);
 }
 
-.flex-row-center {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-}
-
-.no-select {
-	user-select: none;
+a.pi {
+	color: inherit;
+	text-decoration: none;
 }
 
 .p-toast {
@@ -25,10 +22,6 @@
 .p-disabled * {
 	cursor: not-allowed;
 	pointer-events: auto;
-}
-
-.pointer {
-	cursor: pointer;
 }
 
 @media (max-width: 60rem) {

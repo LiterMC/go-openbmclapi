@@ -27,6 +27,11 @@ const router = createRouter({
 			name: 'settings',
 			component: () => import('@/views/SettingsView.vue'),
 		},
+		{
+			path: '/settings/notifications',
+			name: 'settings/notifications',
+			component: () => import('@/views/settings/NotificationsView.vue'),
+		},
 	],
 	scrollBehavior(to, from, savedPosition) {
 		return savedPosition || { top: 0 }

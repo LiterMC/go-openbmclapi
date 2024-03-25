@@ -34,6 +34,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/LiterMC/go-openbmclapi/cache"
+	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
@@ -69,6 +70,11 @@ type ServeLimitConfig struct {
 	Enable     bool `yaml:"enable"`
 	MaxConn    int  `yaml:"max-conn"`
 	UploadRate int  `yaml:"upload-rate"`
+}
+
+type APIRateLimitConfig struct {
+	Anonymous limited.RateLimit `yaml:"anonymous"`
+	Logged    limited.RateLimit `yaml:"logged"`
 }
 
 type DatabaseConfig struct {
@@ -189,6 +195,7 @@ type Config struct {
 	Tunneler     TunnelConfig                   `yaml:"tunneler"`
 	Cache        CacheConfig                    `yaml:"cache"`
 	ServeLimit   ServeLimitConfig               `yaml:"serve-limit"`
+	RateLimit    APIRateLimitConfig             `yaml:"api-rate-limit"`
 	Dashboard    DashboardConfig                `yaml:"dashboard"`
 	GithubAPI    GithubAPIConfig                `yaml:"github-api"`
 	Database     DatabaseConfig                 `yaml:"database"`

@@ -126,13 +126,13 @@ func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string, user 
 		err = ErrClientIdNotMatch
 		return
 	}
-	id = claims.ID
-	if ok, _ := cr.database.ValidJTI(id); !ok {
+	if user = claims.User; user == "" {
+		// reject old token
 		err = ErrJTINotExists
 		return
 	}
-	if user = claims.User; user == "" {
-		// reject old token
+	id = claims.ID
+	if ok, _ := cr.database.ValidJTI(id); !ok {
 		err = ErrJTINotExists
 		return
 	}
@@ -143,11 +143,12 @@ type apiTokenClaims struct {
 	jwt.RegisteredClaims
 
 	Client      string            `json:"cli"`
+	User        string            `json:"usr"`
 	StrictPath  string            `json:"str-p"`
 	StrictQuery map[string]string `json:"str-q,omitempty"`
 }
 
-func (cr *Cluster) generateAPIToken(cliId string, path string, query map[string]string) (string, error) {
+func (cr *Cluster) generateAPIToken(cliId string, userId string, path string, query map[string]string) (string, error) {
 	jti, err := genRandB64(8)
 	if err != nil {
 		return "", err
@@ -163,6 +164,7 @@ func (cr *Cluster) generateAPIToken(cliId string, path string, query map[string]
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
 		Client:      cliId,
+		User:        userId,
 		StrictPath:  path,
 		StrictQuery: query,
 	})
@@ -176,7 +178,7 @@ func (cr *Cluster) generateAPIToken(cliId string, path string, query map[string]
 	return tokenStr, nil
 }
 
-func (cr *Cluster) verifyAPIToken(cliId string, token string, path string, query url.Values) (id string, err error) {
+func (cr *Cluster) verifyAPIToken(cliId string, token string, path string, query url.Values) (id string, user string, err error) {
 	var claims apiTokenClaims
 	_, err = jwt.ParseWithClaims(
 		token,
@@ -190,19 +192,27 @@ func (cr *Cluster) verifyAPIToken(cliId string, token string, path string, query
 		return
 	}
 	if claims.Client != cliId {
-		return "", ErrClientIdNotMatch
+		err = ErrClientIdNotMatch
+		return
 	}
-	jti := claims.ID
-	if ok, _ := cr.database.ValidJTI(jti); !ok {
-		return "", ErrJTINotExists
+	if user = claims.User; user == "" {
+		err = ErrJTINotExists
+		return
+	}
+	id = claims.ID
+	if ok, _ := cr.database.ValidJTI(id); !ok {
+		err = ErrJTINotExists
+		return
 	}
 	if claims.StrictPath != path {
-		return "", ErrStrictPathNotMatch
+		err = ErrStrictPathNotMatch
+		return
 	}
 	for k, v := range claims.StrictQuery {
 		if query.Get(k) != v {
-			return "", ErrStrictQueryNotMatch
+			err = ErrStrictQueryNotMatch
+			return
 		}
 	}
-	return jti, nil
+	return
 }

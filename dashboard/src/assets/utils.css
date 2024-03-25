@@ -1,0 +1,65 @@
+@keyframes flash {
+	0% {
+		--flash-out: var(--flash-from);
+	}
+	50% {
+		--flash-out: var(--flash-to);
+	}
+	100% {
+		--flash-out: var(--flash-from);
+	}
+}
+
+.flex-row-center {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.flex-justify-end {
+	justify-content: flex-end;
+}
+
+.flex-auto {
+	flex-grow: 1;
+	flex-shrink: 1;
+	flex-basis: auto;
+}
+
+.margin-none {
+	margin: 0 !important;
+}
+
+.margin-1 {
+	margin-bottom: 1rem;
+}
+
+.font-bold {
+	font-weight: bold;
+}
+
+.font-monospace-09 {
+	font-family: monospace;
+	font-size: 0.9rem;
+}
+
+.text-nowrap {
+	white-space: nowrap;
+}
+
+.text-overflow-ellipsis {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.select-none {
+	user-select: none;
+}
+
+.select-all {
+	user-select: all;
+}
+
+.pointer {
+	cursor: pointer;
+}

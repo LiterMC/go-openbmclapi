@@ -234,13 +234,13 @@ onMounted(() => {
 					<b>{{ error }}</b>
 				</div>
 				<template v-else-if="data">
-					<div class="no-select">
+					<div class="select-none">
 						<span>{{ tr('message.server.run-for') }}&nbsp;</span>
 						<span class="info-uptime">
 							{{ formatTime(now.getTime() - new Date(data.startAt).getTime()) }}
 						</span>
 					</div>
-					<div v-if="data.isSync" class="no-select">
+					<div v-if="data.isSync" class="select-none">
 						&nbsp; |
 						{{ tr('message.server.synchronizing') }}
 						&nbsp;
@@ -341,7 +341,7 @@ onMounted(() => {
 				</nav>
 				<div class="flex-row-center log-options">
 					<div class="flex-row-center">
-						<span class="no-select">{{ tr('message.log.option.debug') }}&nbsp;</span>
+						<span class="select-none">{{ tr('message.log.option.debug') }}&nbsp;</span>
 						<InputSwitch v-model="logDebugLevel" />
 					</div>
 				</div>

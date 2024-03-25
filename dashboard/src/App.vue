@@ -44,11 +44,11 @@ const selectedLang = computed({
 			<img class="header-logo" src="/logo.png" />
 		</RouterLink>
 
-		<div v-if="token" class="flex-row-center no-select nav-login pointer" @click="logout">
+		<div v-if="token" class="flex-row-center select-none nav-login pointer" @click="logout">
 			<span>{{ tr('title.logout') }}&nbsp;</span>
 			<i class="pi pi-sign-out"></i>
 		</div>
-		<RouterLink v-else class="flex-row-center no-select nav-login" to="/login">
+		<RouterLink v-else class="flex-row-center select-none nav-login" to="/login">
 			<span>{{ tr('title.login') }}&nbsp;</span>
 			<i class="pi pi-sign-in"></i>
 		</RouterLink>
@@ -107,10 +107,9 @@ const selectedLang = computed({
 
 <style scoped>
 #header {
-	position: fixed;
+	position: sticky;
 	top: 0;
-	left: 0;
-	z-index: 999999;
+	z-index: 1000;
 	justify-content: flex-end;
 	width: 100vw;
 	height: 4rem;
@@ -188,7 +187,7 @@ const selectedLang = computed({
 }
 
 #body {
-	padding: 5rem 2rem 4rem 2rem;
+	padding: 1rem 2rem 4rem 2rem;
 	min-height: 100vh;
 }
 

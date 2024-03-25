@@ -20,7 +20,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto"
@@ -28,18 +27,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/textproto"
 	"os"
-	"path"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
@@ -50,59 +47,6 @@ func init() {
 	log.AddStdLogFilter(func(line []byte) bool {
 		return bytes.HasPrefix(line, ([]byte)("http: TLS handshake error"))
 	})
-}
-
-type statusResponseWriter struct {
-	http.ResponseWriter
-	status int
-	wrote  int64
-}
-
-var _ http.Hijacker = (*statusResponseWriter)(nil)
-
-func getCaller() (caller runtime.Frame) {
-	pc := make([]uintptr, 16)
-	n := runtime.Callers(3, pc)
-	frames := runtime.CallersFrames(pc[:n])
-	frame, more := frames.Next()
-	_ = more
-	return frame
-}
-
-func (w *statusResponseWriter) WriteHeader(status int) {
-	if w.status == 0 {
-		w.status = status
-		w.ResponseWriter.WriteHeader(status)
-	} else {
-		caller := getCaller()
-		log.Warnf("http: superfluous response.WriteHeader call with status %d from %s (%s:%d)",
-			status, caller.Function, path.Base(caller.File), caller.Line)
-	}
-}
-
-func (w *statusResponseWriter) Write(buf []byte) (n int, err error) {
-	n, err = w.ResponseWriter.Write(buf)
-	w.wrote += (int64)(n)
-	return
-}
-
-func (w *statusResponseWriter) ReadFrom(r io.Reader) (n int64, err error) {
-	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
-		n, err = rf.ReadFrom(r)
-		w.wrote += n
-		return
-	}
-	n, err = io.Copy(w.ResponseWriter, r)
-	w.wrote += n
-	return
-}
-
-func (w *statusResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	h, ok := w.ResponseWriter.(http.Hijacker)
-	if ok {
-		return h.Hijack()
-	}
-	return nil, nil, errors.New("ResponseWriter is not http.Hijacker")
 }
 
 const (
@@ -169,12 +113,15 @@ func (r *accessRecord) String() string {
 }
 
 func (cr *Cluster) GetHandler() http.Handler {
+	cr.apiRateLimiter = limited.NewAPIRateMiddleWare(RealAddrCtxKey, loggedUserKey)
+	cr.apiRateLimiter.SetAnonymousRateLimit(config.RateLimit.Anonymous)
+	cr.apiRateLimiter.SetLoggedRateLimit(config.RateLimit.Logged)
 	cr.handlerAPIv0 = http.StripPrefix("/api/v0", cr.cliIdHandle(cr.initAPIv0()))
 	cr.hijackHandler = http.StripPrefix("/bmclapi", cr.hijackProxy)
 
-	handler := NewHttpMiddleWareHandler(cr)
+	handler := utils.NewHttpMiddleWareHandler(cr)
 	// recover panic and log it
-	handler.Use(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+	handler.UseFunc(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
 		defer log.RecoverPanic(func(any) {
 			rw.WriteHeader(http.StatusInternalServerError)
 		})
@@ -183,7 +130,7 @@ func (cr *Cluster) GetHandler() http.Handler {
 
 	if !config.Advanced.DoNotRedirectHTTPSToSecureHostname {
 		// rediect the client to the first public host if it is connecting with a unsecure host
-		handler.Use(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+		handler.UseFunc(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
 			host, _, err := net.SplitHostPort(req.Host)
 			if err != nil {
 				host = req.Host
@@ -232,7 +179,7 @@ func (cr *Cluster) GetHandler() http.Handler {
 	return handler
 }
 
-func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
+func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 	type record struct {
 		used    float64
 		bytes   float64
@@ -308,7 +255,7 @@ func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
 		if addr == "" {
 			addr, _, _ = net.SplitHostPort(req.RemoteAddr)
 		}
-		srw := &statusResponseWriter{ResponseWriter: rw}
+		srw := utils.WrapAsStatusResponseWriter(rw)
 		start := time.Now()
 
 		log.LogAccess(log.LevelDebug, &preAccessRecord{
@@ -331,9 +278,9 @@ func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
 		used := time.Since(start)
 		accRec := &accessRecord{
 			Type:    "access",
-			Status:  srw.status,
+			Status:  srw.Status,
 			Used:    used,
-			Content: srw.wrote,
+			Content: srw.Wrote,
 			Addr:    addr,
 			Proto:   req.Proto,
 			Method:  req.Method,
@@ -345,7 +292,7 @@ func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
 		}
 		log.LogAccess(log.LevelInfo, accRec)
 
-		if srw.status < 200 || 400 <= srw.status {
+		if srw.Status < 200 || 400 <= srw.Status {
 			return
 		}
 		if !strings.HasPrefix(req.URL.Path, "/download/") {
@@ -353,7 +300,7 @@ func (cr *Cluster) getRecordMiddleWare() MiddleWareFunc {
 		}
 		var rec record
 		rec.used = used.Seconds()
-		rec.bytes = (float64)(srw.wrote)
+		rec.bytes = (float64)(srw.Wrote)
 		ua, _, _ = strings.Cut(ua, " ")
 		rec.ua, _, _ = strings.Cut(ua, "/")
 		rec.isRange = extraInfoMap["skip-ua-count"] != nil
@@ -565,48 +512,4 @@ func parseRangeFirstStart(rg string) (start int64, ok bool) {
 		return 0, false
 	}
 	return start, true
-}
-
-type MiddleWareFunc func(rw http.ResponseWriter, req *http.Request, next http.Handler)
-
-type httpMiddleWareHandler struct {
-	final   http.Handler
-	middles []MiddleWareFunc
-}
-
-func NewHttpMiddleWareHandler(final http.Handler) *httpMiddleWareHandler {
-	return &httpMiddleWareHandler{
-		final: final,
-	}
-}
-
-func (m *httpMiddleWareHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	i := 0
-	var getNext func() http.Handler
-	getNext = func() http.Handler {
-		j := i
-		if j > len(m.middles) {
-			// unreachable
-			panic("httpMiddleWareHandler: called getNext too much times")
-		}
-		i++
-		if j == len(m.middles) {
-			return m.final
-		}
-		mid := m.middles[j]
-
-		called := false
-		return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-			if called {
-				panic("httpMiddleWareHandler: Called next function twice")
-			}
-			called = true
-			mid(rw, req, getNext())
-		})
-	}
-	getNext().ServeHTTP(rw, req)
-}
-
-func (m *httpMiddleWareHandler) Use(fns ...MiddleWareFunc) {
-	m.middles = append(m.middles, fns...)
 }

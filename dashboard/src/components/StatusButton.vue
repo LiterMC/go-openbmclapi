@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, ref, reactive, nextTick } from 'vue'
+import { watch, ref, reactive, nextTick, onMounted } from 'vue'
 import Button from 'primevue/button'
 import { tr } from '@/lang'
 
@@ -16,38 +16,45 @@ function waitForAnimationFrame(): Promise<number> {
 	return new Promise((re) => requestAnimationFrame(re))
 }
 
-watch(
-	() => props.status,
-	async (status) => {
-		const statusListElem = statusListRef.value
-		if (!statusListElem) {
-			return
-		}
-		if (status === statusList[0]) {
-			// move down
-			statusList.unshift(statusList.pop() as string)
-			statusListElem.style.top = `${-2.7 * 2}rem`
-		} else if (status === statusList[2]) {
-			// move up
-			statusList.push(statusList.shift() as string)
-			statusListElem.style.top = `${-2.7 * 0}rem`
-		} else {
-			return
-		}
-		await nextTick(waitForAnimationFrame)
-		statusListElem.classList.add('status-list-active')
-		statusListElem.style.removeProperty('top')
-		await waitForAnimationFrame()
-		await new Promise<void>((re) => {
-			const listener = () => {
-				statusListElem.removeEventListener('transitionend', listener)
-				re()
+onMounted(() => {
+	if (props.status === statusList[0]) {
+		statusList.unshift(statusList.pop() as string)
+	} else if (props.status === statusList[2]) {
+		statusList.push(statusList.shift() as string)
+	}
+	watch(
+		() => props.status,
+		async (status) => {
+			const statusListElem = statusListRef.value
+			if (!statusListElem) {
+				return
 			}
-			statusListElem.addEventListener('transitionend', listener)
-		})
-		statusListElem.classList.remove('status-list-active')
-	},
-)
+			if (status === statusList[0]) {
+				// move down
+				statusList.unshift(statusList.pop() as string)
+				statusListElem.animate(
+					{
+						top: ['-200%', '-100%'],
+						easing: ['ease', 'ease'],
+					},
+					500,
+				)
+			} else if (status === statusList[2]) {
+				// move up
+				statusList.push(statusList.shift() as string)
+				statusListElem.animate(
+					{
+						top: ['0%', '-100%'],
+						easing: ['ease', 'ease'],
+					},
+					500,
+				)
+			} else {
+				return
+			}
+		},
+	)
+})
 </script>
 
 <template>
@@ -68,8 +75,8 @@ watch(
 	align-items: center;
 	position: relative;
 	height: 2.7rem;
-	padding: 0.5rem;
 	margin: 0.5rem;
+	padding: 0;
 	border: none;
 	border-radius: 0.2rem;
 	font-weight: 800;
@@ -106,7 +113,7 @@ watch(
 	display: inline-block;
 	width: 1.05rem;
 	height: 1.05rem;
-	margin-right: 0.5rem;
+	margin: 0.5rem;
 	border: solid #fff 0.25rem;
 	border-radius: 50%;
 	background-color: var(--flash-out);
@@ -118,14 +125,11 @@ watch(
 	display: flex;
 	flex-direction: column;
 	align-items: baseline;
-	height: calc(2.7rem * 3);
-	padding-right: 0.2rem;
+	height: 100%;
+	margin-right: 0.7rem;
+	overflow: visible;
 	position: relative;
-	top: -2.7rem;
-}
-
-.status-list-active {
-	transition: top 0.5s ease;
+	top: -100%;
 }
 
 .status-list > span {

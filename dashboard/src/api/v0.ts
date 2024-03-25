@@ -141,7 +141,14 @@ export async function getSubscribePublicKey(): Promise<string> {
 	return res.data.publicKey
 }
 
-export type SubscribeScope = 'disabled' | 'enabled' | 'syncdone' | 'updates' | 'dailyreport'
+export type SubscribeScope = 'enabled' | 'disabled' | 'syncdone' | 'updates' | 'dailyreport'
+export const ALL_SUBSCRIBE_SCOPES: SubscribeScope[] = [
+	'enabled',
+	'disabled',
+	'syncdone',
+	'updates',
+	'dailyreport',
+]
 
 export interface SubscribeSettings {
 	scopes: { [key in SubscribeScope]: boolean }

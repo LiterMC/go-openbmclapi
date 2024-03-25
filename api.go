@@ -76,55 +76,53 @@ func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
 	})
 }
 
+func (cr *Cluster) authMiddleware(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+	cli := apiGetClientId(req)
+
+	ctx := req.Context()
+
+	var (
+		id  string
+		uid string
+		err error
+	)
+	if req.Method == http.MethodGet {
+		if tk := req.URL.Query().Get("_t"); tk != "" {
+			path := GetRequestRealPath(req)
+			if id, uid, err = cr.verifyAPIToken(cli, tk, path, req.URL.Query()); err == nil {
+				ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAPI)
+			}
+		}
+	}
+	if id == "" {
+		auth := req.Header.Get("Authorization")
+		tk, ok := strings.CutPrefix(auth, "Bearer ")
+		if !ok {
+			if err == nil {
+				err = ErrUnsupportAuthType
+			}
+		} else if id, uid, err = cr.verifyAuthToken(cli, tk); err != nil {
+			id = ""
+		} else {
+			ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAuth)
+		}
+	}
+	if id != "" {
+		ctx = context.WithValue(ctx, loggedUserKey, uid)
+		ctx = context.WithValue(ctx, tokenIdKey, id)
+		req = req.WithContext(ctx)
+	}
+	next.ServeHTTP(rw, req)
+}
+
 func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-		if !config.Dashboard.Enable {
-			writeJson(rw, http.StatusServiceUnavailable, Map{
-				"error": "dashboard is disabled in the config",
+		if req.Context().Value(tokenTypeKey) == nil {
+			writeJson(rw, http.StatusUnauthorized, Map{
+				"error": "403 Unauthorized",
 			})
 			return
 		}
-		cli := apiGetClientId(req)
-
-		ctx := req.Context()
-
-		var (
-			id  string
-			err error
-		)
-		if req.Method == http.MethodGet {
-			if tk := req.URL.Query().Get("_t"); tk != "" {
-				path := GetRequestRealPath(req)
-				log.Debugf("Verifying API token at %s", path)
-				if id, err = cr.verifyAPIToken(cli, tk, path, req.URL.Query()); id != "" {
-					ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAPI)
-				}
-			}
-		}
-		if id == "" {
-			auth := req.Header.Get("Authorization")
-			tk, ok := strings.CutPrefix(auth, "Bearer ")
-			if !ok {
-				if err == nil {
-					err = ErrUnsupportAuthType
-				}
-				writeJson(rw, http.StatusUnauthorized, Map{
-					"error": err.Error(),
-				})
-				return
-			}
-			var user string
-			if id, user, err = cr.verifyAuthToken(cli, tk); err != nil {
-				writeJson(rw, http.StatusUnauthorized, Map{
-					"error": "invalid authorization token",
-				})
-				return
-			}
-			ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAuth)
-			ctx = context.WithValue(ctx, loggedUserKey, user)
-		}
-		ctx = context.WithValue(ctx, tokenIdKey, id)
-		req = req.WithContext(ctx)
 		next.ServeHTTP(rw, req)
 	})
 }
@@ -153,21 +151,17 @@ func (cr *Cluster) initAPIv0() http.Handler {
 	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV0Pprof))
 	mux.HandleFunc("/subscribeKey", cr.apiV0SubscribeKey)
 	mux.Handle("/subscribe", cr.apiAuthHandleFunc(cr.apiV0Subscribe))
-	return mux
+	next := cr.apiRateLimiter.WrapHandler(mux)
+	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+		cr.authMiddleware(rw, req, next)
+	})
 }
 
 func (cr *Cluster) apiV0Ping(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
-	authed := false
-	cli := apiGetClientId(req)
-	auth := req.Header.Get("Authorization")
-	if tk, ok := strings.CutPrefix(auth, "Bearer "); ok {
-		if _, _, err := cr.verifyAuthToken(cli, tk); err == nil {
-			authed = true
-		}
-	}
+	authed := getRequestTokenType(req) == tokenTypeAuth
 	writeJson(rw, http.StatusOK, Map{
 		"version": build.BuildVersion,
 		"time":    time.Now(),
@@ -294,7 +288,8 @@ func (cr *Cluster) apiV0RequestToken(rw http.ResponseWriter, req *http.Request) 
 		return
 	}
 	cli := apiGetClientId(req)
-	token, err := cr.generateAPIToken(cli, payload.Path, payload.Query)
+	user := getLoggedUser(req)
+	token, err := cr.generateAPIToken(cli, user, payload.Path, payload.Query)
 	if err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "cannot generate token",
@@ -332,7 +327,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 	ctx, cancel := context.WithCancel(req.Context())
 	defer cancel()
 
-	conn.SetReadLimit(1024 * 8)
+	conn.SetReadLimit(1024 * 4)
 	pongCh := make(chan struct{}, 1)
 	go func() {
 		defer conn.Close()
@@ -341,7 +336,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 			select {
 			case <-pongCh:
 			case <-time.After(time.Second * 75):
-				log.Error("[log.io]: Did not receive PONG from remote for 75s")
+				log.Error("[log.io]: Did not receive packet from client longer than 75s")
 				return
 			case <-ctx.Done():
 				return
@@ -477,17 +472,16 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 
 	pingTicker := time.NewTicker(time.Second * 45)
 	defer pingTicker.Stop()
-	forceSendTimer := time.NewTimer(0)
-	defer forceSendTimer.Stop()
+	forceSendTimer := time.NewTimer(time.Second)
+	if !forceSendTimer.Stop() {
+		<-forceSendTimer.C
+	}
 
 	batchMsg := make([]any, 0, 64)
 	for {
 		select {
 		case v := <-sendMsgCh:
 			batchMsg = append(batchMsg, v)
-			if !forceSendTimer.Stop() {
-				<-forceSendTimer.C
-			}
 			forceSendTimer.Reset(time.Second)
 		WAIT_MORE:
 			for {
@@ -495,9 +489,15 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 				case v := <-sendMsgCh:
 					batchMsg = append(batchMsg, v)
 				case <-time.After(time.Millisecond * 20):
+					if !forceSendTimer.Stop() {
+						<-forceSendTimer.C
+					}
 					break WAIT_MORE
 				case <-forceSendTimer.C:
 					break WAIT_MORE
+				case <-ctx.Done():
+					forceSendTimer.Stop()
+					return
 				}
 			}
 			if len(batchMsg) == 1 {

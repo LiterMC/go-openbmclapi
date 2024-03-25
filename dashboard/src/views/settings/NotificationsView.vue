@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, inject, nextTick, onBeforeMount, type Ref } from 'vue'
+import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Card from 'primevue/card'
 import Dialog from 'primevue/dialog'
@@ -7,45 +8,49 @@ import InputText from 'primevue/inputtext'
 import MultiSelect from 'primevue/multiselect'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Skeleton from 'primevue/skeleton'
+import { useToast } from 'primevue/usetoast'
 import TransitionExpandGroup from '@/components/TransitionExpandGroup.vue'
-import { ALL_SUBSCRIBE_SCOPES, type SubscribeScope } from '@/api/v0'
+import {
+	ALL_SUBSCRIBE_SCOPES,
+	getEmailSubscriptions,
+	addEmailSubscription,
+	updateEmailSubscription,
+	removeEmailSubscription,
+	getWebhooks,
+	addWebhook,
+	updateWebhook,
+	removeWebhook,
+	type SubscribeScope,
+	type EmailItemPayload,
+	type EmailItemRes,
+	type WebhookItemPayload,
+	type WebhookItemRes,
+} from '@/api/v0'
 import { tr } from '@/lang'
 
-interface EmailItemRes {
-	addr: string
-	enabled: boolean
-}
+const router = useRouter()
+const toast = useToast()
+const token = inject('token') as Ref<string | null>
 
-interface WebhookItemPayload {
-	name: string
-	endpoint: string
-	auth: string
-	scopes: SubscribeScope[]
-}
-
-interface WebhookItemRes {
-	id: number
-	name: string
-	endpoint: string
-	enabled: boolean
-	authHash?: string
-	scopes: SubscribeScope[]
-}
-
-const emails = ref<EmailItemRes[]>([
-	{ addr: 'test@example.com', enabled: true },
-	{ addr: 'zyxkad@gmail.com', enabled: true },
-])
-const newEmailItem = ref('')
+const emails = ref<EmailItemRes[] | null>(null)
+const newEmailItem = ref<EmailItemPayload>({
+	addr: '',
+	scopes: [],
+})
 const newEmailItemInvalid = ref<string | null>(null)
+const newEmailItemSaving = ref(false)
 
-const webhookEditingItem = ref<(WebhookItemPayload & { _: WebhookItemRes }) | null>(null)
+const webhookEditingItem = ref<(WebhookItemPayload & { _?: WebhookItemRes }) | null>(null)
 const webhookEdited = computed((): boolean => {
 	const item = webhookEditingItem.value
 	if (!item) {
 		return true
 	}
 	const ori = item._
+	if (!ori) {
+		return true
+	}
 	for (const k of ['name', 'endpoint'] as const) {
 		if (ori[k] !== item[k]) {
 			return true
@@ -65,31 +70,15 @@ const webhookEditNameInvalid = ref<string | null>(null)
 const webhookEditEndpointInvalid = ref<string | null>(null)
 const webhookEditAuthInvalid = ref<string | null>(null)
 
-const webhooks = ref<WebhookItemRes[]>([
-	{
-		id: 0,
-		name: 'Example Webhook',
-		endpoint: 'https://example.com/endpoint',
-		enabled: true,
-		authHash: 'sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-		scopes: ['enabled', 'disabled'],
-	},
-	{
-		id: 1,
-		name: 'Another Webhook',
-		endpoint: 'https://another.example.com/endpoint2',
-		enabled: true,
-		authHash: 'sha256:18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4',
-		scopes: ['enabled', 'disabled', 'syncdone', 'updates', 'dailyreport'],
-	},
-	{
-		id: 2,
-		name: 'Disabled Webhook',
-		endpoint: 'https://example.com/disabled',
-		enabled: false,
-		scopes: ['enabled', 'syncdone', 'dailyreport'],
-	},
-])
+const webhooks = ref<WebhookItemRes[] | null>()
+
+function toastLoginFirst(): void {
+	toast.add({
+		severity: 'error',
+		summary: tr('message.settings.login.first'),
+		life: 5000,
+	})
+}
 
 function checkEmail(email: string): string | null {
 	if (!email.match(/^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$/)) {
@@ -98,12 +87,88 @@ function checkEmail(email: string): string | null {
 	return null
 }
 
-async function removeEmail(index: number): Promise<void> {
-	emails.value.splice(index, 1)
+async function addEmail(item: EmailItemPayload): Promise<void> {
+	if (!token.value) {
+		toastLoginFirst()
+		return
+	}
+	newEmailItemSaving.value = true
+	try {
+		if ((newEmailItemInvalid.value = checkEmail(item.addr))) {
+			toast.add({
+				severity: 'error',
+				summary: 'Email Address is invalid',
+				detail: newEmailItemInvalid.value,
+				life: 3000,
+			})
+			return
+		}
+		if (item.scopes.length === 0) {
+			toast.add({
+				severity: 'error',
+				summary: 'Scopes are invalid',
+				detail: 'Please select at least one scope',
+				life: 3000,
+			})
+			return
+		}
+		await addEmailSubscription(token.value, item)
+	} finally {
+		newEmailItemSaving.value = false
+	}
 }
 
-async function addEmail(addr: string): Promise<void> {
-	emails.value.push({ addr: addr, enabled: true })
+async function removeEmail(index: number): Promise<void> {
+	if (!emails.value) {
+		return
+	}
+	if (!token.value) {
+		toastLoginFirst()
+		return
+	}
+	const { addr } = emails.value[index]
+	try {
+		await removeEmailSubscription(token.value, addr)
+		emails.value.splice(index, 1)
+	} catch (err) {
+		toast.add({
+			severity: 'error',
+			summary: 'Error when removing email subscription',
+			detail: String(err),
+			life: 3000,
+		})
+	}
+}
+
+function openCreateWebhookDialog(): void {
+	webhookEditingItem.value = {
+		name: '',
+		endpoint: '',
+		auth: '',
+		scopes: [],
+	}
+}
+
+async function openRemoveWebhookDialog(index: number): Promise<void> {
+	if (!token.value) {
+		toastLoginFirst()
+		return
+	}
+	if (!webhooks.value) {
+		return
+	}
+	const { id } = webhooks.value[index]
+	try {
+		await removeWebhook(token.value, id)
+		webhooks.value.splice(index, 1)
+	} catch (err) {
+		toast.add({
+			severity: 'error',
+			summary: 'Error when removing email subscription',
+			detail: String(err),
+			life: 3000,
+		})
+	}
 }
 
 function openWebhookEditDialog(item: WebhookItemRes): void {
@@ -118,6 +183,9 @@ function openWebhookEditDialog(item: WebhookItemRes): void {
 }
 
 function checkName(name: string): string | null {
+	if (name.length === 0) {
+		return 'Name cannot be empty'
+	}
 	if (name.length >= 32) {
 		return 'Name must be less than 32 characters'
 	}
@@ -125,6 +193,9 @@ function checkName(name: string): string | null {
 }
 
 function checkEndPoint(url: string): string | null {
+	if (!url) {
+		return 'EndPoint cannot be empty'
+	}
 	try {
 		const u = new URL(url)
 		if (!url.match(/^\s*http(?:s)?:\/\//) || (u.protocol !== 'http:' && u.protocol !== 'https:')) {
@@ -151,12 +222,17 @@ async function webhookEditSave(): Promise<void> {
 		console.warn('webhookEditingItem is null')
 		return
 	}
+	if (!token.value) {
+		toastLoginFirst()
+		return
+	}
 	webhookEditNameInvalid.value = null
 	webhookEditEndpointInvalid.value = null
 	webhookEditAuthInvalid.value = null
 	webhookEditSaving.value = true
 	try {
-		const { name, endpoint, auth } = webhookEditingItem.value
+		const { name, endpoint, auth, scopes } = webhookEditingItem.value
+		const id = webhookEditingItem.value._?.id
 		if ((webhookEditNameInvalid.value = checkName(name))) {
 			return
 		}
@@ -166,12 +242,46 @@ async function webhookEditSave(): Promise<void> {
 		if ((webhookEditAuthInvalid.value = checkAuth(auth))) {
 			return
 		}
-		await new Promise((re) => setTimeout(re, 3000))
+		if (id !== undefined) {
+			await updateWebhook(token.value, id, {
+				name: name,
+				endpoint: endpoint,
+				auth: auth === '-' ? undefined : auth,
+				scopes: scopes,
+			})
+		} else {
+			await addWebhook(token.value, {
+				name: name,
+				endpoint: endpoint,
+				auth: auth,
+				scopes: scopes,
+			})
+		}
 		webhookEditingItem.value = null
+	} catch (err) {
+		toast.add({
+			severity: 'error',
+			summary: 'Error when saving webhook config',
+			detail: String(err),
+			life: 3000,
+		})
 	} finally {
 		webhookEditSaving.value = false
 	}
 }
+
+onBeforeMount(() => {
+	if (!token.value) {
+		router.replace('/login?next=/settings/notifications')
+		return
+	}
+	getEmailSubscriptions(token.value).then((res) => {
+		emails.value = res
+	})
+	getWebhooks(token.value).then((res) => {
+		webhooks.value = res
+	})
+})
 </script>
 <template>
 	<div class="flex-row-center">
@@ -182,19 +292,34 @@ async function webhookEditSave(): Promise<void> {
 		<div class="flex-row-center section-title">
 			<h2>{{ tr('title.emails') }}</h2>
 		</div>
-		<Card class="email-box">
+		<Card v-if="emails" class="email-box">
 			<template #content>
 				<DataTable :value="emails" scrollable scrollHeight="min(30rem, 70vh)">
-					<Column :header="tr('title.email.addr')" field="addr">
+					<Column :header="tr('title.email.recver')" field="addr">
 						<template #footer>
 							<InputText
 								type="email"
 								autocomplete="email"
 								placeholder="youremail@example.com"
-								v-model="newEmailItem"
-								:invalid="newEmailItem !== '' && newEmailItemInvalid !== null"
-								@input="newEmailItemInvalid = checkEmail(newEmailItem)"
+								v-model="newEmailItem.addr"
+								:invalid="newEmailItem.addr !== '' && newEmailItemInvalid !== null"
+								@input="newEmailItemInvalid = checkEmail(newEmailItem.addr)"
 								style="width: 16rem; height: 2.6rem"
+							/>
+						</template>
+					</Column>
+					<Column
+						:header="tr('title.webhook.scopes')"
+						:field="({ scopes }) => scopes.join(', ')"
+						style="flex-shrink: 0; width: 10rem"
+					>
+						<template #footer>
+							<MultiSelect
+								class="flex-auto width-full"
+								:options="ALL_SUBSCRIBE_SCOPES"
+								v-model="newEmailItem.scopes"
+								placeholder="Select Scopes"
+								:invalid="newEmailItem.addr !== '' && newEmailItem.scopes.length === 0"
 							/>
 						</template>
 					</Column>
@@ -233,6 +358,7 @@ async function webhookEditSave(): Promise<void> {
 								icon="pi pi-plus"
 								outlined
 								style="float: right; margin-right: 0.6rem"
+								:loading="newEmailItemSaving"
 								@click="addEmail(newEmailItem)"
 							/>
 						</template>
@@ -240,14 +366,21 @@ async function webhookEditSave(): Promise<void> {
 				</DataTable>
 			</template>
 		</Card>
+		<Skeleton v-else class="email-box" />
 	</div>
 	<div class="section">
 		<div class="flex-row-center section-title">
 			<h2>{{ tr('title.webhooks') }}</h2>
-			<Button class="title-button" label="Create New" icon="pi pi-plus" outlined />
+			<Button
+				class="title-button"
+				label="Create New"
+				icon="pi pi-plus"
+				outlined
+				@click="openCreateWebhookDialog"
+			/>
 		</div>
-		<div class="webhook-box">
-			<Card v-for="item in webhooks" :key="item.id" class="margin-1">
+		<div v-if="webhooks" class="webhook-box">
+			<Card v-for="(item, i) in webhooks" :key="item.id" class="margin-1">
 				<template #title>
 					<div class="flex-row-center flex-justify-end">
 						<h4 class="secondary-title">{{ item.name }}</h4>
@@ -275,6 +408,7 @@ async function webhookEditSave(): Promise<void> {
 							severity="danger"
 							text
 							rounded
+							@click="openRemoveWebhookDialog(i)"
 						/>
 					</div>
 				</template>
@@ -291,7 +425,7 @@ async function webhookEditSave(): Promise<void> {
 						>
 							{{ item.authHash }}
 						</code>
-						<i v-else class="flex-auto"> N/A </i>
+						<i v-else class="flex-auto">No authorization</i>
 					</div>
 					<div class="flex-row-center text-overflow-ellipsis">
 						<label class="webhook-edit-label">{{ tr('title.webhook.scopes') }}:</label>
@@ -302,6 +436,7 @@ async function webhookEditSave(): Promise<void> {
 				</template>
 			</Card>
 		</div>
+		<Skeleton v-else class="webhook-box" />
 		<Dialog
 			:visible="webhookEditingItem !== null"
 			@update:visible="webhookEditingItem = null"
@@ -310,11 +445,14 @@ async function webhookEditSave(): Promise<void> {
 		>
 			<template #header>
 				<div>
-					<h3 class="font-bold margin-none">{{ tr('title.edit') }}</h3>
+					<h3 class="font-bold margin-none">
+						{{ tr(webhookEditingItem?._ ? 'title.edit' : 'title.create-new') }}
+						{{ tr('title.webhooks') }}
+					</h3>
 				</div>
 			</template>
 			<template v-if="webhookEditingItem">
-				<div class="p-text-secondary margin-1">
+				<div v-if="webhookEditingItem._" class="p-text-secondary margin-1">
 					{{ tr('title.webhook.configure') }} "{{ webhookEditingItem._.name }}"
 				</div>
 				<div class="input-box">
@@ -323,6 +461,7 @@ async function webhookEditSave(): Promise<void> {
 						<InputText
 							class="flex-auto"
 							autocomplete="off"
+							placeholder="Webhook Name"
 							v-model="webhookEditingItem.name"
 							:invalid="webhookEditNameInvalid !== null"
 							@input="webhookEditNameInvalid = checkName(webhookEditingItem.name)"
@@ -338,6 +477,7 @@ async function webhookEditSave(): Promise<void> {
 						<InputText
 							class="flex-auto"
 							autocomplete="off"
+							placeholder="https://example.com/path/to/endpoint"
 							type="url"
 							v-model="webhookEditingItem.endpoint"
 							:invalid="webhookEditEndpointInvalid !== null"
@@ -354,6 +494,7 @@ async function webhookEditSave(): Promise<void> {
 						<InputText
 							class="flex-auto"
 							autocomplete="off"
+							placeholder="Authorization"
 							v-model="webhookEditingItem.auth"
 							:invalid="webhookEditAuthInvalid !== null"
 							@input="webhookEditAuthInvalid = checkAuth(webhookEditingItem.auth)"
@@ -367,6 +508,7 @@ async function webhookEditSave(): Promise<void> {
 					<label class="webhook-edit-label">{{ tr('title.webhook.scopes') }}</label>
 					<MultiSelect
 						class="flex-auto"
+						placeholder="Select Scopes"
 						:options="ALL_SUBSCRIBE_SCOPES"
 						v-model="webhookEditingItem.scopes"
 					/>
@@ -433,9 +575,16 @@ h2 {
 	margin-left: 0.8rem;
 }
 
+.webhook-box {
+	padding: 1rem 0;
+	border-top: 1px var(--surface-border) solid;
+	border-bottom: 1px var(--surface-border) solid;
+}
+
 .email-box,
 .webhook-box {
 	max-width: 52rem;
+	min-height: 4rem;
 }
 
 .input-box {

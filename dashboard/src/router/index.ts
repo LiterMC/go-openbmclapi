@@ -21,6 +21,7 @@ const router = createRouter({
 			path: '/login',
 			name: 'login',
 			component: () => import('@/views/LoginView.vue'),
+			props: (route) => ({ next: route.query.next }),
 		},
 		{
 			path: '/settings',

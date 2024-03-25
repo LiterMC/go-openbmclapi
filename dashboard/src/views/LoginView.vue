@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { inject, type Ref } from 'vue'
+import { useRouter } from 'vue-router'
 import LoginComp from '@/components/LoginComp.vue'
 import { tr } from '@/lang'
 
@@ -7,11 +8,20 @@ const props = defineProps<{
 	next?: string
 }>()
 
+const router = useRouter()
 const token = inject('token') as Ref<string | null>
 
 function logged(tk: string): void {
 	token.value = tk
-	window.location.replace(props.next || '/')
+	if (!props.next) {
+		router.replace('/')
+		return
+	}
+	if (props.next.startsWith('https://') || props.next.startsWith('https://')) {
+		window.location.replace(props.next)
+		return
+	}
+	router.replace(props.next)
 }
 </script>
 <template>

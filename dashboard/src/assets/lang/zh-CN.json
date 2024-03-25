@@ -24,6 +24,7 @@
 		},
 
 		"settings": "设置",
+		"create-new": "创建新的",
 		"edit": "修改",
 		"operation": "操作",
 
@@ -45,7 +46,7 @@
 
 		"emails": "邮件",
 		"email": {
-			"addr": "邮件地址"
+			"recver": "收件人"
 		},
 
 		"webhooks": "网络钩子",

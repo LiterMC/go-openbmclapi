@@ -197,7 +197,124 @@ export async function setSubscribeSettings(
 }
 
 export async function removeSubscription(token: string): Promise<void> {
-	await axios.delete<SubscribeSettings>(`/api/v0/subscribe`, {
+	await axios.delete(`/api/v0/subscribe`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+}
+
+export interface EmailItemPayload {
+	addr: string
+	scopes: SubscribeScope[]
+}
+
+export interface EmailItemRes {
+	addr: string
+	scopes: SubscribeScope[]
+	enabled: boolean
+}
+
+export async function getEmailSubscriptions(token: string): Promise<EmailItemRes[]> {
+	const res = await axios.get<EmailItemRes[]>(`/api/v0/subscribe_email`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+	return res.data
+}
+
+export async function addEmailSubscription(token: string, item: EmailItemPayload): Promise<void> {
+	await axios.post(`/api/v0/subscribe_email`, JSON.stringify(item), {
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json',
+		},
+	})
+}
+
+export async function updateEmailSubscription(
+	token: string,
+	addr: string,
+	item: EmailItemPayload,
+): Promise<void> {
+	await axios.post(`/api/v0/subscribe_email`, JSON.stringify(item), {
+		params: {
+			addr: addr,
+		},
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json',
+		},
+	})
+}
+
+export async function removeEmailSubscription(token: string, addr: string): Promise<void> {
+	await axios.delete(`/api/v0/subscribe_email`, {
+		params: {
+			addr: addr,
+		},
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+}
+
+export interface WebhookItemPayload {
+	name: string
+	endpoint: string
+	auth: string | undefined
+	scopes: SubscribeScope[]
+}
+
+export interface WebhookItemRes {
+	id: number
+	name: string
+	endpoint: string
+	enabled: boolean
+	authHash?: string
+	scopes: SubscribeScope[]
+}
+
+export async function getWebhooks(token: string): Promise<WebhookItemRes[]> {
+	const res = await axios.get<WebhookItemRes[]>(`/api/v0/webhook`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+	return res.data
+}
+
+export async function addWebhook(token: string, item: WebhookItemPayload): Promise<void> {
+	await axios.post(`/api/v0/webhook`, JSON.stringify(item), {
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json',
+		},
+	})
+}
+
+export async function updateWebhook(
+	token: string,
+	id: number,
+	item: WebhookItemPayload,
+): Promise<void> {
+	await axios.patch(`/api/v0/webhook`, JSON.stringify(item), {
+		params: {
+			id: id,
+		},
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json',
+		},
+	})
+}
+
+export async function removeWebhook(token: string, id: number): Promise<void> {
+	await axios.delete(`/api/v0/webhook`, {
+		params: {
+			id: id,
+		},
 		headers: {
 			Authorization: `Bearer ${token}`,
 		},

@@ -24,6 +24,7 @@
 		},
 
 		"settings": "Settings",
+		"create-new": "Create new",
 		"edit": "Edit",
 		"operation": "Operation",
 
@@ -45,7 +46,7 @@
 
 		"emails": "Emails",
 		"email": {
-			"addr": "Email Addr"
+			"recver": "Receiver"
 		},
 
 		"webhooks": "Webhooks",

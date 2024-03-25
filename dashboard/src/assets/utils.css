@@ -26,6 +26,10 @@
 	flex-basis: auto;
 }
 
+.width-full {
+	width: 100%;
+}
+
 .margin-none {
 	margin: 0 !important;
 }

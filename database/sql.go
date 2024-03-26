@@ -741,7 +741,7 @@ func (db *SqlDB) setupEmailSubscriptionsQuestionMark(ctx context.Context) (err e
 
 	const addInsertCmd = "INSERT INTO " + tableName +
 		" (`user`,`addr`,`scopes`,`enabled`) VALUES" +
-		" (?,?,?,1)"
+		" (?,?,?,TRUE)"
 	if db.emailSubscriptionStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
 		return
 	}
@@ -778,7 +778,7 @@ func (db *SqlDB) setupEmailSubscriptionsQuestionMark(ctx context.Context) (err e
 	}
 
 	const forEachEnabledSelectCmd = "SELECT `user`,`addr`,`scopes` FROM " + tableName +
-		" WHERE `enabled`=1"
+		" WHERE `enabled`=TRUE"
 	if db.emailSubscriptionStmts.forEachEnabled, err = db.db.PrepareContext(ctx, forEachEnabledSelectCmd); err != nil {
 		return
 	}
@@ -807,7 +807,7 @@ func (db *SqlDB) setupEmailSubscriptionsDollarMark(ctx context.Context) (err err
 
 	const addInsertCmd = "INSERT INTO " + tableName +
 		` ("user",addr,scopes,enabled) VALUES` +
-		" ($1,$2,$3,1)"
+		" ($1,$2,$3,TRUE)"
 	if db.emailSubscriptionStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
 		return
 	}
@@ -844,7 +844,7 @@ func (db *SqlDB) setupEmailSubscriptionsDollarMark(ctx context.Context) (err err
 	}
 
 	const forEachEnabledSelectCmd = `SELECT "user",addr,scopes FROM ` + tableName +
-		" WHERE enabled=1"
+		" WHERE enabled=TRUE"
 	if db.emailSubscriptionStmts.forEachEnabled, err = db.db.PrepareContext(ctx, forEachEnabledSelectCmd); err != nil {
 		return
 	}
@@ -1013,7 +1013,7 @@ func (db *SqlDB) setupWebhooksQuestionMark(ctx context.Context) (err error) {
 
 	const addInsertCmd = "INSERT INTO " + tableName +
 		" (`user`,`id`,`endpoint`,`auth`,`scopes`,`enabled`) VALUES" +
-		" (?,?,?,?,?,1)"
+		" (?,?,?,?,?,TRUE)"
 	if db.webhookStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
 		return
 	}
@@ -1056,7 +1056,7 @@ func (db *SqlDB) setupWebhooksQuestionMark(ctx context.Context) (err error) {
 	}
 
 	const forEachEnabledSelectCmd = "SELECT `user`,`id`,`name`,`endpoint`,`auth`,`scopes` FROM " + tableName +
-		" WHERE `enabled`=1"
+		" WHERE `enabled`=TRUE"
 	if db.webhookStmts.forEachEnabled, err = db.db.PrepareContext(ctx, forEachEnabledSelectCmd); err != nil {
 		return
 	}
@@ -1088,7 +1088,7 @@ func (db *SqlDB) setupWebhooksDollarMark(ctx context.Context) (err error) {
 
 	const addInsertCmd = "INSERT INTO " + tableName +
 		` ("user",id,endpoint,auth,scopes,enabled) VALUES` +
-		" ($1,$2,$3,$4,$5,1)"
+		" ($1,$2,$3,$4,$5,TRUE)"
 	if db.webhookStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
 		return
 	}
@@ -1131,7 +1131,7 @@ func (db *SqlDB) setupWebhooksDollarMark(ctx context.Context) (err error) {
 	}
 
 	const forEachEnabledSelectCmd = `SELECT "user",id,name,endpoint,auth,scopes FROM ` + tableName +
-		" WHERE enabled=1"
+		" WHERE enabled=TRUE"
 	if db.webhookStmts.forEachEnabled, err = db.db.PrepareContext(ctx, forEachEnabledSelectCmd); err != nil {
 		return
 	}

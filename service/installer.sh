@@ -15,7 +15,7 @@ while [ $# -gt 0 ]; do
 			;;
 		-t|--tag)
 			shift
-			LATEST_TAG=$1
+			TARGET_TAG=$1
 			;;
 		-*)
 			echo -e "\e[31mERROR: Unknown option $1\e[0m"
@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ ${#ARGS[@]} -ge 1 ]; then
-	LATEST_TAG="${ARGS[0]}"
+	TARGET_TAG="${ARGS[0]}"
 fi
 
 if [ -n "$MIRROR_PREFIX" ] && [[ "$MIRROR_PREFIX" != */ ]]; then
@@ -37,7 +37,7 @@ if [ -n "$MIRROR_PREFIX" ] && [[ "$MIRROR_PREFIX" != */ ]]; then
 fi
 
 echo "MIRROR_PREFIX=${MIRROR_PREFIX}"
-echo "LATEST_TAG=${LATEST_TAG}"
+echo "TARGET_TAG=${TARGET_TAG}"
 
 REPO='LiterMC/go-openbmclapi'
 RAW_PREFIX="${MIRROR_PREFIX}https://raw.githubusercontent.com"

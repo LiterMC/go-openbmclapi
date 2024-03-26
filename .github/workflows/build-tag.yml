@@ -28,8 +28,6 @@ jobs:
 
   create_release:
     runs-on: ubuntu-latest
-    needs:
-      - test
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       tag: ${{ steps.tag.outputs.tag }}
@@ -68,6 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - create_release
+      - test
     steps:
       -
         name: Action Checkout
@@ -112,6 +111,9 @@ jobs:
       -
         name: Generate
         run: go generate .
+      -
+        name: Test
+        run: go test -v ./...
       -
         name: Run build-windows.exe
         env:

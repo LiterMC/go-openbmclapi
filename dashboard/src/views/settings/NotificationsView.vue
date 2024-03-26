@@ -37,6 +37,7 @@ const emails = ref<EmailItemRes[] | null>(null)
 const newEmailItem = ref<EmailItemPayload>({
 	addr: '',
 	scopes: [],
+	enabled: true,
 })
 const newEmailItemInvalid = ref<string | null>(null)
 const newEmailItemSaving = ref(false)
@@ -146,6 +147,7 @@ function openCreateWebhookDialog(): void {
 		endpoint: '',
 		auth: '',
 		scopes: [],
+		enabled: true,
 	}
 }
 
@@ -231,7 +233,7 @@ async function webhookEditSave(): Promise<void> {
 	webhookEditAuthInvalid.value = null
 	webhookEditSaving.value = true
 	try {
-		const { name, endpoint, auth, scopes } = webhookEditingItem.value
+		const { name, endpoint, auth, scopes, enabled } = webhookEditingItem.value
 		const id = webhookEditingItem.value._?.id
 		if ((webhookEditNameInvalid.value = checkName(name))) {
 			return
@@ -248,6 +250,7 @@ async function webhookEditSave(): Promise<void> {
 				endpoint: endpoint,
 				auth: auth === '-' ? undefined : auth,
 				scopes: scopes,
+				enabled: enabled,
 			})
 		} else {
 			await addWebhook(token.value, {
@@ -255,6 +258,7 @@ async function webhookEditSave(): Promise<void> {
 				endpoint: endpoint,
 				auth: auth,
 				scopes: scopes,
+				enabled: enabled,
 			})
 		}
 		webhookEditingItem.value = null

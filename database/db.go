@@ -26,6 +26,10 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 var (
@@ -55,6 +59,23 @@ type DB interface {
 	SetSubscribe(SubscribeRecord) error
 	RemoveSubscribe(user string, client string) error
 	ForEachSubscribe(cb func(*SubscribeRecord) error) error
+
+	GetEmailSubscription(user string, addr string) (*EmailSubscriptionRecord, error)
+	AddEmailSubscription(EmailSubscriptionRecord) error
+	UpdateEmailSubscription(EmailSubscriptionRecord) error
+	RemoveEmailSubscription(user string, addr string) error
+	ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) error) error
+	ForEachUsersEmailSubscription(user string, cb func(*EmailSubscriptionRecord) error) error
+	ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRecord) error) error
+
+	GetWebhook(user string, id uuid.UUID) (*WebhookRecord, error)
+	AddWebhook(WebhookRecord) error
+	UpdateWebhook(WebhookRecord) error
+	UpdateEnableWebhook(user string, id uuid.UUID, enabled bool) error
+	RemoveWebhook(user string, id uuid.UUID) error
+	ForEachWebhook(cb func(*WebhookRecord) error) error
+	ForEachUsersWebhook(user string, cb func(*WebhookRecord) error) error
+	ForEachEnabledWebhook(cb func(*WebhookRecord) error) error
 }
 
 type FileRecord struct {
@@ -64,13 +85,13 @@ type FileRecord struct {
 }
 
 type SubscribeRecord struct {
-	User       string
-	Client     string
-	EndPoint   string
-	Keys       SubscribeRecordKeys
-	Scopes     NotificationScopes
-	ReportAt   Schedule
-	LastReport sql.NullTime
+	User       string              `json:"user"`
+	Client     string              `json:"client"`
+	EndPoint   string              `json:"endpoint"`
+	Keys       SubscribeRecordKeys `json:"keys"`
+	Scopes     NotificationScopes  `json:"scopes"`
+	ReportAt   Schedule            `json:"report_at"`
+	LastReport sql.NullTime        `json:"-"`
 }
 
 type SubscribeRecordKeys struct {
@@ -178,6 +199,21 @@ func (ns *NotificationScopes) FromStrings(scopes []string) {
 	}
 }
 
+func (ns *NotificationScopes) UnmarshalJSON(data []byte) (err error) {
+	{
+		type T NotificationScopes
+		if err = json.Unmarshal(data, (*T)(ns)); err == nil {
+			return
+		}
+	}
+	var v []string
+	if err = json.Unmarshal(data, &v); err != nil {
+		return
+	}
+	ns.FromStrings(v)
+	return
+}
+
 type Schedule struct {
 	Hour   int
 	Minute int
@@ -187,6 +223,10 @@ var (
 	_ sql.Scanner   = (*Schedule)(nil)
 	_ driver.Valuer = (*Schedule)(nil)
 )
+
+func (s Schedule) String() string {
+	return fmt.Sprintf("%02d:%02d", s.Hour, s.Minute)
+}
 
 func (s *Schedule) UnmarshalText(buf []byte) (err error) {
 	if _, err = fmt.Sscanf((string)(buf), "%02d:%02d", &s.Hour, &s.Minute); err != nil {
@@ -199,6 +239,18 @@ func (s *Schedule) UnmarshalText(buf []byte) (err error) {
 		return fmt.Errorf("Minute %d out of range [0, 60)", s.Minute)
 	}
 	return
+}
+
+func (s *Schedule) UnmarshalJSON(buf []byte) (err error) {
+	var v string
+	if err = json.Unmarshal(buf, &v); err != nil {
+		return
+	}
+	return s.UnmarshalText(([]byte)(v))
+}
+
+func (s *Schedule) MarshalJSON() (buf []byte, err error) {
+	return json.Marshal(s.String())
 }
 
 func (s *Schedule) Scan(src any) error {
@@ -215,7 +267,7 @@ func (s *Schedule) Scan(src any) error {
 }
 
 func (s Schedule) Value() (driver.Value, error) {
-	return fmt.Sprintf("%02d:%02d", s.Hour, s.Minute), nil
+	return s.String(), nil
 }
 
 func (s Schedule) ReadySince(last, now time.Time) bool {
@@ -234,4 +286,31 @@ func (s Schedule) ReadySince(last, now time.Time) bool {
 		return true
 	}
 	return false
+}
+
+type EmailSubscriptionRecord struct {
+	User    string             `json:"user"`
+	Addr    string             `json:"addr"`
+	Scopes  NotificationScopes `json:"scopes"`
+	Enabled bool               `json:"enabled"`
+}
+
+type WebhookRecord struct {
+	User     string               `json:"user"`
+	Id       uuid.UUID            `json:"id"`
+	Name     string               `json:"name"`
+	EndPoint string               `json:"endpoint"`
+	Auth     *string              `json:"auth,omitempty"`
+	AuthHash string               `json:"authHash,omitempty"`
+	Scopes   []NotificationScopes `json:"scopes"`
+	Enabled  bool                 `json:"enabled"`
+}
+
+func (rec *WebhookRecord) CovertAuthHash() {
+	if rec.Auth == nil || *rec.Auth == "" {
+		rec.AuthHash = ""
+	} else {
+		rec.AuthHash = "sha256:" + utils.AsSha256Hex(*rec.Auth)
+	}
+	rec.Auth = nil
 }

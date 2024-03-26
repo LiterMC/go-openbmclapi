@@ -207,9 +207,11 @@ export async function removeSubscription(token: string): Promise<void> {
 export interface EmailItemPayload {
 	addr: string
 	scopes: SubscribeScope[]
+	enabled: boolean
 }
 
 export interface EmailItemRes {
+	user: string
 	addr: string
 	scopes: SubscribeScope[]
 	enabled: boolean
@@ -265,15 +267,16 @@ export interface WebhookItemPayload {
 	endpoint: string
 	auth: string | undefined
 	scopes: SubscribeScope[]
+	enabled: boolean
 }
 
 export interface WebhookItemRes {
 	id: number
 	name: string
 	endpoint: string
-	enabled: boolean
 	authHash?: string
 	scopes: SubscribeScope[]
+	enabled: boolean
 }
 
 export async function getWebhooks(token: string): Promise<WebhookItemRes[]> {

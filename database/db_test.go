@@ -20,11 +20,38 @@
 package database_test
 
 import (
+	"encoding/json"
 	"time"
 
 	. "github.com/LiterMC/go-openbmclapi/database"
 	"testing"
 )
+
+func TestUnmarshalNotificationScopes(t *testing.T) {
+	data := []struct {
+		S string
+		V NotificationScopes
+	}{
+		{`[]`, NotificationScopes{}},
+		{`["enabled"]`, NotificationScopes{Enabled: true}},
+		{`["enabled", "enabled"]`, NotificationScopes{Enabled: true}},
+		{`["enabled", "syncdone"]`, NotificationScopes{Enabled: true, SyncDone: true}},
+		{`{}`, NotificationScopes{}},
+		{`{"enabled": true}`, NotificationScopes{Enabled: true}},
+		{`{"enabled": false}`, NotificationScopes{Enabled: false}},
+		{`{"enabled": true, "syncdone": true}`, NotificationScopes{Enabled: true, SyncDone: true}},
+	}
+	for i, d := range data {
+		var v NotificationScopes
+		if e := json.Unmarshal(([]byte)(d.S), &v); e != nil {
+			t.Errorf("Cannot parse %q: %v", d.S, e)
+			continue
+		}
+		if v != d.V {
+			t.Errorf("Incorrect return value at %d (%s), expect %#v, got %#v", i, d.S, d.V, v)
+		}
+	}
+}
 
 var TwoFirst = time.Date(2000, 01, 01, 0, 0, 0, 0, time.UTC)
 var TwoSecond = time.Date(2000, 01, 02, 0, 0, 0, 0, time.UTC)

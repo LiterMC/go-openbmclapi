@@ -1,0 +1,13 @@
+{{ define "updates" }}
+<h1>Go-OpenBMCLAPI Cluster {{ .Release.Tag }} Avaliable!</h1>
+
+<p>
+	View full release at <a href="{{ .Release.HtmlURL }}">{{ .Release.HtmlURL }}</a>
+</p>
+
+<h2>Change Log</h2>
+<div>
+	{{ noescape .Release.Body }}
+</div>
+
+{{ end }}

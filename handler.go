@@ -99,9 +99,9 @@ func (r *accessRecord) String() string {
 		used = used.Truncate(time.Microsecond)
 	}
 	var buf strings.Builder
-	fmt.Fprintf(&buf, "Serve %3d | %12v | %7s | %-15s | %s | %-4s %s | %q",
+	fmt.Fprintf(&buf, "Serve %3d | %12v | %7s | %-15s | %-4s %s | %q",
 		r.Status, used, utils.BytesToUnit((float64)(r.Content)),
-		r.Addr, r.Proto,
+		r.Addr,
 		r.Method, r.URI, r.UA)
 	if len(r.Extra) > 0 {
 		buf.WriteString(" | ")
@@ -204,7 +204,7 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 		for {
 			select {
 			case <-updateTicker.C:
-				cr.stats.mux.Lock()
+				cr.stats.Lock()
 
 				log.Infof("Served %d requests, total responsed body = %s, total used CPU time = %.2fs",
 					total, utils.BytesToUnit(totalBytes), totalUsed)
@@ -220,7 +220,7 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 				totalBytes = 0
 				clear(uas)
 
-				cr.stats.mux.Unlock()
+				cr.stats.Unlock()
 			case rec := <-recordCh:
 				total++
 				totalUsed += rec.used

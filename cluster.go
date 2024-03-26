@@ -24,6 +24,7 @@ import (
 	"compress/zlib"
 	"context"
 	"crypto"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -57,7 +58,11 @@ import (
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/notify"
+	"github.com/LiterMC/go-openbmclapi/notify/email"
+	"github.com/LiterMC/go-openbmclapi/notify/webpush"
 	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/update"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -85,7 +90,7 @@ type Cluster struct {
 	apiHmacKey         []byte
 	hijackProxy        *HjProxy
 
-	stats          Stats
+	stats          notify.Stats
 	hits, statHits atomic.Int32
 	hbts, statHbts atomic.Int64
 	issync         atomic.Bool
@@ -100,8 +105,8 @@ type Cluster struct {
 	reconnectCount  int
 	socket          *socket.Socket
 	cancelKeepalive context.CancelFunc
-	downloadMux     sync.Mutex
-	downloading     map[string]chan error // TODO: use struct { sync.Mutex; error } rather than chan error
+	downloadMux     sync.RWMutex
+	downloading     map[string]*downloadingItem
 	filesetMux      sync.RWMutex
 	fileset         map[string]int64
 	authTokenMux    sync.RWMutex
@@ -111,7 +116,8 @@ type Cluster struct {
 	cachedCli      *http.Client
 	bufSlots       *limited.BufSlots
 	database       database.DB
-	notifyManager  *NotifyManager
+	notifyManager  *notify.Manager
+	webpushKeyB64  string
 	updateChecker  *time.Timer
 	apiRateLimiter *limited.APIRateMiddleWare
 
@@ -163,7 +169,7 @@ func NewCluster(
 		disabled: make(chan struct{}, 0),
 		fileset:  make(map[string]int64, 0),
 
-		downloading: make(map[string]chan error),
+		downloading: make(map[string]*downloadingItem),
 
 		client: &http.Client{
 			Transport: transport,
@@ -218,12 +224,20 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 		}
 	}
 
-	// Init Notification Manager
-	cr.notifyManager = NewNotifyManager(cr.dataDir, cr.database, cr.client)
+	// Init notification manager
+	cr.notifyManager = notify.NewManager(cr.dataDir, cr.database, cr.client, config.Dashboard.NotifySubject)
+	// Add notification plugins
+	webpushPlg := new(webpush.Plugin)
+	cr.notifyManager.AddPlugin(webpushPlg)
+	if config.Notification.EnableEmail {
+		emailPlg := new(email.Plugin)
+		cr.notifyManager.AddPlugin(emailPlg)
+	}
+
 	if err = cr.notifyManager.Init(ctx); err != nil {
 		return
 	}
-	cr.notifyManager.SetSubject(config.Dashboard.NotifySubject)
+	cr.webpushKeyB64 = base64.RawURLEncoding.EncodeToString(webpushPlg.GetPublicKey())
 
 	// Init storages
 	vctx := context.WithValue(ctx, storage.ClusterCacheCtxKey, cr.cache)
@@ -546,7 +560,7 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		"hits":  hits,
 		"bytes": hbts,
 	})
-	go cr.notifyManager.OnReportStat(&cr.stats)
+	go cr.notifyManager.OnReportStatus(&cr.stats)
 
 	if e := cr.stats.Save(cr.dataDir); e != nil {
 		log.Errorf(Tr("error.cluster.stat.save.failed"), e)
@@ -1072,9 +1086,13 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	if err != nil {
 		return err
 	}
-	missing := make([]*fileInfoWithTargets, 0, len(missingMap))
+	var (
+		missing           = make([]*fileInfoWithTargets, 0, len(missingMap))
+		missingSize int64 = 0
+	)
 	for _, f := range missingMap {
 		missing = append(missing, f)
+		missingSize += f.Size
 	}
 	totalFiles := len(missing)
 	if totalFiles == 0 {
@@ -1082,7 +1100,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		return nil
 	}
 
-	go cr.notifyManager.OnSyncBegin()
+	go cr.notifyManager.OnSyncBegin(len(missing), missingSize)
 	defer func() {
 		go cr.notifyManager.OnSyncDone()
 	}()
@@ -1394,16 +1412,30 @@ func (cr *Cluster) fetchFileWithBuf(
 	return
 }
 
-func (cr *Cluster) lockDownloading(target string) (chan error, bool) {
+type downloadingItem struct {
+	err  error
+	done chan struct{}
+}
+
+func (cr *Cluster) lockDownloading(target string) (*downloadingItem, bool) {
+	cr.downloadMux.RLock()
+	item := cr.downloading[target]
+	cr.downloadMux.RUnlock()
+	if item != nil {
+		return item, true
+	}
+
 	cr.downloadMux.Lock()
 	defer cr.downloadMux.Unlock()
 
-	if ch := cr.downloading[target]; ch != nil {
-		return ch, true
+	if item = cr.downloading[target]; item != nil {
+		return item, true
 	}
-	ch := make(chan error, 1)
-	cr.downloading[target] = ch
-	return ch, false
+	item = &downloadingItem{
+		done: make(chan struct{}, 0),
+	}
+	cr.downloading[target] = item
+	return item, false
 }
 
 func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
@@ -1417,7 +1449,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		Hash: hash,
 		Size: -1,
 	}
-	done, ok := cr.lockDownloading(hash)
+	item, ok := cr.lockDownloading(hash)
 	if !ok {
 		go func() {
 			var err error
@@ -1425,8 +1457,8 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 				if err != nil {
 					log.Errorf(Tr("error.sync.download.failed"), hash, err)
 				}
-				done <- err
-				close(done)
+				item.err = err
+				close(item.done)
 
 				cr.downloadMux.Lock()
 				defer cr.downloadMux.Unlock()
@@ -1494,11 +1526,28 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		}()
 	}
 	select {
-	case err = <-done:
+	case <-item.done:
+		err = item.err
 	case <-ctx.Done():
 		err = ctx.Err()
 	case <-cr.Disabled():
 		err = context.Canceled
 	}
+	return
+}
+
+func (cr *Cluster) checkUpdate() (err error) {
+	if update.CurrentBuildTag == nil {
+		return
+	}
+	log.Info(Tr("info.update.checking"))
+	release, err := update.Check(cr.cachedCli, config.GithubAPI.Authorization)
+	if err != nil {
+		return
+	}
+	// TODO: print all middle change logs
+	log.Infof(Tr("info.update.detected"), release.Tag, update.CurrentBuildTag)
+	log.Infof(Tr("info.update.changelog"), update.CurrentBuildTag, release.Tag, release.Body)
+	cr.notifyManager.OnUpdateAvaliable(release)
 	return
 }

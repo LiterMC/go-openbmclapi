@@ -22,7 +22,6 @@ package main
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +39,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/notify"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -183,11 +183,11 @@ func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
 		Total int64 `json:"total"`
 	}
 	type statusData struct {
-		StartAt time.Time `json:"startAt"`
-		Stats   *Stats    `json:"stats"`
-		Enabled bool      `json:"enabled"`
-		IsSync  bool      `json:"isSync"`
-		Sync    *syncData `json:"sync,omitempty"`
+		StartAt time.Time     `json:"startAt"`
+		Stats   *notify.Stats `json:"stats"`
+		Enabled bool          `json:"enabled"`
+		IsSync  bool          `json:"isSync"`
+		Sync    *syncData     `json:"sync,omitempty"`
 	}
 	status := statusData{
 		StartAt: startTime,
@@ -574,15 +574,15 @@ func (cr *Cluster) apiV0SubscribeKey(rw http.ResponseWriter, req *http.Request) 
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
-	key := cr.notifyManager.GetPublicKey()
-	etag := `"` + utils.BytesAsSha256(key) + `"`
+	key := cr.webpushKeyB64
+	etag := `"` + utils.AsSha256(key) + `"`
 	rw.Header().Set("ETag", etag)
 	if cachedTag := req.Header.Get("If-None-Match"); cachedTag == etag {
 		rw.WriteHeader(http.StatusNotModified)
 		return
 	}
 	writeJson(rw, http.StatusOK, Map{
-		"publicKey": base64.RawURLEncoding.EncodeToString(key),
+		"publicKey": key,
 	})
 }
 

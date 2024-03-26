@@ -124,6 +124,7 @@ func (sk SubscribeRecordKeys) Value() (driver.Value, error) {
 type NotificationScopes struct {
 	Disabled    bool `json:"disabled"`
 	Enabled     bool `json:"enabled"`
+	SyncBegin   bool `json:"syncbegin"`
 	SyncDone    bool `json:"syncdone"`
 	Updates     bool `json:"updates"`
 	DailyReport bool `json:"dailyreport"`
@@ -134,12 +135,15 @@ var (
 	_ driver.Valuer = (*NotificationScopes)(nil)
 )
 
+//// !!WARN: Do not edit nsFlag's order ////
+
 const (
 	nsFlagDisabled = 1 << iota
 	nsFlagEnabled
 	nsFlagSyncDone
 	nsFlagUpdates
 	nsFlagDailyReport
+	nsFlagSyncBegin
 )
 
 func (ns NotificationScopes) ToInt64() (v int64) {
@@ -148,6 +152,9 @@ func (ns NotificationScopes) ToInt64() (v int64) {
 	}
 	if ns.Enabled {
 		v |= nsFlagEnabled
+	}
+	if ns.SyncBegin {
+		v |= nsFlagSyncBegin
 	}
 	if ns.SyncDone {
 		v |= nsFlagSyncDone
@@ -164,6 +171,7 @@ func (ns NotificationScopes) ToInt64() (v int64) {
 func (ns *NotificationScopes) FromInt64(v int64) {
 	ns.Disabled = v&nsFlagDisabled != 0
 	ns.Enabled = v&nsFlagEnabled != 0
+	ns.SyncBegin = v&nsFlagSyncBegin != 0
 	ns.SyncDone = v&nsFlagSyncDone != 0
 	ns.Updates = v&nsFlagUpdates != 0
 	ns.DailyReport = v&nsFlagDailyReport != 0
@@ -189,6 +197,8 @@ func (ns *NotificationScopes) FromStrings(scopes []string) {
 			ns.Disabled = true
 		case "enabled":
 			ns.Enabled = true
+		case "syncbegin":
+			ns.SyncBegin = true
 		case "syncdone":
 			ns.SyncDone = true
 		case "updates":

@@ -42,6 +42,8 @@ import (
 
 	"runtime/pprof"
 
+	doh "github.com/libp2p/go-doh-resolver"
+
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/lang"
@@ -338,6 +340,8 @@ func (r *Runner) InitCluster(ctx context.Context) {
 		dialer *net.Dialer
 		cache  = config.Cache.newCache()
 	)
+
+	_ = doh.NewResolver // TODO: use doh resolver
 
 	r.cluster = NewCluster(ctx,
 		ClusterServerURL,

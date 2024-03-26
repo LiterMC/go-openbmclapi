@@ -77,6 +77,14 @@ type APIRateLimitConfig struct {
 	Logged    limited.RateLimit `yaml:"logged"`
 }
 
+type NotificationConfig struct {
+	EnableEmail         bool   `yaml:"enable-email"`
+	EmailSMTP           string `yaml:"email-smtp"`
+	EmailSender         string `yaml:"email-sender"`
+	EmailSenderPassword string `yaml:"email-sender-password"`
+	EnableWebhook       bool   `yaml:"enable-webhook"`
+}
+
 type DatabaseConfig struct {
 	Driver string `yaml:"driver"`
 	DSN    string `yaml:"data-source-name"`
@@ -196,6 +204,7 @@ type Config struct {
 	Cache        CacheConfig                    `yaml:"cache"`
 	ServeLimit   ServeLimitConfig               `yaml:"serve-limit"`
 	RateLimit    APIRateLimitConfig             `yaml:"api-rate-limit"`
+	Notification NotificationConfig             `yaml:"notification"`
 	Dashboard    DashboardConfig                `yaml:"dashboard"`
 	GithubAPI    GithubAPIConfig                `yaml:"github-api"`
 	Database     DatabaseConfig                 `yaml:"database"`
@@ -252,6 +261,25 @@ var defaultConfig = Config{
 		Enable:     false,
 		MaxConn:    16384,
 		UploadRate: 1024 * 12, // 12MB
+	},
+
+	RateLimit: APIRateLimitConfig{
+		Anonymous: limited.RateLimit{
+			PerMin:  10,
+			PerHour: 120,
+		},
+		Logged: limited.RateLimit{
+			PerMin:  120,
+			PerHour: 6000,
+		},
+	},
+
+	Notification: NotificationConfig{
+		EnableEmail:         false,
+		EmailSMTP:           "smtp.example.com:25",
+		EmailSender:         "noreply@example.com",
+		EmailSenderPassword: "example-password",
+		EnableWebhook:       true,
 	},
 
 	Dashboard: DashboardConfig{

@@ -89,6 +89,7 @@ var areaUS = map[string]string{
 	"error.tunnel.failed":                 "Tunneling failed: %v",
 	"error.tunnel.command.prepare.failed": "Tunnel command failed to prepare: %v",
 
+	"info.update.checking":      "Checking for Go-OpenBmclAPI latest release ...",
 	"error.update.check.failed": "Update check failed: %v",
 	"info.update.detected":      "Newer version of go-openbmclapi detected: tag=%s, current=%s",
 	"info.update.changelog":     "Changelog from %s to %s:\n%s",

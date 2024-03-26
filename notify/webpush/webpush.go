@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package webpush
 
 import (
 	"bytes"
@@ -47,101 +47,41 @@ import (
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/notify"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
-type NotifyManager struct {
-	dataDir  string
-	database database.DB
-	subject  string
-	client   *http.Client
-
-	key *ecdsa.PrivateKey
-
-	reportMux       sync.Mutex
-	nextReportAfter time.Time
-
-	lastRelease GithubRelease
+type Plugin struct {
+	db      database.DB
+	subject string
+	client  *http.Client
+	key     *ecdsa.PrivateKey
 }
 
-func NewNotifyManager(dataDir string, db database.DB, client *http.Client) (w *NotifyManager) {
-	return &NotifyManager{
-		dataDir:  dataDir,
-		database: db,
-		client:   client,
-	}
+var _ notify.Plugin = (*Plugin)(nil)
+
+func (p *Plugin) ID() string {
+	return "webpush"
 }
 
-func (w *NotifyManager) SetSubject(sub string) {
-	w.subject = sub
-}
-
-func (w *NotifyManager) Init(ctx context.Context) (err error) {
-	keyPath := filepath.Join(w.dataDir, "webpush.private_key")
-	if w.key, err = readECPrivateKey(keyPath); err != nil {
+func (p *Plugin) Init(ctx context.Context, m *notify.Manager) (err error) {
+	p.db = m.DB()
+	p.subject = m.Subject()
+	p.client = m.HTTPClient()
+	keyPath := filepath.Join(m.DataDir(), "webpush.private_key")
+	if p.key, err = readECPrivateKey(keyPath); err != nil {
 		log.Errorf("Cannot read webpush private key: %v", err)
-		if w.key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader); err != nil {
+		if p.key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader); err != nil {
 			return
 		}
 		var blk pem.Block
 		blk.Type = "EC PRIVATE KEY"
-		if blk.Bytes, err = x509.MarshalECPrivateKey(w.key); err != nil {
+		if blk.Bytes, err = x509.MarshalECPrivateKey(p.key); err != nil {
 			return
 		}
 		if err = os.WriteFile(keyPath, pem.EncodeToMemory(&blk), 0600); err != nil {
 			return
 		}
-	}
-	return
-}
-
-func readECPrivateKey(path string) (key *ecdsa.PrivateKey, err error) {
-	bts, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	for {
-		var blk *pem.Block
-		blk, bts = pem.Decode(bts)
-		if blk == nil {
-			break
-		}
-		if blk.Type == "EC PRIVATE KEY" {
-			return x509.ParseECPrivateKey(blk.Bytes)
-		}
-	}
-	return nil, errors.New(`Cannot found "EC PRIVATE KEY" in pem blocks`)
-}
-
-func (w *NotifyManager) GetPublicKey() []byte {
-	key, err := w.key.PublicKey.ECDH()
-	if err != nil {
-		log.Panicf("Cannot get ecdh public key: %v", err)
-	}
-	return key.Bytes()
-}
-
-// the Authorization header format is depends on the encrypt algorithm:
-// - aes128gcm: Authorization: "vapid t=<jwt>, k=<publicKey>"
-// - aesgcm: Authorization: "WebPush <jwt>"; Crypto-Key: "p256ecdsa=<publicKey>"
-func (w *NotifyManager) setVAPIDAuthHeader(req *http.Request) error {
-	exp := time.Now().Add(time.Hour * 12)
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
-		"aud": fmt.Sprintf("%s://%s", req.URL.Scheme, req.URL.Host),
-		"exp": exp.Unix(),
-		"sub": w.subject,
-	})
-	signed, err := token.SignedString(w.key)
-	if err != nil {
-		return err
-	}
-	pubKey := base64.RawURLEncoding.EncodeToString(w.GetPublicKey())
-	switch req.Header.Get("Content-Encoding") {
-	case "aes128gcm":
-		req.Header.Set("Authorization", fmt.Sprintf("vapid t=%s, k=%s", signed, pubKey))
-	case "aesgcm":
-		req.Header.Set("Authorization", "WebPush "+signed)
-		req.Header.Set("Crypto-Key", "p256ecdsa="+pubKey)
 	}
 	return nil
 }
@@ -166,7 +106,7 @@ const (
 	UrgencyHigh    Urgency = "high"
 )
 
-func (w *NotifyManager) SendNotification(ctx context.Context, message []byte, s *Subscription, opts *PushOptions) (err error) {
+func (p *Plugin) sendNotification(ctx context.Context, message []byte, s *Subscription, opts *PushOptions) (err error) {
 	auth, err := base64.RawURLEncoding.DecodeString(s.Keys.Auth)
 	if err != nil {
 		return
@@ -216,11 +156,11 @@ func (w *NotifyManager) SendNotification(ctx context.Context, message []byte, s 
 	}
 	req.Header.Set("Urgency", (string)(urg))
 
-	if err = w.setVAPIDAuthHeader(req); err != nil {
+	if err = p.setVAPIDAuthHeader(req); err != nil {
 		return
 	}
 
-	resp, err := w.client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return
 	}
@@ -230,12 +170,12 @@ func (w *NotifyManager) SendNotification(ctx context.Context, message []byte, s 
 	return
 }
 
-func (w *NotifyManager) sendMessageIf(ctx context.Context, message []byte, opts *PushOptions, filter func(*database.SubscribeRecord) bool) {
+func (p *Plugin) sendMessageIf(ctx context.Context, message []byte, opts *PushOptions, filter func(*database.SubscribeRecord) bool) (err error) {
 	log.Debugf("Sending notification: %s", message)
 	var wg sync.WaitGroup
 	var mux sync.Mutex
 	var outdated []database.SubscribeRecord
-	w.database.ForEachSubscribe(func(record *database.SubscribeRecord) error {
+	err = p.db.ForEachSubscribe(func(record *database.SubscribeRecord) error {
 		if filter(record) {
 			log.Debugf("Sending notification to %s", record.EndPoint)
 			wg.Add(1)
@@ -245,8 +185,7 @@ func (w *NotifyManager) sendMessageIf(ctx context.Context, message []byte, opts 
 					EndPoint: record.EndPoint,
 					Keys:     record.Keys,
 				}
-				err := w.SendNotification(ctx, message, subs, opts)
-				if err != nil {
+				if err := p.sendNotification(ctx, message, subs, opts); err != nil {
 					log.Warnf("Error when sending notification: %v", err)
 					var herr *utils.HTTPStatusError
 					if errors.As(err, &herr) && herr != nil {
@@ -265,37 +204,91 @@ func (w *NotifyManager) sendMessageIf(ctx context.Context, message []byte, opts 
 	if len(outdated) > 0 {
 		log.Warnf("Found %d forbidden push endpoint", len(outdated))
 		for _, r := range outdated {
-			w.database.RemoveSubscribe(r.User, r.Client)
+			p.db.RemoveSubscribe(r.User, r.Client)
 		}
 	}
+	return
 }
 
-func (w *NotifyManager) OnEnabled() {
-	message, err := json.Marshal(Map{
-		"typ": "enabled",
-		"at":  time.Now().UnixMilli(),
-	})
+func readECPrivateKey(path string) (key *ecdsa.PrivateKey, err error) {
+	bts, err := os.ReadFile(path)
 	if err != nil {
 		return
+	}
+	for {
+		var blk *pem.Block
+		blk, bts = pem.Decode(bts)
+		if blk == nil {
+			break
+		}
+		if blk.Type == "EC PRIVATE KEY" {
+			return x509.ParseECPrivateKey(blk.Bytes)
+		}
+	}
+	return nil, errors.New(`Cannot found "EC PRIVATE KEY" in pem blocks`)
+}
+
+func (p *Plugin) GetPublicKey() []byte {
+	key, err := p.key.PublicKey.ECDH()
+	if err != nil {
+		log.Panicf("Cannot get ecdh public key: %v", err)
+	}
+	return key.Bytes()
+}
+
+// the Authorization header format is depends on the encrypt algorithm:
+// - aes128gcm: Authorization: "vapid t=<jwt>, k=<publicKey>"
+// - aesgcm: Authorization: "WebPush <jwt>"; Crypto-Key: "p256ecdsa=<publicKey>"
+func (p *Plugin) setVAPIDAuthHeader(req *http.Request) error {
+	exp := time.Now().Add(time.Hour * 12)
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+		"aud": fmt.Sprintf("%s://%s", req.URL.Scheme, req.URL.Host),
+		"exp": exp.Unix(),
+		"sub": p.subject,
+	})
+	signed, err := token.SignedString(p.key)
+	if err != nil {
+		return err
+	}
+	pubKey := base64.RawURLEncoding.EncodeToString(p.GetPublicKey())
+	switch req.Header.Get("Content-Encoding") {
+	case "aes128gcm":
+		req.Header.Set("Authorization", fmt.Sprintf("vapid t=%s, k=%s", signed, pubKey))
+	case "aesgcm":
+		req.Header.Set("Authorization", "WebPush "+signed)
+		req.Header.Set("Crypto-Key", "p256ecdsa="+pubKey)
+	}
+	return nil
+}
+
+type Map = map[string]any
+
+func (p *Plugin) OnEnabled(e *notify.EnabledEvent) error {
+	message, err := json.Marshal(Map{
+		"typ": "enabled",
+		"at":  e.At,
+	})
+	if err != nil {
+		return err
 	}
 	opts := &PushOptions{
 		Topic:   "enabled",
 		TTL:     60 * 60 * 24,
-		Urgency: UrgencyLow,
+		Urgency: UrgencyNormal,
 	}
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Enabled })
+	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Enabled })
 }
 
-func (w *NotifyManager) OnDisabled() {
+func (p *Plugin) OnDisabled(e *notify.DisabledEvent) error {
 	message, err := json.Marshal(Map{
 		"typ": "disabled",
-		"at":  time.Now().UnixMilli(),
+		"at":  e.At.UnixMilli(),
 	})
 	if err != nil {
-		return
+		return err
 	}
 	opts := &PushOptions{
 		Topic:   "disabled",
@@ -305,60 +298,56 @@ func (w *NotifyManager) OnDisabled() {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Disabled })
+	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Disabled })
 }
 
-func (w *NotifyManager) OnSyncBegin() {
+func (p *Plugin) OnSyncBegin(e *notify.SyncBeginEvent) error {
 	message, err := json.Marshal(Map{
-		"typ": "syncbegin",
-		"at":  time.Now().UnixMilli(),
+		"typ":   "syncbegin",
+		"at":    e.At.UnixMilli(),
+		"count": e.Count,
+		"size":  e.Size,
 	})
 	if err != nil {
-		return
+		return err
 	}
 	opts := &PushOptions{
 		Topic:   "syncbegin",
-		TTL:     60 * 60 * 12,
-		Urgency: UrgencyVeryLow,
-	}
-
-	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-	defer cancel()
-	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return false /*record.Scopes.SyncBegin*/ })
-}
-
-func (w *NotifyManager) OnSyncDone() {
-	message, err := json.Marshal(Map{
-		"typ": "syncdone",
-		"at":  time.Now().UnixMilli(),
-	})
-	if err != nil {
-		return
-	}
-	opts := &PushOptions{
-		Topic:   "syncdone",
 		TTL:     60 * 60 * 12,
 		Urgency: UrgencyLow,
 	}
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.SyncDone })
+	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.SyncBegin })
 }
 
-func (w *NotifyManager) OnUpdateAvaliable(release *GithubRelease) {
-	if w.lastRelease == *release {
-		return
-	}
-	w.lastRelease = *release
-
+func (p *Plugin) OnSyncDone(e *notify.SyncDoneEvent) error {
 	message, err := json.Marshal(Map{
-		"typ": "updates",
-		"tag": release.Tag.String(),
+		"typ": "syncdone",
+		"at":  e.At.UnixMilli(),
 	})
 	if err != nil {
-		log.Errorf("Cannot marshal subscribe message: %v", err)
-		return
+		return err
+	}
+	opts := &PushOptions{
+		Topic:   "syncdone",
+		TTL:     60 * 60 * 12,
+		Urgency: UrgencyVeryLow,
+	}
+
+	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.SyncDone })
+}
+
+func (p *Plugin) OnUpdateAvaliable(e *notify.UpdateAvaliableEvent) error {
+	message, err := json.Marshal(Map{
+		"typ": "updates",
+		"tag": e.Release.Tag.String(),
+	})
+	if err != nil {
+		return err
 	}
 	opts := &PushOptions{
 		Topic:   "updates",
@@ -368,22 +357,11 @@ func (w *NotifyManager) OnUpdateAvaliable(release *GithubRelease) {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Updates })
+	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Updates })
 }
 
-func (w *NotifyManager) OnReportStat(stats *Stats) {
-	if !w.reportMux.TryLock() {
-		return
-	}
-	defer w.reportMux.Unlock()
-
-	now := time.Now()
-	if !w.nextReportAfter.IsZero() && now.Before(w.nextReportAfter) {
-		return
-	}
-	w.nextReportAfter = now.Add(time.Minute * 8).Truncate(15 * time.Minute).Add(16 * time.Minute)
-
-	stat, err := stats.MarshalJSON()
+func (p *Plugin) OnReportStatus(e *notify.ReportStatusEvent) (err error) {
+	stat, err := json.Marshal(e.Stats)
 	if err != nil {
 		log.Errorf("Cannot marshal subscribe message: %v", err)
 		return
@@ -399,7 +377,6 @@ func (w *NotifyManager) OnReportStat(stats *Stats) {
 		"data": buf.String(),
 	})
 	if err != nil {
-		log.Errorf("Cannot marshal subscribe message: %v", err)
 		return
 	}
 	opts := &PushOptions{
@@ -410,9 +387,9 @@ func (w *NotifyManager) OnReportStat(stats *Stats) {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	now = now.UTC()
+	now := e.At.UTC()
 	var sent []database.SubscribeRecord
-	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool {
+	err = p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool {
 		if !record.Scopes.DailyReport {
 			return false
 		}
@@ -430,6 +407,7 @@ func (w *NotifyManager) OnReportStat(stats *Stats) {
 		rec.EndPoint = ""
 		rec.LastReport.Valid = true
 		rec.LastReport.Time = now
-		w.database.SetSubscribe(rec)
+		p.db.SetSubscribe(rec)
 	}
+	return
 }

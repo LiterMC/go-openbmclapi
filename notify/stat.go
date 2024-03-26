@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package notify
 
 import (
 	"encoding/json"
@@ -73,7 +73,7 @@ type statHistoryData struct {
 	Months statDataMonths `json:"months"`
 }
 
-type statData struct {
+type StatData struct {
 	Date statTime `json:"date"`
 	statHistoryData
 	Prev  statHistoryData         `json:"prev"`
@@ -82,7 +82,21 @@ type statData struct {
 	Accesses map[string]int `json:"accesses"`
 }
 
-func (d *statData) update(newData *statInstData) {
+func (d *StatData) Clone() *StatData {
+	cloned := new(StatData)
+	*cloned = *d
+	cloned.Years = make(map[string]statInstData, len(d.Years))
+	for k, v := range d.Years {
+		cloned.Years[k] = v
+	}
+	cloned.Accesses = make(map[string]int, len(d.Accesses))
+	for k, v := range d.Accesses {
+		cloned.Accesses[k] = v
+	}
+	return cloned
+}
+
+func (d *StatData) update(newData *statInstData) {
 	now := makeStatTime(time.Now())
 	if d.Date.Year != 0 {
 		switch {
@@ -201,25 +215,31 @@ func (d *statData) update(newData *statInstData) {
 }
 
 type Stats struct {
-	mux sync.RWMutex
-	statData
+	sync.RWMutex
+	StatData
 }
 
 const statsFileName = "stat.json"
 
-func (s *Stats) MarshalJSON() ([]byte, error) {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
+func (s *Stats) Clone() *StatData {
+	s.RLock()
+	defer s.RUnlock()
+	return s.StatData.Clone()
+}
 
-	return json.Marshal(&s.statData)
+func (s *Stats) MarshalJSON() ([]byte, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	return json.Marshal(&s.StatData)
 }
 
 func (s *Stats) Load(dir string) (err error) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
+	s.Lock()
+	defer s.Unlock()
 
 	if err = parseFileOrOld(filepath.Join(dir, statsFileName), func(buf []byte) error {
-		return json.Unmarshal(buf, &s.statData)
+		return json.Unmarshal(buf, &s.StatData)
 	}); err != nil {
 		return
 	}
@@ -235,10 +255,10 @@ func (s *Stats) Load(dir string) (err error) {
 
 // Save
 func (s *Stats) Save(dir string) (err error) {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 
-	buf, err := json.Marshal(&s.statData)
+	buf, err := json.Marshal(&s.StatData)
 	if err != nil {
 		return
 	}
@@ -250,8 +270,8 @@ func (s *Stats) Save(dir string) (err error) {
 }
 
 func (s *Stats) AddHits(hits int32, bytes int64) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
+	s.Lock()
+	defer s.Unlock()
 
 	s.update(&statInstData{
 		Hits:  hits,

@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package update
 
 import (
 	"bytes"
@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/LiterMC/go-openbmclapi/internal/build"
-	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -38,17 +37,15 @@ const lastetReleaseEndPoint = "https://api.github.com/repos/" + repoName + "/rel
 const cdnURL = "https://cdn.crashmc.com/"
 
 type GithubRelease struct {
-	Tag     releaseVersion `json:"tag_name"`
+	Tag     ReleaseVersion `json:"tag_name"`
 	HtmlURL string         `json:"html_url"`
 	Body    string         `json:"body"`
 }
 
-func (cr *Cluster) checkUpdate() (err error) {
-	if currentBuildTag == nil {
+func Check(cli *http.Client, auth string) (_ *GithubRelease, err error) {
+	if CurrentBuildTag == nil {
 		return
 	}
-
-	log.Info("Checking for Go-OpenBmclAPI latest release")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
@@ -57,13 +54,13 @@ func (cr *Cluster) checkUpdate() (err error) {
 	if err != nil {
 		return
 	}
-	if config.GithubAPI.Authorization != "" {
-		req.Header.Set("Authorization", config.GithubAPI.Authorization)
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
 	}
 	var resp *http.Response
 	{
 		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
-		resp, err = cr.cachedCli.Do(req.WithContext(tctx))
+		resp, err = cli.Do(req.WithContext(tctx))
 		cancel()
 	}
 	if err != nil {
@@ -71,7 +68,7 @@ func (cr *Cluster) checkUpdate() (err error) {
 			return
 		}
 		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
-		resp, err = cr.cachedCli.Do(req.WithContext(tctx))
+		resp, err = cli.Do(req.WithContext(tctx))
 		cancel()
 		if err != nil {
 			return
@@ -79,40 +76,36 @@ func (cr *Cluster) checkUpdate() (err error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return utils.NewHTTPStatusErrorFromResponse(resp)
+		return nil, utils.NewHTTPStatusErrorFromResponse(resp)
 	}
 	release := new(GithubRelease)
 	if err = json.NewDecoder(resp.Body).Decode(release); err != nil {
 		return
 	}
-	if !currentBuildTag.Less(&release.Tag) {
+	if !CurrentBuildTag.Less(&release.Tag) {
 		return
 	}
-	// TODO: print all middle change logs
-	log.Infof(Tr("info.update.detected"), release.Tag, currentBuildTag)
-	log.Infof(Tr("info.update.changelog"), currentBuildTag, release.Tag, release.Body)
-	cr.notifyManager.OnUpdateAvaliable(release)
-	return
+	return release, nil
 }
 
-type releaseVersion struct {
+type ReleaseVersion struct {
 	Major, Minor, Patch int
 	Build               int
 }
 
-var currentBuildTag = func() (v *releaseVersion) {
-	v = new(releaseVersion)
+var CurrentBuildTag = func() (v *ReleaseVersion) {
+	v = new(ReleaseVersion)
 	if v.UnmarshalText(([]byte)(build.BuildVersion)) != nil {
 		return nil
 	}
 	return
 }()
 
-func (v *releaseVersion) String() string {
+func (v *ReleaseVersion) String() string {
 	return fmt.Sprintf("v%d.%d.%d-%d", v.Major, v.Minor, v.Patch, v.Build)
 }
 
-func (v *releaseVersion) UnmarshalJSON(data []byte) (err error) {
+func (v *ReleaseVersion) UnmarshalJSON(data []byte) (err error) {
 	var s string
 	if err = json.Unmarshal(data, &s); err != nil {
 		return
@@ -120,7 +113,7 @@ func (v *releaseVersion) UnmarshalJSON(data []byte) (err error) {
 	return v.UnmarshalText(([]byte)(s))
 }
 
-func (v *releaseVersion) UnmarshalText(data []byte) (err error) {
+func (v *ReleaseVersion) UnmarshalText(data []byte) (err error) {
 	data, _ = bytes.CutPrefix(data, ([]byte)("v"))
 	data, build, _ := bytes.Cut(data, ([]byte)("-"))
 	if v.Build, err = strconv.Atoi((string)(build)); err != nil {
@@ -142,6 +135,6 @@ func (v *releaseVersion) UnmarshalText(data []byte) (err error) {
 	return
 }
 
-func (v *releaseVersion) Less(w *releaseVersion) bool {
+func (v *ReleaseVersion) Less(w *ReleaseVersion) bool {
 	return v.Major < w.Major || v.Major == w.Major && (v.Minor < w.Minor || v.Minor == w.Minor && (v.Patch < w.Patch || v.Patch == w.Patch && (v.Build < w.Build)))
 }

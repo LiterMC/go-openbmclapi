@@ -1,0 +1,18 @@
+[Unit]
+Description=Go-OpenBmclAPI Service
+Documentation=https://github.com/LiterMC/go-openbmclapi
+Wants=basic.target
+After=network.target
+
+[Service]
+Type=idle
+User=openbmclapi
+WorkingDirectory=/opt/openbmclapi
+ExecStart=/opt/openbmclapi/service-linux-go-openbmclapi
+ExecReload=/bin/kill -s HUP $MAINPID
+RestartSec=30
+Restart=on-failure
+TimeoutSec=30
+
+[Install]
+WantedBy=multi-user.target

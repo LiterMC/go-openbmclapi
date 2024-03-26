@@ -76,19 +76,19 @@ A: 请确认中间所有的反向代理都支持 WebSocket
 1. **确保systemd是您的*启动进程***
 2. 执行
    ```sh
-   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh | sudo bash -s
+   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s
    ```
    > 注意, 新版新增使用 `openbmclapi` 用户执行程序, 可能需要执行 `sudo chown -R openbmclapi /opt/openbmclapi` 指令修复权限
 
    国内对 Github 的支持较差, 可以使用 ghproxy 等镜像站运行脚本, 本例中使用了 [crashmc.com](https://crashmc.com) 提供的 CDN:
    ```sh
    MIRROR_PREFIX=https://cdn.crashmc.com/
-   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh | sudo bash -s --mirror "${MIRROR_PREFIX}"
+   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s --mirror "${MIRROR_PREFIX}"
    ```
 
    如果需要下载指定版本, 只需设置 `-t|--tag` 标志即可
    ```sh
-   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/service/installer.sh | sudo bash -s --tag v1.9.7-8
+   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s --tag v1.9.7-8
    ```
 3. 配置`/opt/openbmclapi/config.yaml`配置文件
 4. 使用`systemctl start go-openbmclapi.service`启动服务

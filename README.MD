@@ -196,6 +196,30 @@ serve-limit:
   # 上行速率限制 (KiB/s), 0 表示无限制
   upload-rate: 0
 
+# API 速率限制. 注意: 该功能仅限制对 /api 路径的访问, 不会影响 openbmclapi 基本功能
+api-rate-limit:
+  # 未登录用户的速率限制, 以访问 IP 为准 (会被 trusted-x-forwarded-for 标志影响)
+  anonymous:
+    per-minute: 10 # 每分钟最多请求数, 0 表示不限制
+    per-hour: 120  # 每小时最多请求数, 0 表示不限制
+  # 已登录用户的速率限制, 以用户名为准
+  logged:
+    per-minute: 120
+    per-hour: 6000
+
+# 通知设置
+notification:
+  # 启用邮件通知
+  enable-email: false
+  # 邮件 SMTP 服务器及其端口
+  email-smtp: smtp.example.com:25
+  # 通知者邮箱用户名
+  email-sender: noreply@example.com
+  # 通知者邮箱密码
+  email-sender-password: example-password
+  # 启用 Webhook (TODO)
+  enable-webhook: true
+
 # 内置的仪表板
 dashboard:
   # 是否启用

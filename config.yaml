@@ -27,6 +27,19 @@ serve-limit:
   enable: false
   max-conn: 16384
   upload-rate: 10240
+api-rate-limit:
+  anonymous:
+    per-minute: 10
+    per-hour: 120
+  logged:
+    per-minute: 120
+    per-hour: 6000
+notification:
+  enable-email: false
+  email-smtp: smtp.example.com:25
+  email-sender: noreply@example.com
+  email-sender-password: example-password
+  enable-webhook: true
 dashboard:
   enable: true
   username: ""

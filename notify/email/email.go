@@ -53,7 +53,7 @@ var tmpl = func() *template.Template {
 		},
 		"tojson": json.Marshal,
 	})
-	template.Must(t.ParseFS(tmplFS))
+	template.Must(t.ParseFS(tmplFS, "**/*.gohtml"))
 	return t
 }()
 

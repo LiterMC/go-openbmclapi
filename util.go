@@ -22,20 +22,14 @@ package main
 import (
 	"context"
 	"crypto"
-	crand "crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -49,21 +43,19 @@ var closedCh = func() <-chan struct{} {
 }()
 
 func createInterval(ctx context.Context, do func(), delay time.Duration) {
+	ticker := time.NewTicker(delay)
+	context.AfterFunc(ctx, func() {
+		ticker.Stop()
+	})
 	go func() {
-		ticker := time.NewTicker(delay)
 		defer ticker.Stop()
 
-		for {
+		for range ticker.C {
+			do()
+			// If another a tick passed during the job, ignore it
 			select {
-			case <-ctx.Done():
-				return
 			case <-ticker.C:
-				do()
-				// If another a tick passed during the job, ignore it
-				select {
-				case <-ticker.C:
-				default:
-				}
+			default:
 			}
 		}
 	}()
@@ -193,60 +185,6 @@ func checkQuerySign(hash string, secret string, query url.Values) bool {
 		return false
 	}
 	return time.Now().UnixMilli() < before
-}
-
-func comparePasswd(p1, p2 string) bool {
-	a := sha256.Sum256(([]byte)(p1))
-	b := sha256.Sum256(([]byte)(p2))
-	return subtle.ConstantTimeCompare(a[:], b[:]) == 0
-}
-
-func bytesAsSha256(b []byte) string {
-	buf := sha256.Sum256(b)
-	return base64.RawURLEncoding.EncodeToString(buf[:])
-}
-
-// return a URL encoded base64 string
-func asSha256(s string) string {
-	buf := sha256.Sum256(([]byte)(s))
-	return base64.RawURLEncoding.EncodeToString(buf[:])
-}
-
-func asSha256Hex(s string) string {
-	buf := sha256.Sum256(([]byte)(s))
-	return hex.EncodeToString(buf[:])
-}
-
-func genRandB64(n int) (s string, err error) {
-	buf := make([]byte, n)
-	if _, err = io.ReadFull(crand.Reader, buf); err != nil {
-		return
-	}
-	s = base64.RawURLEncoding.EncodeToString(buf)
-	return
-}
-
-func loadOrCreateHmacKey(dataDir string) (key []byte, err error) {
-	path := filepath.Join(dataDir, "server.hmac.private_key")
-	buf, err := os.ReadFile(path)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return
-		}
-		var sbuf string
-		if sbuf, err = genRandB64(256); err != nil {
-			return
-		}
-		buf = ([]byte)(sbuf)
-		if err = os.WriteFile(path, buf, 0600); err != nil {
-			return
-		}
-	}
-	key = make([]byte, base64.RawURLEncoding.DecodedLen(len(buf)))
-	if _, err = base64.RawURLEncoding.Decode(key, buf); err != nil {
-		return
-	}
-	return
 }
 
 type RedirectError struct {

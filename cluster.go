@@ -111,7 +111,7 @@ type Cluster struct {
 	cachedCli      *http.Client
 	bufSlots       *limited.BufSlots
 	database       database.DB
-	pushManager    *WebPushManager
+	notifyManager  *NotifyManager
 	updateChecker  *time.Timer
 	apiRateLimiter *limited.APIRateMiddleWare
 
@@ -218,12 +218,12 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 		}
 	}
 
-	// Init WebPush Manager
-	cr.pushManager = NewWebPushManager(cr.dataDir, cr.database, cr.client)
-	if err = cr.pushManager.Init(ctx); err != nil {
+	// Init Notification Manager
+	cr.notifyManager = NewNotifyManager(cr.dataDir, cr.database, cr.client)
+	if err = cr.notifyManager.Init(ctx); err != nil {
 		return
 	}
-	cr.pushManager.SetSubject(config.Dashboard.NotifySubject)
+	cr.notifyManager.SetSubject(config.Dashboard.NotifySubject)
 
 	// Init storages
 	vctx := context.WithValue(ctx, storage.ClusterCacheCtxKey, cr.cache)
@@ -235,7 +235,7 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	if err := cr.stats.Load(cr.dataDir); err != nil {
 		log.Errorf("Could not load stats: %v", err)
 	}
-	if cr.apiHmacKey, err = loadOrCreateHmacKey(cr.dataDir); err != nil {
+	if cr.apiHmacKey, err = utils.LoadOrCreateHmacKey(cr.dataDir); err != nil {
 		return fmt.Errorf("Cannot load hmac key: %w", err)
 	}
 
@@ -502,7 +502,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		close(ch)
 	}
 	cr.waitEnable = cr.waitEnable[:0]
-	go cr.pushManager.OnEnabled()
+	go cr.notifyManager.OnEnabled()
 
 	var keepaliveCtx context.Context
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
@@ -546,7 +546,7 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		"hits":  hits,
 		"bytes": hbts,
 	})
-	go cr.pushManager.OnReportStat(&cr.stats)
+	go cr.notifyManager.OnReportStat(&cr.stats)
 
 	if e := cr.stats.Save(cr.dataDir); e != nil {
 		log.Errorf(Tr("error.cluster.stat.save.failed"), e)
@@ -594,7 +594,7 @@ func (cr *Cluster) disconnected() bool {
 		cr.cancelKeepalive()
 		cr.cancelKeepalive = nil
 	}
-	cr.pushManager.OnDisabled()
+	cr.notifyManager.OnDisabled()
 	return true
 }
 
@@ -612,7 +612,7 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 		return false
 	}
 
-	defer cr.pushManager.OnDisabled()
+	defer cr.notifyManager.OnDisabled()
 
 	if cr.cancelKeepalive != nil {
 		cr.cancelKeepalive()
@@ -1082,9 +1082,9 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		return nil
 	}
 
-	go cr.pushManager.OnSyncBegin()
+	go cr.notifyManager.OnSyncBegin()
 	defer func() {
-		go cr.pushManager.OnSyncDone()
+		go cr.notifyManager.OnSyncDone()
 	}()
 
 	cr.syncTotal.Store((int64)(totalFiles))

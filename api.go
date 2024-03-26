@@ -39,6 +39,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 const (
@@ -58,7 +59,7 @@ func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
 			id = cid.Value
 		} else {
 			var err error
-			id, err = genRandB64(16)
+			id, err = utils.GenRandB64(16)
 			if err != nil {
 				http.Error(rw, "cannot generate random number", http.StatusInternalServerError)
 				return
@@ -71,7 +72,7 @@ func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
 				HttpOnly: true,
 			})
 		}
-		req = req.WithContext(context.WithValue(req.Context(), clientIdKey, asSha256(id)))
+		req = req.WithContext(context.WithValue(req.Context(), clientIdKey, utils.AsSha256(id)))
 		next.ServeHTTP(rw, req)
 	})
 }
@@ -236,7 +237,7 @@ func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 		})
 		return
 	}
-	expectPassword = asSha256Hex(expectPassword)
+	expectPassword = utils.AsSha256Hex(expectPassword)
 	if subtle.ConstantTimeCompare(([]byte)(expectUsername), ([]byte)(data.User)) == 0 ||
 		subtle.ConstantTimeCompare(([]byte)(expectPassword), ([]byte)(data.Pass)) == 0 {
 		writeJson(rw, http.StatusUnauthorized, Map{
@@ -569,8 +570,8 @@ func (cr *Cluster) apiV0SubscribeKey(rw http.ResponseWriter, req *http.Request) 
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
-	key := cr.pushManager.GetPublicKey()
-	etag := `"` + bytesAsSha256(key) + `"`
+	key := cr.notifyManager.GetPublicKey()
+	etag := `"` + utils.BytesAsSha256(key) + `"`
 	rw.Header().Set("ETag", etag)
 	if cachedTag := req.Header.Get("If-None-Match"); cachedTag == etag {
 		rw.WriteHeader(http.StatusNotModified)

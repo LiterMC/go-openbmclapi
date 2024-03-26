@@ -50,7 +50,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
-type WebPushManager struct {
+type NotifyManager struct {
 	dataDir  string
 	database database.DB
 	subject  string
@@ -64,19 +64,19 @@ type WebPushManager struct {
 	lastRelease GithubRelease
 }
 
-func NewWebPushManager(dataDir string, db database.DB, client *http.Client) (w *WebPushManager) {
-	return &WebPushManager{
+func NewNotifyManager(dataDir string, db database.DB, client *http.Client) (w *NotifyManager) {
+	return &NotifyManager{
 		dataDir:  dataDir,
 		database: db,
 		client:   client,
 	}
 }
 
-func (w *WebPushManager) SetSubject(sub string) {
+func (w *NotifyManager) SetSubject(sub string) {
 	w.subject = sub
 }
 
-func (w *WebPushManager) Init(ctx context.Context) (err error) {
+func (w *NotifyManager) Init(ctx context.Context) (err error) {
 	keyPath := filepath.Join(w.dataDir, "webpush.private_key")
 	if w.key, err = readECPrivateKey(keyPath); err != nil {
 		log.Errorf("Cannot read webpush private key: %v", err)
@@ -113,7 +113,7 @@ func readECPrivateKey(path string) (key *ecdsa.PrivateKey, err error) {
 	return nil, errors.New(`Cannot found "EC PRIVATE KEY" in pem blocks`)
 }
 
-func (w *WebPushManager) GetPublicKey() []byte {
+func (w *NotifyManager) GetPublicKey() []byte {
 	key, err := w.key.PublicKey.ECDH()
 	if err != nil {
 		log.Panicf("Cannot get ecdh public key: %v", err)
@@ -124,7 +124,7 @@ func (w *WebPushManager) GetPublicKey() []byte {
 // the Authorization header format is depends on the encrypt algorithm:
 // - aes128gcm: Authorization: "vapid t=<jwt>, k=<publicKey>"
 // - aesgcm: Authorization: "WebPush <jwt>"; Crypto-Key: "p256ecdsa=<publicKey>"
-func (w *WebPushManager) setVAPIDAuthHeader(req *http.Request) error {
+func (w *NotifyManager) setVAPIDAuthHeader(req *http.Request) error {
 	exp := time.Now().Add(time.Hour * 12)
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"aud": fmt.Sprintf("%s://%s", req.URL.Scheme, req.URL.Host),
@@ -166,7 +166,7 @@ const (
 	UrgencyHigh    Urgency = "high"
 )
 
-func (w *WebPushManager) SendNotification(ctx context.Context, message []byte, s *Subscription, opts *PushOptions) (err error) {
+func (w *NotifyManager) SendNotification(ctx context.Context, message []byte, s *Subscription, opts *PushOptions) (err error) {
 	auth, err := base64.RawURLEncoding.DecodeString(s.Keys.Auth)
 	if err != nil {
 		return
@@ -230,7 +230,7 @@ func (w *WebPushManager) SendNotification(ctx context.Context, message []byte, s
 	return
 }
 
-func (w *WebPushManager) sendMessageIf(ctx context.Context, message []byte, opts *PushOptions, filter func(*database.SubscribeRecord) bool) {
+func (w *NotifyManager) sendMessageIf(ctx context.Context, message []byte, opts *PushOptions, filter func(*database.SubscribeRecord) bool) {
 	log.Debugf("Sending notification: %s", message)
 	var wg sync.WaitGroup
 	var mux sync.Mutex
@@ -270,7 +270,7 @@ func (w *WebPushManager) sendMessageIf(ctx context.Context, message []byte, opts
 	}
 }
 
-func (w *WebPushManager) OnEnabled() {
+func (w *NotifyManager) OnEnabled() {
 	message, err := json.Marshal(Map{
 		"typ": "enabled",
 		"at":  time.Now().UnixMilli(),
@@ -289,7 +289,7 @@ func (w *WebPushManager) OnEnabled() {
 	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Enabled })
 }
 
-func (w *WebPushManager) OnDisabled() {
+func (w *NotifyManager) OnDisabled() {
 	message, err := json.Marshal(Map{
 		"typ": "disabled",
 		"at":  time.Now().UnixMilli(),
@@ -308,7 +308,7 @@ func (w *WebPushManager) OnDisabled() {
 	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Disabled })
 }
 
-func (w *WebPushManager) OnSyncBegin() {
+func (w *NotifyManager) OnSyncBegin() {
 	message, err := json.Marshal(Map{
 		"typ": "syncbegin",
 		"at":  time.Now().UnixMilli(),
@@ -327,7 +327,7 @@ func (w *WebPushManager) OnSyncBegin() {
 	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return false /*record.Scopes.SyncBegin*/ })
 }
 
-func (w *WebPushManager) OnSyncDone() {
+func (w *NotifyManager) OnSyncDone() {
 	message, err := json.Marshal(Map{
 		"typ": "syncdone",
 		"at":  time.Now().UnixMilli(),
@@ -346,7 +346,7 @@ func (w *WebPushManager) OnSyncDone() {
 	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.SyncDone })
 }
 
-func (w *WebPushManager) OnUpdateAvaliable(release *GithubRelease) {
+func (w *NotifyManager) OnUpdateAvaliable(release *GithubRelease) {
 	if w.lastRelease == *release {
 		return
 	}
@@ -371,7 +371,7 @@ func (w *WebPushManager) OnUpdateAvaliable(release *GithubRelease) {
 	w.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Updates })
 }
 
-func (w *WebPushManager) OnReportStat(stats *Stats) {
+func (w *NotifyManager) OnReportStat(stats *Stats) {
 	if !w.reportMux.TryLock() {
 		return
 	}

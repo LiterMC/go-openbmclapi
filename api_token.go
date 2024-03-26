@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 const jwtIssuerPrefix = "GOBA.dash.api"
@@ -83,7 +85,7 @@ type authTokenClaims struct {
 }
 
 func (cr *Cluster) generateAuthToken(cliId string, userId string) (string, error) {
-	jti, err := genRandB64(16)
+	jti, err := utils.GenRandB64(16)
 	if err != nil {
 		return "", err
 	}
@@ -149,7 +151,7 @@ type apiTokenClaims struct {
 }
 
 func (cr *Cluster) generateAPIToken(cliId string, userId string, path string, query map[string]string) (string, error) {
-	jti, err := genRandB64(8)
+	jti, err := utils.GenRandB64(8)
 	if err != nil {
 		return "", err
 	}

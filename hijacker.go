@@ -116,7 +116,7 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		user, passwd, ok := req.BasicAuth()
 		if ok {
 			for _, u := range config.Hijack.AuthUsers {
-				if u.Username == user && comparePasswd(u.Password, passwd) {
+				if u.Username == user && utils.ComparePasswd(u.Password, passwd) {
 					needAuth = false
 					return
 				}

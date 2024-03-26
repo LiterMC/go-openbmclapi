@@ -91,7 +91,7 @@ func (cr *Cluster) checkUpdate() (err error) {
 	// TODO: print all middle change logs
 	log.Infof(Tr("info.update.detected"), release.Tag, currentBuildTag)
 	log.Infof(Tr("info.update.changelog"), currentBuildTag, release.Tag, release.Body)
-	cr.pushManager.OnUpdateAvaliable(release)
+	cr.notifyManager.OnUpdateAvaliable(release)
 	return
 }
 

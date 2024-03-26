@@ -22,6 +22,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -84,7 +85,7 @@ type SqlDB struct {
 		forEachEnabled   *sql.Stmt
 	}
 
-	jtiCleaner *time.Timer
+	jtiCleaner *time.Ticker
 }
 
 var _ DB = (*SqlDB)(nil)
@@ -157,10 +158,10 @@ func (db *SqlDB) setupJTI(ctx context.Context) (err error) {
 		return
 	}
 
-	db.jtiCleaner = time.NewTimer(time.Minute * 10)
-	go func(timer *time.Timer, cleanStmt *sql.Stmt) {
+	db.jtiCleaner = time.NewTicker(time.Minute * 10)
+	go func(ticker *time.Ticker, cleanStmt *sql.Stmt) {
 		defer cleanStmt.Close()
-		for range timer.C {
+		for range ticker.C {
 			ctx, cancel := context.WithTimeout(ctx, time.Second*15)
 			_, err := cleanStmt.ExecContext(ctx)
 			cancel()
@@ -993,7 +994,7 @@ func (db *SqlDB) setupWebhooksQuestionMark(ctx context.Context) (err error) {
 
 	const createTable = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
 		" `user` VARCHAR(127) NOT NULL," +
-		" `id` BINARY(16) NOT NULL," +
+		" `id` CHAR(32) NOT NULL," +
 		" `name` VARCHAR(31) NOT NULL," +
 		" `endpoint` VARCHAR(255) NOT NULL," +
 		" `auth` VARCHAR(255) NOT NULL," +
@@ -1068,7 +1069,7 @@ func (db *SqlDB) setupWebhooksDollarMark(ctx context.Context) (err error) {
 
 	const createTable = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
 		` "user" VARCHAR(127) NOT NULL,` +
-		" id BINARY(16) NOT NULL," +
+		" id CHAR(32) NOT NULL," +
 		" name VARCHAR(31) NOT NULL," +
 		" endpoint VARCHAR(255) NOT NULL," +
 		" auth VARCHAR(255) NOT NULL," +
@@ -1145,7 +1146,7 @@ func (db *SqlDB) GetWebhook(user string, id uuid.UUID) (rec *WebhookRecord, err 
 	rec = new(WebhookRecord)
 	rec.User = user
 	rec.Id = id
-	if err = db.webhookStmts.get.QueryRowContext(ctx, user, id[:]).Scan(&rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes, &rec.Enabled); err != nil {
+	if err = db.webhookStmts.get.QueryRowContext(ctx, user, hex.EncodeToString(id[:])).Scan(&rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes, &rec.Enabled); err != nil {
 		if err == sql.ErrNoRows {
 			err = ErrNotFound
 		}
@@ -1161,7 +1162,7 @@ func (db *SqlDB) AddWebhook(rec WebhookRecord) (err error) {
 	if rec.Id, err = uuid.NewV7(); err != nil {
 		return
 	}
-	if _, err = db.webhookStmts.add.ExecContext(ctx, rec.User, rec.Id[:], rec.Name, rec.EndPoint, rec.Auth, rec.Scopes, rec.Enabled); err != nil {
+	if _, err = db.webhookStmts.add.ExecContext(ctx, rec.User, hex.EncodeToString(rec.Id[:]), rec.Name, rec.EndPoint, rec.Auth, rec.Scopes, rec.Enabled); err != nil {
 		return
 	}
 	return
@@ -1172,11 +1173,11 @@ func (db *SqlDB) UpdateWebhook(rec WebhookRecord) (err error) {
 	defer cancel()
 
 	if rec.Auth == nil {
-		if _, err = db.webhookStmts.updateExceptAuth.ExecContext(ctx, rec.Name, rec.EndPoint, rec.Scopes, rec.User, rec.Id[:]); err != nil {
+		if _, err = db.webhookStmts.updateExceptAuth.ExecContext(ctx, rec.Name, rec.EndPoint, rec.Scopes, rec.User, hex.EncodeToString(rec.Id[:])); err != nil {
 			return
 		}
 	} else {
-		if _, err = db.webhookStmts.update.ExecContext(ctx, rec.Name, rec.EndPoint, rec.Auth, rec.Scopes, rec.User, rec.Id[:]); err != nil {
+		if _, err = db.webhookStmts.update.ExecContext(ctx, rec.Name, rec.EndPoint, rec.Auth, rec.Scopes, rec.User, hex.EncodeToString(rec.Id[:])); err != nil {
 			return
 		}
 	}
@@ -1187,7 +1188,7 @@ func (db *SqlDB) UpdateEnableWebhook(user string, id uuid.UUID, enabled bool) (e
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	if _, err = db.webhookStmts.updateExceptAuth.ExecContext(ctx, enabled, user, id[:]); err != nil {
+	if _, err = db.webhookStmts.updateExceptAuth.ExecContext(ctx, enabled, user, hex.EncodeToString(id[:])); err != nil {
 		return
 	}
 	return
@@ -1197,7 +1198,7 @@ func (db *SqlDB) RemoveWebhook(user string, id uuid.UUID) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	if _, err = db.webhookStmts.remove.ExecContext(ctx, user, id[:]); err != nil {
+	if _, err = db.webhookStmts.remove.ExecContext(ctx, user, hex.EncodeToString(id[:])); err != nil {
 		if err == sql.ErrNoRows {
 			err = ErrNotFound
 		}

@@ -118,7 +118,7 @@ type Cluster struct {
 	database       database.DB
 	notifyManager  *notify.Manager
 	webpushKeyB64  string
-	updateChecker  *time.Timer
+	updateChecker  *time.Ticker
 	apiRateLimiter *limited.APIRateMiddleWare
 
 	wsUpgrader    *websocket.Upgrader
@@ -253,13 +253,13 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 		return fmt.Errorf("Cannot load hmac key: %w", err)
 	}
 
-	cr.updateChecker = time.NewTimer(time.Hour)
+	cr.updateChecker = time.NewTicker(time.Hour)
 
-	go func(timer *time.Timer) {
+	go func(ticker *time.Ticker) {
 		if err := cr.checkUpdate(); err != nil {
 			log.Errorf(Tr("error.update.check.failed"), err)
 		}
-		for range timer.C {
+		for range ticker.C {
 			if err := cr.checkUpdate(); err != nil {
 				log.Errorf(Tr("error.update.check.failed"), err)
 			}
@@ -680,7 +680,12 @@ func (cr *Cluster) Disabled() <-chan struct{} {
 func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
 	cr.filesetMux.RLock()
 	defer cr.filesetMux.RUnlock()
-	size, ok = cr.fileset[hash]
+	if size, ok = cr.fileset[hash]; !ok {
+		return
+	}
+	if size < 0 {
+		size = -size
+	}
 	return
 }
 
@@ -1050,7 +1055,7 @@ func (cr *Cluster) CheckFiles(
 }
 
 func (cr *Cluster) SetFilesetByExists(ctx context.Context, files []FileInfo) error {
-	pg := mpb.New(mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh(), mpb.WithWidth(140))
+	pg := mpb.New(mpb.WithRefreshRate(time.Second/2), mpb.WithAutoRefresh(), mpb.WithWidth(140))
 	defer pg.Shutdown()
 	log.SetLogOutput(pg)
 	defer log.SetLogOutput(nil)
@@ -1074,7 +1079,7 @@ func (cr *Cluster) SetFilesetByExists(ctx context.Context, files []FileInfo) err
 }
 
 func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) error {
-	pg := mpb.New(mpb.WithRefreshRate(time.Second), mpb.WithAutoRefresh(), mpb.WithWidth(140))
+	pg := mpb.New(mpb.WithRefreshRate(time.Second/2), mpb.WithAutoRefresh(), mpb.WithWidth(140))
 	defer pg.Shutdown()
 	log.SetLogOutput(pg)
 	defer log.SetLogOutput(nil)
@@ -1521,7 +1526,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 			}
 
 			cr.filesetMux.Lock()
-			cr.fileset[hash] = size
+			cr.fileset[hash] = -size // negative means that the file was not stored into the databse yet
 			cr.filesetMux.Unlock()
 		}()
 	}

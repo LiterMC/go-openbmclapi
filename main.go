@@ -366,7 +366,7 @@ func (r *Runner) InitCluster(ctx context.Context) {
 	}
 }
 
-func (r *Runner) UpdateFileRecords(files []FileInfo) {
+func (r *Runner) UpdateFileRecords(files []FileInfo, oldfileset map[string]int64) {
 	if !config.Hijack.Enable {
 		return
 	}
@@ -374,20 +374,24 @@ func (r *Runner) UpdateFileRecords(files []FileInfo) {
 		return
 	}
 	defer r.updating.Store(false)
-	sem := limited.NewSemaphore(10)
+	sem := limited.NewSemaphore(12)
 	log.Info("Begin to update file records")
 	for _, f := range files {
-		if !strings.HasPrefix(f.Path, "/openbmclapi/download/") {
-			sem.Acquire()
-			go func(rec database.FileRecord) {
-				defer sem.Release()
-				r.cluster.database.SetFileRecord(rec)
-			}(database.FileRecord{
-				Path: f.Path,
-				Hash: f.Hash,
-				Size: f.Size,
-			})
+		if strings.HasPrefix(f.Path, "/openbmclapi/download/") {
+			continue
 		}
+		if oldfileset[f.Hash] > 0 {
+			continue
+		}
+		sem.Acquire()
+		go func(rec database.FileRecord) {
+			defer sem.Release()
+			r.cluster.database.SetFileRecord(rec)
+		}(database.FileRecord{
+			Path: f.Path,
+			Hash: f.Hash,
+			Size: f.Size,
+		})
 	}
 	for i := sem.Cap(); i > 0; i-- {
 		sem.Acquire()
@@ -420,7 +424,7 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		go r.UpdateFileRecords(fl)
+		go r.UpdateFileRecords(fl, nil)
 
 		if !config.Advanced.NoGC {
 			go r.cluster.Gc()
@@ -438,8 +442,11 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 			return
 		}
 		checkCount = (checkCount + 1) % heavyCheckInterval
+		r.cluster.mux.RLock()
+		oldfileset := r.cluster.fileset
+		r.cluster.mux.RUnlock()
 		r.cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
-		go r.UpdateFileRecords(fl)
+		go r.UpdateFileRecords(fl, oldfileset)
 		if !config.Advanced.NoGC && !config.OnlyGcWhenStart {
 			go r.cluster.Gc()
 		}

@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -64,12 +65,13 @@ func (s *limitSet) try(id string) (leftHour, leftMin int64, ok bool) {
 			hour = new(atomic.Int64)
 			s.accessHour[id] = hour
 		}
-		s.mux.RUnlock()
+		s.mux.Unlock()
 	}
 	leftHour = s.Limit.PerHour - hour.Add(1)
 	if leftHour < 0 {
 		hour.Add(-1)
 		leftHour = 0
+		ok = false
 		return
 	}
 
@@ -86,12 +88,14 @@ func (s *limitSet) try(id string) (leftHour, leftMin int64, ok bool) {
 			min = new(atomic.Int64)
 			s.accessMin[id] = min
 		}
-		s.mux.RUnlock()
+		s.mux.Unlock()
 	}
 	leftMin = s.Limit.PerMin - min.Add(1)
 	if leftMin < 0 {
+		hour.Add(-1)
 		min.Add(-1)
 		leftMin = 0
+		ok = false
 		return
 	}
 	ok = true
@@ -101,6 +105,7 @@ func (s *limitSet) try(id string) (leftHour, leftMin int64, ok bool) {
 func (s *limitSet) clean(hour bool) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+
 	clear(s.accessMin)
 	if hour {
 		clear(s.accessHour)
@@ -113,8 +118,8 @@ type APIRateMiddleWare struct {
 	annoySet  limitSet
 	loggedSet limitSet
 
-	cleanTimer *time.Timer
-	startAt    time.Time
+	cleanTicker *time.Ticker
+	startAt     time.Time
 }
 
 func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMiddleWare) {
@@ -122,12 +127,12 @@ func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMid
 		loggedContextKey: loggedContextKey,
 		annoySet:         makeLimitSet(),
 		loggedSet:        makeLimitSet(),
-		cleanTimer:       time.NewTimer(time.Minute),
+		cleanTicker:      time.NewTicker(time.Minute),
 		startAt:          time.Now(),
 	}
 	go func() {
 		count := 0
-		for range a.cleanTimer.C {
+		for range a.cleanTicker.C {
 			count++
 			ishour := count > 60
 			if ishour {
@@ -135,6 +140,7 @@ func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMid
 			}
 			a.clean(ishour)
 		}
+		log.Debugf("cleaner exited")
 	}()
 	return
 }
@@ -162,12 +168,15 @@ func (a *APIRateMiddleWare) SetLoggedRateLimit(v RateLimit) {
 }
 
 func (a *APIRateMiddleWare) Destroy() {
-	a.cleanTimer.Stop()
+	log.Debugf("API rate limiter destroyed")
+	a.cleanTicker.Stop()
 }
 
 func (a *APIRateMiddleWare) clean(ishour bool) {
+	log.Debugf("Cleaning API rate limiter, ishour=%v", ishour)
 	a.loggedSet.clean(ishour)
 	a.annoySet.clean(ishour)
+	log.Debug("API rate limiter cleaned")
 }
 
 func (a *APIRateMiddleWare) ServeMiddle(rw http.ResponseWriter, req *http.Request, next http.Handler) {

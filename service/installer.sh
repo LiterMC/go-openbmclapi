@@ -105,7 +105,7 @@ if [ ! -n "$TARGET_TAG" ]; then
 	echo
 fi
 
-fetchBlob service/go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.service 0644 || exit $?
+fetchBlob installer/service/go-openbmclapi.service /usr/lib/systemd/system/go-openbmclapi.service 0644 || exit $?
 
 [ -d "$BASE_PATH" ] || { mkdir -p "$BASE_PATH" && chmod 0755 "$BASE_PATH" && chown $USERNAME "$BASE_PATH"; } || exit $?
 

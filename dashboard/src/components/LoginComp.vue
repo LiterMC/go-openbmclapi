@@ -43,6 +43,11 @@ async function login(): Promise<void> {
 	loading.value = true
 	const token = await apiLogin(user, passwd).catch((err) => {
 		console.error('LoginError:', err)
+		const code = err.response?.status
+		if (code === 429) {
+			errMsg.value = 'Too many requests, please try again later'
+			return null
+		}
 		const data = err.response?.data
 		if (data?.error) {
 			if (data.error.indexOf(' incorrect') >= 0) {

@@ -29,10 +29,10 @@ async function logout(): Promise<void> {
 
 const languages = avaliableLangs.map((v) => v.code)
 const selectedLang = computed({
-	get() {
+	get(): Lang {
 		return getLang()
 	},
-	set(value) {
+	set(value: Lang) {
 		setLang(value)
 	},
 })

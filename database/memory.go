@@ -327,9 +327,13 @@ var (
 	emptyStrPtr = &emptyStr
 )
 
-func (m *MemoryDB) AddWebhook(record WebhookRecord) error {
+func (m *MemoryDB) AddWebhook(record WebhookRecord) (err error) {
 	m.webhookMux.Lock()
 	defer m.webhookMux.Unlock()
+
+	if record.Id, err = uuid.NewV7(); err != nil {
+		return
+	}
 
 	key := webhookMemKey{record.User, record.Id}
 	if _, ok := m.webhookRecords[key]; ok {

@@ -1158,6 +1158,9 @@ func (db *SqlDB) AddWebhook(rec WebhookRecord) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
+	if rec.Id, err = uuid.NewV7(); err != nil {
+		return
+	}
 	if _, err = db.webhookStmts.add.ExecContext(ctx, rec.User, rec.Id[:], rec.Name, rec.EndPoint, rec.Auth, rec.Scopes, rec.Enabled); err != nil {
 		return
 	}

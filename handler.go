@@ -447,7 +447,8 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 	size, ok := cr.CachedFileSize(hash)
 	if !ok {
 		if err := cr.DownloadFile(req.Context(), hash); err != nil {
-			http.Error(rw, "404 not found", http.StatusNotFound)
+			// TODO: check if the file exists
+			http.Error(rw, "Cannot download file from center server: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}

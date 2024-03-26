@@ -35,6 +35,7 @@ import (
 
 	"runtime/pprof"
 	// "github.com/gorilla/websocket"
+	"github.com/google/uuid"
 
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
@@ -152,6 +153,9 @@ func (cr *Cluster) initAPIv0() http.Handler {
 	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV0Pprof))
 	mux.HandleFunc("/subscribeKey", cr.apiV0SubscribeKey)
 	mux.Handle("/subscribe", cr.apiAuthHandleFunc(cr.apiV0Subscribe))
+	mux.Handle("/subscribe_email", cr.apiAuthHandleFunc(cr.apiV0SubscribeEmail))
+	mux.Handle("/webhook", cr.apiAuthHandleFunc(cr.apiV0Webhook))
+
 	next := cr.apiRateLimiter.WrapHandler(mux)
 	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
 		cr.authMiddleware(rw, req, next)
@@ -628,31 +632,13 @@ func (cr *Cluster) apiV0SubscribeGET(rw http.ResponseWriter, req *http.Request, 
 }
 
 func (cr *Cluster) apiV0SubscribePOST(rw http.ResponseWriter, req *http.Request, user string, client string) {
-	type T = struct {
-		EndPoint string                       `json:"endpoint"`
-		Keys     database.SubscribeRecordKeys `json:"keys"`
-		Scopes   []string                     `json:"scopes"`
-		ReportAt string                       `json:"reportAt"`
-	}
-	rec := database.SubscribeRecord{
-		User:   user,
-		Client: client,
-	}
-	data, ok := parseRequestBody[T](rw, req, nil)
+	data, ok := parseRequestBody[database.SubscribeRecord](rw, req, nil)
 	if !ok {
 		return
 	}
-
-	rec.EndPoint = data.EndPoint
-	rec.Keys = data.Keys
-	rec.Scopes.FromStrings(data.Scopes)
-	if err := rec.ReportAt.UnmarshalText(([]byte)(data.ReportAt)); err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":   "'reportAt' encoding error",
-			"message": err.Error(),
-		})
-	}
-	if err := cr.database.SetSubscribe(rec); err != nil {
+	data.User = user
+	data.Client = client
+	if err := cr.database.SetSubscribe(data); err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Database update failed",
 			"message": err.Error(),
@@ -663,11 +649,264 @@ func (cr *Cluster) apiV0SubscribePOST(rw http.ResponseWriter, req *http.Request,
 }
 
 func (cr *Cluster) apiV0SubscribeDELETE(rw http.ResponseWriter, req *http.Request, user string, client string) {
-	err := cr.database.RemoveSubscribe(user, client)
-	if err != nil {
+	if err := cr.database.RemoveSubscribe(user, client); err != nil {
 		if err == database.ErrNotFound {
 			writeJson(rw, http.StatusNotFound, Map{
 				"error": "no subscription was found",
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (cr *Cluster) apiV0SubscribeEmail(rw http.ResponseWriter, req *http.Request) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete) {
+		return
+	}
+	user := getLoggedUser(req)
+	if user == "" {
+		writeJson(rw, http.StatusForbidden, Map{
+			"error": "Unauthorized",
+		})
+		return
+	}
+	switch req.Method {
+	case http.MethodGet:
+		cr.apiV0SubscribeEmailGET(rw, req, user)
+	case http.MethodPost:
+		cr.apiV0SubscribeEmailPOST(rw, req, user)
+	case http.MethodPatch:
+		cr.apiV0SubscribeEmailPATCH(rw, req, user)
+	case http.MethodDelete:
+		cr.apiV0SubscribeEmailDELETE(rw, req, user)
+	default:
+		panic("unreachable")
+	}
+}
+
+func (cr *Cluster) apiV0SubscribeEmailGET(rw http.ResponseWriter, req *http.Request, user string) {
+	if addr := req.URL.Query().Get("addr"); addr != "" {
+		record, err := cr.database.GetEmailSubscription(user, addr)
+		if err != nil {
+			if err == database.ErrNotFound {
+				writeJson(rw, http.StatusNotFound, Map{
+					"error": "no email subscription was found",
+				})
+				return
+			}
+			writeJson(rw, http.StatusInternalServerError, Map{
+				"error":   "database error",
+				"message": err.Error(),
+			})
+			return
+		}
+		writeJson(rw, http.StatusOK, record)
+		return
+	}
+	var records []database.EmailSubscriptionRecord
+	if err := cr.database.ForEachUsersEmailSubscription(user, func(rec *database.EmailSubscriptionRecord) error {
+		records = append(records, *rec)
+		return nil
+	}); err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	writeJson(rw, http.StatusOK, records)
+}
+
+func (cr *Cluster) apiV0SubscribeEmailPOST(rw http.ResponseWriter, req *http.Request, user string) {
+	data, ok := parseRequestBody[database.EmailSubscriptionRecord](rw, req, nil)
+	if !ok {
+		return
+	}
+
+	if err := cr.database.AddEmailSubscription(data); err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "Database update failed",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (cr *Cluster) apiV0SubscribeEmailPATCH(rw http.ResponseWriter, req *http.Request, user string) {
+	addr := req.URL.Query().Get("addr")
+	data, ok := parseRequestBody[database.EmailSubscriptionRecord](rw, req, nil)
+	if !ok {
+		return
+	}
+	data.User = user
+	data.Addr = addr
+	if err := cr.database.UpdateEmailSubscription(data); err != nil {
+		if err == database.ErrNotFound {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error": "no email subscription was found",
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (cr *Cluster) apiV0SubscribeEmailDELETE(rw http.ResponseWriter, req *http.Request, user string) {
+	addr := req.URL.Query().Get("addr")
+	if err := cr.database.RemoveEmailSubscription(user, addr); err != nil {
+		if err == database.ErrNotFound {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error": "no email subscription was found",
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (cr *Cluster) apiV0Webhook(rw http.ResponseWriter, req *http.Request) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete) {
+		return
+	}
+	user := getLoggedUser(req)
+	if user == "" {
+		writeJson(rw, http.StatusForbidden, Map{
+			"error": "Unauthorized",
+		})
+		return
+	}
+	switch req.Method {
+	case http.MethodGet:
+		cr.apiV0WebhookGET(rw, req, user)
+	case http.MethodPost:
+		cr.apiV0WebhookPOST(rw, req, user)
+	case http.MethodPatch:
+		cr.apiV0WebhookPATCH(rw, req, user)
+	case http.MethodDelete:
+		cr.apiV0WebhookDELETE(rw, req, user)
+	default:
+		panic("unreachable")
+	}
+}
+
+func (cr *Cluster) apiV0WebhookGET(rw http.ResponseWriter, req *http.Request, user string) {
+	if sid := req.URL.Query().Get("id"); sid != "" {
+		id, err := uuid.Parse(sid)
+		if err != nil {
+			writeJson(rw, http.StatusBadRequest, Map{
+				"error":   "uuid format error",
+				"message": err.Error(),
+			})
+			return
+		}
+		record, err := cr.database.GetWebhook(user, id)
+		if err != nil {
+			if err == database.ErrNotFound {
+				writeJson(rw, http.StatusNotFound, Map{
+					"error": "no webhook was found",
+				})
+				return
+			}
+			writeJson(rw, http.StatusInternalServerError, Map{
+				"error":   "database error",
+				"message": err.Error(),
+			})
+			return
+		}
+		writeJson(rw, http.StatusOK, record)
+		return
+	}
+	var records []database.WebhookRecord
+	if err := cr.database.ForEachUsersWebhook(user, func(rec *database.WebhookRecord) error {
+		records = append(records, *rec)
+		return nil
+	}); err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	writeJson(rw, http.StatusOK, records)
+}
+
+func (cr *Cluster) apiV0WebhookPOST(rw http.ResponseWriter, req *http.Request, user string) {
+	data, ok := parseRequestBody[database.WebhookRecord](rw, req, nil)
+	if !ok {
+		return
+	}
+
+	if err := cr.database.AddWebhook(data); err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "Database update failed",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (cr *Cluster) apiV0WebhookPATCH(rw http.ResponseWriter, req *http.Request, user string) {
+	id := req.URL.Query().Get("id")
+	data, ok := parseRequestBody[database.WebhookRecord](rw, req, nil)
+	if !ok {
+		return
+	}
+	data.User = user
+	var err error
+	if data.Id, err = uuid.Parse(id); err != nil {
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":   "uuid format error",
+			"message": err.Error(),
+		})
+		return
+	}
+	if err := cr.database.UpdateWebhook(data); err != nil {
+		if err == database.ErrNotFound {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error": "no webhook was found",
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (cr *Cluster) apiV0WebhookDELETE(rw http.ResponseWriter, req *http.Request, user string) {
+	id, err := uuid.Parse(req.URL.Query().Get("id"))
+	if err != nil {
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":   "uuid format error",
+			"message": err.Error(),
+		})
+		return
+	}
+	if err := cr.database.RemoveWebhook(user, id); err != nil {
+		if err == database.ErrNotFound {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error": "no webhook was found",
 			})
 			return
 		}

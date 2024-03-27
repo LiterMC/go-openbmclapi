@@ -364,8 +364,6 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 						chance = 512 * 10
 					case "FCL":
 						fallthrough
-					case "BakaXL":
-						chance = 512 * 2
 					}
 					if chance > 0 {
 						if randIntn(1024000) < chance/2 {

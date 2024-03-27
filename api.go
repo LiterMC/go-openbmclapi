@@ -411,7 +411,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 	defer unregister()
 
 	go func() {
-		defer log.RecoverPanic()
+		defer log.RecoverPanic(nil)
 		defer conn.Close()
 		defer cancel()
 		var data map[string]any
@@ -427,7 +427,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 			}
 			switch typ {
 			case "pong":
-				log.Debugf("[log.io]: received PONG from %s: %v", addr, (int64)(data["data"]))
+				log.Debugf("[log.io]: received PONG from %s: %v", addr, data["data"])
 				pongTimeoutTimer.Reset(time.Second * 75)
 			case "set-level":
 				l, ok := data["level"].(string)

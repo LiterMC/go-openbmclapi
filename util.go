@@ -34,6 +34,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 var closedCh = func() <-chan struct{} {

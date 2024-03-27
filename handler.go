@@ -189,7 +189,7 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 	recordCh := make(chan record, 1024)
 
 	go func() {
-		defer log.RecoverPanic()
+		defer log.RecoverPanic(nil)
 
 		<-cr.WaitForEnable()
 		disabled := cr.Disabled()

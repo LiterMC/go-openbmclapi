@@ -286,7 +286,9 @@ func RecoverPanic(then func(err any)) {
 	if err := recover(); err != nil {
 		stack := debug.Stack()
 		logXf(LevelPanic, "[recover]: panic: %v\n%s", err, stack)
-		then(err)
+		if then != nil {
+			then(err)
+		}
 	}
 }
 

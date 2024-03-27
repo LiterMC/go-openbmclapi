@@ -259,7 +259,7 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	cr.updateChecker = time.NewTicker(time.Hour)
 
 	go func(ticker *time.Ticker) {
-		defer cr.RecoverPanic()
+		defer log.RecoverPanic(nil)
 		defer ticker.Stop()
 
 		if err := cr.checkUpdate(); err != nil {
@@ -988,7 +988,7 @@ func (cr *Cluster) checkFileFor(
 						return
 					}
 					go func(f FileInfo, buf []byte, free func()) {
-						defer cr.RecoverPanic()
+						defer log.RecoverPanic(nil)
 						defer free()
 						miss := true
 						r, err := sto.Open(hash)
@@ -1041,7 +1041,7 @@ func (cr *Cluster) CheckFiles(
 
 	for _, s := range cr.storages {
 		go func(s storage.Storage) {
-			defer cr.RecordPanic()
+			defer log.RecordPanic()
 			defer func() {
 				select {
 				case done <- struct{}{}:
@@ -1170,7 +1170,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 			return err
 		}
 		go func(f *fileInfoWithTargets, pathRes <-chan string) {
-			defer cr.RecordPanic()
+			defer log.RecordPanic()
 			defer func() {
 				select {
 				case done <- struct{}{}:
@@ -1270,7 +1270,7 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 
 	pathRes := make(chan string, 1)
 	go func() {
-		defer cr.RecordPanic()
+		defer log.RecordPanic()
 		defer free()
 		defer close(pathRes)
 
@@ -1467,7 +1467,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 	item, ok := cr.lockDownloading(hash)
 	if !ok {
 		go func() {
-			defer cr.RecoverPanic()
+			defer log.RecoverPanic(nil)
 			var err error
 			defer func() {
 				if err != nil {

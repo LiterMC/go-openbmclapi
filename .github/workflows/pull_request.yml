@@ -22,6 +22,9 @@ jobs:
         run: go generate .
       -
         name: Go Format
+        permissions:
+          issues: write
+          pull-requests: write
         uses: actions/github-script@v7
         with:
           script: |

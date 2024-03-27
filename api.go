@@ -709,7 +709,7 @@ func (cr *Cluster) apiV0SubscribeEmailGET(rw http.ResponseWriter, req *http.Requ
 		writeJson(rw, http.StatusOK, record)
 		return
 	}
-	var records []database.EmailSubscriptionRecord
+	records := make([]database.EmailSubscriptionRecord, 0, 4)
 	if err := cr.database.ForEachUsersEmailSubscription(user, func(rec *database.EmailSubscriptionRecord) error {
 		records = append(records, *rec)
 		return nil
@@ -729,6 +729,7 @@ func (cr *Cluster) apiV0SubscribeEmailPOST(rw http.ResponseWriter, req *http.Req
 		return
 	}
 
+	data.User = user
 	if err := cr.database.AddEmailSubscription(data); err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Database update failed",
@@ -833,7 +834,7 @@ func (cr *Cluster) apiV0WebhookGET(rw http.ResponseWriter, req *http.Request, us
 		writeJson(rw, http.StatusOK, record)
 		return
 	}
-	var records []database.WebhookRecord
+	records := make([]database.WebhookRecord, 0, 4)
 	if err := cr.database.ForEachUsersWebhook(user, func(rec *database.WebhookRecord) error {
 		records = append(records, *rec)
 		return nil
@@ -853,6 +854,7 @@ func (cr *Cluster) apiV0WebhookPOST(rw http.ResponseWriter, req *http.Request, u
 		return
 	}
 
+	data.User = user
 	if err := cr.database.AddWebhook(data); err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Database update failed",

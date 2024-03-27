@@ -35,6 +35,7 @@ type StatusResponseWriter struct {
 	http.ResponseWriter
 	Status int
 	Wrote  int64
+	beforeWriteHeader []func(status int)
 }
 
 var _ http.Hijacker = (*StatusResponseWriter)(nil)
@@ -55,8 +56,15 @@ func getCaller() (caller runtime.Frame) {
 	return frame
 }
 
+func (w *StatusResponseWriter) BeforeWriteHeader(cb func(status int)) {
+	w.beforeWriteHeader = append(w.beforeWriteHeader, cb)
+}
+
 func (w *StatusResponseWriter) WriteHeader(status int) {
 	if w.Status == 0 {
+		for _, cb := range w.beforeWriteHeader {
+			cb(status)
+		}
 		w.Status = status
 		w.ResponseWriter.WriteHeader(status)
 	} else {

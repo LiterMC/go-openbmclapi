@@ -230,7 +230,10 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	webpushPlg := new(webpush.Plugin)
 	cr.notifyManager.AddPlugin(webpushPlg)
 	if config.Notification.EnableEmail {
-		emailPlg := new(email.Plugin)
+		emailPlg, err := email.NewSMTP(config.Notification.EmailSMTP, config.Notification.EmailSender, config.Notification.EmailSenderPassword)
+		if err != nil {
+			return err
+		}
 		cr.notifyManager.AddPlugin(emailPlg)
 	}
 

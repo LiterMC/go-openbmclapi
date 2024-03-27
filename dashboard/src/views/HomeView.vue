@@ -14,7 +14,13 @@ import HitsChart from '@/components/HitsChart.vue'
 import UAChart from '@/components/UAChart.vue'
 import LogBlock from '@/components/LogBlock.vue'
 import StatusButton from '@/components/StatusButton.vue'
-import { getStatus, getPprofURL, type StatInstData, type PprofLookups } from '@/api/v0'
+import {
+	getStatus,
+	getPprofURL,
+	type StatInstData,
+	type StatusRes,
+	type PprofLookups,
+} from '@/api/v0'
 import { LogIO, type LogMsg } from '@/api/log.io'
 import { bindRefToLocalStorage } from '@/cookies'
 import { tr } from '@/lang'
@@ -32,7 +38,7 @@ setInterval(() => {
 	now.value = new Date()
 }, 1000)
 
-const { data, error, loading } = useRequest(getStatus, {
+const { data, error, loading } = useRequest((): Promise<StatusRes> => getStatus(token.value), {
 	pollingInterval: 10000,
 	loadingDelay: 500,
 	loadingKeep: 2000,

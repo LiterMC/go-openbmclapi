@@ -72,17 +72,19 @@ async function requestToken(
 
 export async function ping(token?: string): Promise<PingRes> {
 	const res = await axios.get<PingRes>(`/api/v0/ping`, {
-		headers: token
-			? {
-					Authorization: `Bearer ${token}`,
-			  }
-			: undefined,
+		headers: {
+			Authorization: token ? `Bearer ${token}` : undefined,
+		},
 	})
 	return res.data
 }
 
-export async function getStatus(): Promise<StatusRes> {
-	const res = await axios.get<StatusRes>(`/api/v0/status`)
+export async function getStatus(token?: string | null): Promise<StatusRes> {
+	const res = await axios.get<StatusRes>(`/api/v0/status`, {
+		headers: {
+			Authorization: token ? `Bearer ${token}` : undefined,
+		},
+	})
 	return res.data
 }
 
@@ -136,8 +138,12 @@ interface SubscribeKey {
 	publicKey: string
 }
 
-export async function getSubscribePublicKey(): Promise<string> {
-	const res = await axios.get<SubscribeKey>(`/api/v0/subscribeKey`)
+export async function getSubscribePublicKey(token?: string): Promise<string> {
+	const res = await axios.get<SubscribeKey>(`/api/v0/subscribeKey`, {
+		headers: {
+			Authorization: token ? `Bearer ${token}` : undefined,
+		},
+	})
 	return res.data.publicKey
 }
 

@@ -114,6 +114,17 @@ async function addEmail(item: EmailItemPayload): Promise<void> {
 			return
 		}
 		await addEmailSubscription(token.value, item)
+		emails.value?.push({
+			user: '',
+			...item,
+		})
+	} catch (err) {
+		toast.add({
+			severity: 'error',
+			summary: 'Error when subscribing email',
+			detail: String(err),
+			life: 3000,
+		})
 	} finally {
 		newEmailItemSaving.value = false
 	}
@@ -261,6 +272,9 @@ async function webhookEditSave(): Promise<void> {
 				enabled: enabled,
 			})
 		}
+		getWebhooks(token.value).then((res) => {
+			webhooks.value = res
+		})
 		webhookEditingItem.value = null
 	} catch (err) {
 		toast.add({
@@ -320,6 +334,7 @@ onBeforeMount(() => {
 						<template #footer>
 							<MultiSelect
 								class="flex-auto width-full"
+								style="max-width: 12rem"
 								:options="ALL_SUBSCRIBE_SCOPES"
 								v-model="newEmailItem.scopes"
 								placeholder="Select Scopes"

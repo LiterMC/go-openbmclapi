@@ -20,6 +20,7 @@
 package limited
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strconv"
@@ -40,74 +41,127 @@ type limitSet struct {
 	Limit RateLimit
 
 	mux        sync.RWMutex
+	cleanCount int // min clean mask: 0xffff; hour clean mask: 0xff0000
 	accessMin  map[string]*atomic.Int64
 	accessHour map[string]*atomic.Int64
 }
 
 func makeLimitSet() limitSet {
 	return limitSet{
+		cleanCount: 1,
 		accessMin:  make(map[string]*atomic.Int64),
 		accessHour: make(map[string]*atomic.Int64),
 	}
 }
 
-func (s *limitSet) try(id string) (leftHour, leftMin int64, ok bool) {
-	if s.Limit.PerHour == 0 && s.Limit.PerMin == 0 {
-		ok = true
-		return
+func (s *limitSet) try(id string) (leftHour, leftMin int64, cleanId int) {
+	checkHour, checkMin := s.Limit.PerHour > 0, s.Limit.PerMin > 0
+	if !checkHour {
+		leftHour = -1
 	}
-	s.mux.RLock()
-	hour, ok := s.accessHour[id]
-	s.mux.RUnlock()
-	if !ok {
-		s.mux.Lock()
-		if hour, ok = s.accessHour[id]; !ok {
-			hour = new(atomic.Int64)
-			s.accessHour[id] = hour
-		}
-		s.mux.Unlock()
+	if !checkMin {
+		leftMin = -1
 	}
-	leftHour = s.Limit.PerHour - hour.Add(1)
-	if leftHour < 0 {
-		hour.Add(-1)
-		leftHour = 0
-		ok = false
+	if !checkHour && !checkMin {
+		cleanId = -1
 		return
 	}
 
-	if s.Limit.PerMin == 0 {
-		ok = true
-		return
-	}
+	var (
+		hour, min *atomic.Int64
+		ok1, ok2  bool
+	)
+
 	s.mux.RLock()
-	min, ok := s.accessMin[id]
-	s.mux.RUnlock()
-	if !ok {
-		s.mux.Lock()
-		if min, ok = s.accessMin[id]; !ok {
-			min = new(atomic.Int64)
-			s.accessMin[id] = min
-		}
-		s.mux.Unlock()
+	cleanId = s.cleanCount
+	if checkHour {
+		hour, ok1 = s.accessHour[id]
 	}
-	leftMin = s.Limit.PerMin - min.Add(1)
-	if leftMin < 0 {
-		hour.Add(-1)
-		min.Add(-1)
-		leftMin = 0
-		ok = false
+	if checkMin {
+		min, ok2 = s.accessMin[id]
+	}
+	s.mux.RUnlock()
+
+	if checkHour {
+		if !ok1 {
+			s.mux.Lock()
+			cleanId = s.cleanCount
+			if hour, ok1 = s.accessHour[id]; !ok1 {
+				hour = new(atomic.Int64)
+				s.accessHour[id] = hour
+			}
+			if checkMin {
+				if min, ok2 = s.accessMin[id]; !ok2 {
+					min = new(atomic.Int64)
+					s.accessMin[id] = min
+					ok2 = true
+				}
+			}
+			s.mux.Unlock()
+		}
+		leftHour = s.Limit.PerHour - hour.Add(1)
+		if leftHour < 0 {
+			hour.Add(-1)
+			leftHour = 0
+			cleanId = 0
+			return
+		}
+	}
+
+	if checkMin {
+		if !ok2 {
+			s.mux.Lock()
+			cleanId = s.cleanCount
+			if min, ok2 = s.accessMin[id]; !ok2 {
+				min = new(atomic.Int64)
+				s.accessMin[id] = min
+			}
+			s.mux.Unlock()
+		}
+		leftMin = s.Limit.PerMin - min.Add(1)
+		if leftMin < 0 {
+			hour.Add(-1)
+			min.Add(-1)
+			leftMin = 0
+			cleanId = 0
+			return
+		}
+	}
+	return
+}
+
+func (s *limitSet) release(id string, cleanId int) {
+	if cleanId <= 0 {
 		return
 	}
-	ok = true
-	return
+	checkHour, checkMin := s.Limit.PerHour > 0, s.Limit.PerMin > 0
+	if !checkHour && !checkMin {
+		return
+	}
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	releaseHour := checkHour && cleanId&0xff0000 == s.cleanCount&0xff0000
+	releaseMin := checkMin && cleanId&0xffff == s.cleanCount&0xffff
+	if releaseHour {
+		if hour, ok := s.accessHour[id]; ok {
+			hour.Add(-1)
+		}
+	}
+	if releaseMin {
+		if min, ok := s.accessMin[id]; ok {
+			min.Add(-1)
+		}
+	}
 }
 
 func (s *limitSet) clean(hour bool) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
+	s.cleanCount = s.cleanCount&0xff0000 | (s.cleanCount+1)&0xffff
 	clear(s.accessMin)
 	if hour {
+		s.cleanCount = (s.cleanCount+0x10000)&0xff0000 | s.cleanCount&0xffff
 		clear(s.accessHour)
 	}
 }
@@ -149,7 +203,20 @@ var _ utils.MiddleWare = (*APIRateMiddleWare)(nil)
 
 const (
 	RateLimitOverrideContextKey = "go-openbmclapi.limited.rate.api.override"
+	RateLimitSkipContextKey     = "go-openbmclapi.limited.rate.api.skip"
 )
+
+func SetSkipRateLimit(req *http.Request) *http.Request {
+	ctx := req.Context()
+	v := ctx.Value(RateLimitSkipContextKey)
+	if v == nil {
+		return req.WithContext(context.WithValue(ctx, RateLimitSkipContextKey, true))
+	}
+	if skip, ok := v.(*bool); ok {
+		*skip = true
+	}
+	return req
+}
 
 func (a *APIRateMiddleWare) AnonymousRateLimit() RateLimit {
 	return a.annoySet.Limit
@@ -180,18 +247,25 @@ func (a *APIRateMiddleWare) clean(ishour bool) {
 }
 
 func (a *APIRateMiddleWare) ServeMiddle(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+	ctx := req.Context()
+	if ctx.Value(RateLimitSkipContextKey) == true {
+		return
+	}
+	skipPtr := new(bool)
+	ctx = context.WithValue(ctx, RateLimitSkipContextKey, skipPtr)
+
 	var set *limitSet
-	id, ok := req.Context().Value(a.loggedContextKey).(string)
+	id, ok := ctx.Value(a.loggedContextKey).(string)
 	if ok {
 		set = &a.loggedSet
 	} else {
-		id, _ = req.Context().Value(a.realIPContextKey).(string)
+		id, _ = ctx.Value(a.realIPContextKey).(string)
 		if id == "" {
 			id, _, _ = net.SplitHostPort(req.RemoteAddr)
 		}
 		set = &a.annoySet
 	}
-	hourLeft, minLeft, pass := set.try(id)
+	hourLeft, minLeft, cleanId := set.try(id)
 	now := time.Now()
 	var retryAfter int
 	if hourLeft == 0 {
@@ -205,17 +279,23 @@ func (a *APIRateMiddleWare) ServeMiddle(rw http.ResponseWriter, req *http.Reques
 	rw.Header().Set("X-Ratelimit-Remaining-Minute", strconv.FormatInt(minLeft, 10))
 	rw.Header().Set("X-Ratelimit-Remaining-Hour", strconv.FormatInt(hourLeft, 10))
 	rw.Header().Set("X-Ratelimit-Reset-After", strconv.FormatInt(resetAfter, 10))
-	if !pass {
+	if cleanId == 0 {
 		rw.Header().Set("Retry-After", strconv.Itoa(retryAfter+1))
 		rw.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
+
 	srw := utils.WrapAsStatusResponseWriter(rw)
-	next.ServeHTTP(srw, req)
-	if srw.Status/100 == 3 {
-		// TODO: release limit
-		return
-	}
+	srw.BeforeWriteHeader(func(status int) {
+		s := status / 100
+		if *skipPtr || s == 3 || s == 1 {
+			rw.Header().Set("X-Ratelimit-Remaining-Minute", strconv.FormatInt(minLeft+1, 10))
+			rw.Header().Set("X-Ratelimit-Remaining-Hour", strconv.FormatInt(hourLeft+1, 10))
+			set.release(id, cleanId)
+			return
+		}
+	})
+	next.ServeHTTP(srw, req.WithContext(ctx))
 }
 
 func (a *APIRateMiddleWare) WrapHandler(next http.Handler) http.HandlerFunc {

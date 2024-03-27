@@ -742,7 +742,7 @@ func (db *SqlDB) setupEmailSubscriptionsQuestionMark(ctx context.Context) (err e
 
 	const addInsertCmd = "INSERT INTO " + tableName +
 		" (`user`,`addr`,`scopes`,`enabled`) VALUES" +
-		" (?,?,?,TRUE)"
+		" (?,?,?,?)"
 	if db.emailSubscriptionStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
 		return
 	}
@@ -808,7 +808,7 @@ func (db *SqlDB) setupEmailSubscriptionsDollarMark(ctx context.Context) (err err
 
 	const addInsertCmd = "INSERT INTO " + tableName +
 		` ("user",addr,scopes,enabled) VALUES` +
-		" ($1,$2,$3,TRUE)"
+		" ($1,$2,$3,$4)"
 	if db.emailSubscriptionStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
 		return
 	}
@@ -938,14 +938,14 @@ func (db *SqlDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubscr
 	defer cancel()
 
 	var rows *sql.Rows
-	if rows, err = db.emailSubscriptionStmts.forEach.QueryContext(ctx); err != nil {
+	if rows, err = db.emailSubscriptionStmts.forEachUsers.QueryContext(ctx, user); err != nil {
 		return
 	}
 	defer rows.Close()
 	var rec EmailSubscriptionRecord
 	rec.User = user
 	for rows.Next() {
-		if err = rows.Scan(&rec.Addr, &rec.Scopes, &rec.Enabled, &rec.User); err != nil {
+		if err = rows.Scan(&rec.Addr, &rec.Scopes, &rec.Enabled); err != nil {
 			return
 		}
 		cb(&rec)
@@ -1014,7 +1014,7 @@ func (db *SqlDB) setupWebhooksQuestionMark(ctx context.Context) (err error) {
 
 	const addInsertCmd = "INSERT INTO " + tableName +
 		" (`user`,`id`,`endpoint`,`auth`,`scopes`,`enabled`) VALUES" +
-		" (?,?,?,?,?,TRUE)"
+		" (?,?,?,?,?,?)"
 	if db.webhookStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
 		return
 	}
@@ -1089,7 +1089,7 @@ func (db *SqlDB) setupWebhooksDollarMark(ctx context.Context) (err error) {
 
 	const addInsertCmd = "INSERT INTO " + tableName +
 		` ("user",id,endpoint,auth,scopes,enabled) VALUES` +
-		" ($1,$2,$3,$4,$5,TRUE)"
+		" ($1,$2,$3,$4,$5,$6)"
 	if db.webhookStmts.add, err = db.db.PrepareContext(ctx, addInsertCmd); err != nil {
 		return
 	}
@@ -1234,7 +1234,7 @@ func (db *SqlDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) error)
 	defer cancel()
 
 	var rows *sql.Rows
-	if rows, err = db.webhookStmts.forEachUsers.QueryContext(ctx); err != nil {
+	if rows, err = db.webhookStmts.forEachUsers.QueryContext(ctx, user); err != nil {
 		return
 	}
 	defer rows.Close()

@@ -108,7 +108,7 @@ func (p *Plugin) sendEmail(ctx context.Context, subject string, body []byte, to 
 		return
 	}
 	m := mail.NewMSG().
-		SetFrom(p.smtp.Username).
+		SetFrom(fmt.Sprintf("Go-OpenBMCLAPI Event Dispatcher <%s>", p.smtp.Username)).
 		AddBcc(to...).
 		SetSubject(subject).
 		SetBodyData(mail.TextHTML, body)

@@ -333,19 +333,20 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 	defer cancel()
 
 	conn.SetReadLimit(1024 * 4)
-	pongCh := make(chan struct{}, 1)
+	pongTimeoutTimer := time.NewTimer(time.Second * 75)
 	go func() {
 		defer conn.Close()
 		defer cancel()
-		for {
-			select {
-			case <-pongCh:
-			case <-time.After(time.Second * 75):
-				log.Error("[log.io]: Did not receive packet from client longer than 75s")
-				return
-			case <-ctx.Done():
+		defer pongTimeoutTimer.Stop()
+		select {
+		case _, ok := <-pongTimeoutTimer.C:
+			if !ok {
 				return
 			}
+			log.Error("[log.io]: Did not receive packet from client longer than 75s")
+			return
+		case <-ctx.Done():
+			return
 		}
 	}()
 
@@ -410,6 +411,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 	defer unregister()
 
 	go func() {
+		defer log.RecoverPanic()
 		defer conn.Close()
 		defer cancel()
 		var data map[string]any
@@ -425,11 +427,8 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 			}
 			switch typ {
 			case "pong":
-				log.Debugf("[log.io]: received PONG from %s: %v", addr, data["data"])
-				select {
-				case pongCh <- struct{}{}:
-				default:
-				}
+				log.Debugf("[log.io]: received PONG from %s: %v", addr, (int64)(data["data"]))
+				pongTimeoutTimer.Reset(time.Second * 75)
 			case "set-level":
 				l, ok := data["level"].(string)
 				if ok {

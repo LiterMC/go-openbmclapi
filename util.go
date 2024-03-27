@@ -48,6 +48,7 @@ func createInterval(ctx context.Context, do func(), delay time.Duration) {
 		ticker.Stop()
 	})
 	go func() {
+		defer log.RecordPanic()
 		defer ticker.Stop()
 
 		for range ticker.C {

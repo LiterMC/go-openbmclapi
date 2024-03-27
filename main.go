@@ -374,6 +374,7 @@ func (r *Runner) UpdateFileRecords(files []FileInfo, oldfileset map[string]int64
 		return
 	}
 	defer r.updating.Store(false)
+
 	sem := limited.NewSemaphore(12)
 	log.Info("Begin to update file records")
 	for _, f := range files {
@@ -393,15 +394,13 @@ func (r *Runner) UpdateFileRecords(files []FileInfo, oldfileset map[string]int64
 			Size: f.Size,
 		})
 	}
-	for i := sem.Cap(); i > 0; i-- {
-		sem.Acquire()
-	}
+	sem.Wait()
 	log.Info("All file records are updated")
 }
 
 func (r *Runner) InitSynchronizer(ctx context.Context) {
 	log.Info(Tr("info.filelist.fetching"))
-	fl, err := r.cluster.GetFileList(ctx)
+	fl, err := r.cluster.GetFileList(ctx, 0)
 	if err != nil {
 		log.Errorf(Tr("error.filelist.fetch.failed"), err)
 		if errors.Is(err, context.Canceled) {
@@ -434,17 +433,29 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 			return
 		}
 	}
+
+	var lastMod int64
+	for _, f := range fl {
+		if f.Mtime > lastMod {
+			lastMod = f.Mtime
+		}
+	}
+
 	createInterval(ctx, func() {
 		log.Info(Tr("info.filelist.fetching"))
-		fl, err := r.cluster.GetFileList(ctx)
+		fl, err := r.cluster.GetFileList(ctx, lastMod)
 		if err != nil {
 			log.Errorf(Tr("error.cannot.fetch.filelist"), err)
 			return
 		}
+		for _, f := range fl {
+			if f.Mtime > lastMod {
+				lastMod = f.Mtime
+			}
+		}
+
 		checkCount = (checkCount + 1) % heavyCheckInterval
-		r.cluster.mux.RLock()
-		oldfileset := r.cluster.fileset
-		r.cluster.mux.RUnlock()
+		oldfileset := r.cluster.CloneFileset()
 		r.cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
 		go r.UpdateFileRecords(fl, oldfileset)
 		if !config.Advanced.NoGC && !config.OnlyGcWhenStart {

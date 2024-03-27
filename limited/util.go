@@ -128,6 +128,27 @@ func (s *Semaphore) Release() {
 	<-s.c
 }
 
+func (s *Semaphore) Wait() {
+	if s == nil {
+		panic("Cannot wait on nil Semaphore")
+	}
+	for i := s.Cap(); i > 0; i-- {
+		s.Acquire()
+	}
+}
+
+func (s *Semaphore) WaitWithContext(ctx context.Context) bool {
+	if s == nil {
+		panic("Cannot wait on nil Semaphore")
+	}
+	for i := s.Cap(); i > 0; i-- {
+		if !s.AcquireWithContext(ctx) {
+			return false
+		}
+	}
+	return true
+}
+
 type spProxyReader struct {
 	io.Reader
 	released atomic.Bool

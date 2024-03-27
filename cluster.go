@@ -39,6 +39,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -686,6 +687,16 @@ func (cr *Cluster) Disabled() <-chan struct{} {
 	return cr.disabled
 }
 
+func (cr *Cluster) CloneFileset() map[string]int64 {
+	cr.filesetMux.RLock()
+	defer cr.filesetMux.RUnlock()
+	fileset := make(map[string]int64, len(cr.fileset))
+	for k, v := range cr.fileset {
+		fileset[k] = v
+	}
+	return fileset
+}
+
 func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
 	cr.filesetMux.RLock()
 	defer cr.filesetMux.RUnlock()
@@ -767,12 +778,13 @@ func (cr *Cluster) makeReqWithAuth(ctx context.Context, method string, relpath s
 }
 
 type FileInfo struct {
-	Path string `json:"path" avro:"path"`
-	Hash string `json:"hash" avro:"hash"`
-	Size int64  `json:"size" avro:"size"`
+	Path  string `json:"path" avro:"path"`
+	Hash  string `json:"hash" avro:"hash"`
+	Size  int64  `json:"size" avro:"size"`
+	Mtime int64  `json:"mtime" avro:"mtime"`
 }
 
-// from <https://github.com/bangbang93/openbmclapi/blob/master/src/cluster.ts>
+// from <https://github.com/bangbang93/openbmclapi/blob/master/src/constants.ts>
 var fileListSchema = avro.MustParse(`{
 	"type": "array",
 	"items": {
@@ -781,13 +793,20 @@ var fileListSchema = avro.MustParse(`{
 		"fields": [
 			{"name": "path", "type": "string"},
 			{"name": "hash", "type": "string"},
-			{"name": "size", "type": "long"}
+			{"name": "size", "type": "long"},
+			{"name": "mtime", "type": "long"}
 		]
 	}
 }`)
 
-func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error) {
-	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/files", nil)
+func (cr *Cluster) GetFileList(ctx context.Context, lastMod int64) (files []FileInfo, err error) {
+	var query url.Values
+	if lastMod > 0 {
+		query = url.Values{
+			"lastModified": {strconv.FormatInt(lastMod, 10)},
+		}
+	}
+	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/files", query)
 	if err != nil {
 		return
 	}
@@ -809,6 +828,7 @@ func (cr *Cluster) GetFileList(ctx context.Context) (files []FileInfo, err error
 	if err = avro.NewDecoderForSchema(fileListSchema, zr).Decode(&files); err != nil {
 		return
 	}
+	log.Debugf("Filelist parsed, length = %d", len(files))
 	return
 }
 
@@ -860,12 +880,10 @@ func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		return false
 	}
 
-	fileset := make(map[string]int64, len(files))
-	for _, f := range files {
-		fileset[f.Hash] = f.Size
-	}
 	cr.filesetMux.Lock()
-	cr.fileset = fileset
+	for _, f := range files {
+		cr.fileset[f.Hash] = f.Size
+	}
 	cr.filesetMux.Unlock()
 
 	return true
@@ -1466,6 +1484,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 		Path: "/openbmclapi/download/" + hash,
 		Hash: hash,
 		Size: -1,
+		Mtime: 0,
 	}
 	item, ok := cr.lockDownloading(hash)
 	if !ok {
@@ -1540,7 +1559,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 			}
 
 			cr.filesetMux.Lock()
-			cr.fileset[hash] = -size // negative means that the file was not stored into the databse yet
+			cr.fileset[hash] = -size // negative means that the file was not stored into the database yet
 			cr.filesetMux.Unlock()
 		}()
 	}

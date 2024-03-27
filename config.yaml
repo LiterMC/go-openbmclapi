@@ -37,6 +37,7 @@ api-rate-limit:
 notification:
   enable-email: false
   email-smtp: smtp.example.com:25
+  email-smtp-encryption: tls
   email-sender: noreply@example.com
   email-sender-password: example-password
   enable-webhook: true

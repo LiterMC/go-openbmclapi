@@ -213,6 +213,11 @@ notification:
   enable-email: false
   # 邮件 SMTP 服务器及其端口
   email-smtp: smtp.example.com:25
+  # SMTP 服务器加密类型
+  # - none : 无加密
+  # - ssl  : 使用 SSL/TLS 加密
+  # - tls  : 使用 STARTTLS 加密
+  email-smtp-encryption: tls
   # 通知者邮箱用户名
   email-sender: noreply@example.com
   # 通知者邮箱密码

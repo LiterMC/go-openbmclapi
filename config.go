@@ -80,6 +80,7 @@ type APIRateLimitConfig struct {
 type NotificationConfig struct {
 	EnableEmail         bool   `yaml:"enable-email"`
 	EmailSMTP           string `yaml:"email-smtp"`
+	EmailSMTPEncryption string `yaml:"email-smtp-encryption"`
 	EmailSender         string `yaml:"email-sender"`
 	EmailSenderPassword string `yaml:"email-sender-password"`
 	EnableWebhook       bool   `yaml:"enable-webhook"`
@@ -212,6 +213,9 @@ type Config struct {
 	Storages     []storage.StorageOption        `yaml:"storages"`
 	WebdavUsers  map[string]*storage.WebDavUser `yaml:"webdav-users"`
 	Advanced     AdvancedConfig                 `yaml:"advanced"`
+
+	IamTeaPot      bool     `yaml:"i-am-a-tea-pot"`
+	TeapotMessages []string `yaml:"teapot-messages"`
 }
 
 func (cfg *Config) applyWebManifest(manifest map[string]any) {
@@ -277,6 +281,7 @@ var defaultConfig = Config{
 	Notification: NotificationConfig{
 		EnableEmail:         false,
 		EmailSMTP:           "smtp.example.com:25",
+		EmailSMTPEncryption: "tls",
 		EmailSender:         "noreply@example.com",
 		EmailSenderPassword: "example-password",
 		EnableWebhook:       true,
@@ -325,6 +330,14 @@ var defaultConfig = Config{
 		SkipFirstSync:      false,
 		NoFastEnable:       false,
 		WaitBeforeEnable:   0,
+	},
+
+	IamTeaPot: false,
+	TeapotMessages: []string{
+		"This is OpemBnclApi golang edition",
+		"Your internet is shutdown",
+		"Virus detected, removing your game data ...",
+		":)",
 	},
 }
 

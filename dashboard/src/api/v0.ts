@@ -147,17 +147,27 @@ export async function getSubscribePublicKey(token?: string): Promise<string> {
 	return res.data.publicKey
 }
 
-export type SubscribeScope = 'enabled' | 'disabled' | 'syncdone' | 'updates' | 'dailyreport'
+export type SubscribeScope =
+	| 'enabled'
+	| 'disabled'
+	| 'syncbegin'
+	| 'syncdone'
+	| 'updates'
+	| 'dailyreport'
 export const ALL_SUBSCRIBE_SCOPES: SubscribeScope[] = [
 	'enabled',
 	'disabled',
+	'syncbegin',
 	'syncdone',
 	'updates',
 	'dailyreport',
 ]
+export type ScopeFlags = {
+	[key in SubscribeScope]: boolean
+}
 
 export interface SubscribeSettings {
-	scopes: { [key in SubscribeScope]: boolean }
+	scopes: ScopeFlags
 	reportAt: string
 }
 
@@ -219,7 +229,7 @@ export interface EmailItemPayload {
 export interface EmailItemRes {
 	user: string
 	addr: string
-	scopes: SubscribeScope[]
+	scopes: ScopeFlags
 	enabled: boolean
 }
 
@@ -281,7 +291,7 @@ export interface WebhookItemRes {
 	name: string
 	endpoint: string
 	authHash?: string
-	scopes: SubscribeScope[]
+	scopes: ScopeFlags
 	enabled: boolean
 }
 

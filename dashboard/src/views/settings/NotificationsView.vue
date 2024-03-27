@@ -22,6 +22,7 @@ import {
 	updateWebhook,
 	removeWebhook,
 	type SubscribeScope,
+	type ScopeFlags,
 	type EmailItemPayload,
 	type EmailItemRes,
 	type WebhookItemPayload,
@@ -57,7 +58,12 @@ const webhookEdited = computed((): boolean => {
 			return true
 		}
 	}
-	if (ori.scopes.join() !== item.scopes.join()) {
+	if (
+		(Object.keys(ori.scopes) as SubscribeScope[])
+			.map((v) => ori.scopes[v])
+			.sort()
+			.join() !== item.scopes.sort().join()
+	) {
 		return true
 	}
 	if (item.auth !== '-') {
@@ -117,6 +123,7 @@ async function addEmail(item: EmailItemPayload): Promise<void> {
 		emails.value?.push({
 			user: '',
 			...item,
+			scopes: Object.fromEntries(item.scopes.map((v) => [v, true])) as ScopeFlags,
 		})
 	} catch (err) {
 		toast.add({
@@ -184,9 +191,16 @@ async function openRemoveWebhookDialog(index: number): Promise<void> {
 	}
 }
 
+function scopeFlagsToArray(o: ScopeFlags): SubscribeScope[] {
+	return (Object.keys(o) as SubscribeScope[])
+		.filter((v) => o[v])
+		.sort()
+}
+
 function openWebhookEditDialog(item: WebhookItemRes): void {
 	webhookEditingItem.value = {
 		...item,
+		scopes: scopeFlagsToArray(item.scopes),
 		auth: '-',
 		_: item,
 	}
@@ -328,7 +342,7 @@ onBeforeMount(() => {
 					</Column>
 					<Column
 						:header="tr('title.webhook.scopes')"
-						:field="({ scopes }) => scopes.join(', ')"
+						:field="({ scopes }) => scopeFlagsToArray(scopes).join(', ')"
 						style="flex-shrink: 0; width: 10rem"
 					>
 						<template #footer>
@@ -449,7 +463,7 @@ onBeforeMount(() => {
 					<div class="flex-row-center text-overflow-ellipsis">
 						<label class="webhook-edit-label">{{ tr('title.webhook.scopes') }}:</label>
 						<span class="flex-auto text-nowrap text-overflow-ellipsis">{{
-							item.scopes.join(', ')
+							scopeFlagsToArray(item.scopes).join(', ')
 						}}</span>
 					</div>
 				</template>

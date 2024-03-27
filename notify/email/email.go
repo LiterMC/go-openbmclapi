@@ -28,6 +28,7 @@ import (
 	"html/template"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	mail "github.com/xhit/go-simple-mail/v2"
@@ -64,15 +65,24 @@ type Plugin struct {
 
 var _ notify.Plugin = (*Plugin)(nil)
 
-func NewSMTP(smtpAddr string, username string, password string) (*Plugin, error) {
+func NewSMTP(smtpAddr string, smtpType string, username string, password string) (*Plugin, error) {
 	smtp := &mail.SMTPServer{
 		Authentication: mail.AuthAuto,
-		Encryption:     mail.EncryptionSTARTTLS,
 		Helo:           "localhost",
 		ConnectTimeout: 15 * time.Second,
 		SendTimeout:    time.Minute,
 		Username:       username,
 		Password:       password,
+	}
+	switch strings.ToLower(smtpType) {
+	case "tls", "starttls":
+		smtp.Encryption = mail.EncryptionSTARTTLS
+	case "ssl", "ssltls":
+		smtp.Encryption = mail.EncryptionSSLTLS
+	case "none":
+		smtp.Encryption = mail.EncryptionNone
+	default:
+		return nil, fmt.Errorf("Unknown smtp encryption type %q", smtpType)
 	}
 	var (
 		port string

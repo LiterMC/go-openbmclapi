@@ -37,6 +37,7 @@ const settings = bindObjectToLocalStorage(
 	{
 		notifyWhenDisabled: false,
 		notifyWhenEnabled: false,
+		notifyWhenSyncBegin: false,
 		notifyWhenSyncFinished: false,
 		notifyUpdates: false,
 		dailyReport: false,
@@ -67,6 +68,9 @@ function getSubscribeScopes(): SubscribeScope[] {
 	}
 	if (settings.notifyWhenEnabled) {
 		res.push('enabled')
+	}
+	if (settings.notifyWhenSyncBegin) {
+		res.push('syncbegin')
 	}
 	if (settings.notifyWhenSyncFinished) {
 		res.push('syncdone')
@@ -183,6 +187,7 @@ onMounted(() => {
 			enableNotify.value = true
 			settings.notifyWhenDisabled = sets.scopes.disabled
 			settings.notifyWhenEnabled = sets.scopes.enabled
+			settings.notifyWhenSyncBegin = sets.scopes.syncbegin
 			settings.notifyWhenSyncFinished = sets.scopes.syncdone
 			settings.notifyUpdates = sets.scopes.updates
 			settings.dailyReport = sets.scopes.dailyreport

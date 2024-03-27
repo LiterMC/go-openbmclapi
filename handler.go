@@ -33,6 +33,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/LiterMC/go-openbmclapi/internal/build"
@@ -327,6 +328,9 @@ var emptyHashes = func() (hashes map[string]struct{}) {
 
 var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", build.BuildVersion)
 
+var accessedTeapotMux sync.RWMutex
+var accessedTeapot = make(map[string]struct{})
+
 func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	u := req.URL
@@ -340,6 +344,53 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			rw.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
 			http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 			return
+		}
+
+		/** TODO: remove after 04/01 **/
+		if config.IamTeaPot {
+			ip, _ := req.Context().Value(RealAddrCtxKey).(string)
+			if ip != "" {
+				_, month, day := time.Now().Date()
+				if month == time.April && day == 1 || month == time.March && day == 31 || month == time.March && day == 32 {
+					ua, _, _ := strings.Cut(req.Header.Get("User-Agent"), " ")
+					ua, _, _ = strings.Cut(ua, "/")
+					chance := 0
+					switch ua {
+					case "HMCL":
+						chance = 512
+					case "PCL":
+						chance = 511
+					case "PojavLauncher":
+						chance = 512 * 10
+					case "FCL":
+						fallthrough
+					case "BakaXL":
+						chance = 512 * 2
+					}
+					if chance > 0 {
+						if randIntn(1024000) < chance/2 {
+							accessedTeapotMux.RLock()
+							_, ok := accessedTeapot[ip]
+							accessedTeapotMux.RUnlock()
+							if !ok {
+								accessedTeapotMux.Lock()
+								if _, ok = accessedTeapot[ip]; !ok {
+									accessedTeapot[ip] = struct{}{}
+								}
+								accessedTeapotMux.Unlock()
+								if !ok {
+									var msg string = "okay, this is a teapot, however, you will never saw this again"
+									if len(config.TeapotMessages) > 0 {
+										msg = config.TeapotMessages[randIntn(len(config.TeapotMessages))]
+									}
+									http.Error(rw, msg, http.StatusTeapot)
+									return
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 
 		hash := rawpath[len("/download/"):]

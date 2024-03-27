@@ -33,8 +33,8 @@ import (
 
 type StatusResponseWriter struct {
 	http.ResponseWriter
-	Status int
-	Wrote  int64
+	Status            int
+	Wrote             int64
 	beforeWriteHeader []func(status int)
 }
 

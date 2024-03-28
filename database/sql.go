@@ -484,7 +484,7 @@ func (db *SqlDB) setupSubscribeQuestionMark(ctx context.Context) (err error) {
 		" `keys` VARCHAR(255) NOT NULL," +
 		" `scopes` INTEGER NOT NULL," +
 		" `report_at` CHAR(5) NOT NULL," +
-		" `last_reported` TIMESTAMP NOT NULL," +
+		" `last_reported` TIMESTAMP DEFAULT NULL," +
 		" PRIMARY KEY (`user`,`client`)" +
 		")"
 	if _, err = db.db.ExecContext(ctx, createTable); err != nil {
@@ -550,7 +550,7 @@ func (db *SqlDB) setupSubscribeDollarMark(ctx context.Context) (err error) {
 		" keys VARCHAR(255) NOT NULL," +
 		" scopes INTEGER NOT NULL," +
 		" report_at CHAR(5) NOT NULL," +
-		" last_reported TIMESTAMP NOT NULL," +
+		" last_reported TIMESTAMP DEFAULT NULL," +
 		` PRIMARY KEY ("user",client)` +
 		")"
 	if _, err = db.db.ExecContext(ctx, createTable); err != nil {

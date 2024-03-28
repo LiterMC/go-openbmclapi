@@ -307,6 +307,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	}
 
 	cr.reconnectCount = 0
+	connected := false
 
 	if config.Advanced.SocketIOLog {
 		engio.OnRecv(func(_ *engine.Socket, data []byte) {
@@ -333,6 +334,16 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 				osExit(CodeServerOrEnvionmentError)
 			}
 		}
+		if !connected {
+			cr.reconnectCount++
+			if config.MaxReconnectCount > 0 && cr.reconnectCount >= config.MaxReconnectCount {
+				if cr.shouldEnable.Load() {
+					log.Error(Tr("error.cluster.connect.failed.toomuch"))
+					osExit(CodeServerOrEnvionmentError)
+				}
+			}
+		}
+		connected = false
 		go cr.disconnected()
 	})
 	engio.OnDialError(func(_ *engine.Socket, err error) {
@@ -358,6 +369,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		log.Infof(Tr("info.cluster.connect.prepare"), cr.reconnectCount, config.MaxReconnectCount)
 	})
 	cr.socket.OnConnect(func(*socket.Socket, string) {
+		connected = true
 		log.Debugf("shouldEnable is %v", cr.shouldEnable.Load())
 		if cr.shouldEnable.Load() {
 			if err := cr.Enable(ctx); err != nil {

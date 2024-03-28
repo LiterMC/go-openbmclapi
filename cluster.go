@@ -22,6 +22,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -669,4 +670,54 @@ func (cr *Cluster) Disabled() <-chan struct{} {
 	cr.mux.RLock()
 	defer cr.mux.RUnlock()
 	return cr.disabled
+}
+
+type CertKeyPair struct {
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
+
+func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
+	resCh, err := cr.socket.EmitWithAck("request-cert")
+	if err != nil {
+		return
+	}
+	var data []any
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case data = <-resCh:
+	}
+	if ero := data[0]; ero != nil {
+		err = fmt.Errorf("socket.io remote error: %v", ero)
+		return
+	}
+	pair := data[1].(map[string]any)
+	ckp = &CertKeyPair{
+		Cert: pair["cert"].(string),
+		Key:  pair["key"].(string),
+	}
+	return
+}
+
+func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
+	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
+	if err != nil {
+		return
+	}
+	res, err := cr.cachedCli.Do(req)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		err = utils.NewHTTPStatusErrorFromResponse(res)
+		return
+	}
+	cfg = new(OpenbmclapiAgentConfig)
+	if err = json.NewDecoder(res.Body).Decode(cfg); err != nil {
+		cfg = nil
+		return
+	}
+	return
 }

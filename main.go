@@ -445,7 +445,11 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		log.Info(Tr("info.filelist.fetching"))
 		fl, err := r.cluster.GetFileList(ctx, lastMod)
 		if err != nil {
-			log.Errorf(Tr("error.cannot.fetch.filelist"), err)
+			log.Errorf(Tr("error.filelist.fetch.failed"), err)
+			return
+		}
+		if len(fl) == 0 {
+			log.Infof("No file was updated since %s", time.UnixMilli(lastMod).Format(time.DateTime))
 			return
 		}
 		for _, f := range fl {

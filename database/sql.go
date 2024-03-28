@@ -483,7 +483,7 @@ func (db *SqlDB) setupSubscribeQuestionMark(ctx context.Context) (err error) {
 		" `endpoint` VARCHAR(255) NOT NULL," +
 		" `keys` VARCHAR(255) NOT NULL," +
 		" `scopes` INTEGER NOT NULL," +
-		" `report_at` CHAR(5) NOT NULL," +
+		" `report_at` CHAR(5) DEFAULT '00:00' NOT NULL," +
 		" `last_reported` TIMESTAMP DEFAULT NULL," +
 		" PRIMARY KEY (`user`,`client`)" +
 		")"
@@ -549,7 +549,7 @@ func (db *SqlDB) setupSubscribeDollarMark(ctx context.Context) (err error) {
 		" endpoint VARCHAR(255) NOT NULL," +
 		" keys VARCHAR(255) NOT NULL," +
 		" scopes INTEGER NOT NULL," +
-		" report_at CHAR(5) NOT NULL," +
+		" report_at CHAR(5) DEFAULT '00:00' NOT NULL," +
 		" last_reported TIMESTAMP DEFAULT NULL," +
 		` PRIMARY KEY ("user",client)` +
 		")"

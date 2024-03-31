@@ -46,7 +46,10 @@ const (
 )
 
 func getRequestTokenType(req *http.Request) string {
-	return req.Context().Value(tokenTypeKey).(string)
+	if t, ok := req.Context().Value(tokenTypeKey).(string); ok {
+		return t
+	}
+	return ""
 }
 
 func getLoggedUser(req *http.Request) string {

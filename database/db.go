@@ -306,14 +306,14 @@ type EmailSubscriptionRecord struct {
 }
 
 type WebhookRecord struct {
-	User     string               `json:"user"`
-	Id       uuid.UUID            `json:"id"`
-	Name     string               `json:"name"`
-	EndPoint string               `json:"endpoint"`
-	Auth     *string              `json:"auth,omitempty"`
-	AuthHash string               `json:"authHash,omitempty"`
-	Scopes   []NotificationScopes `json:"scopes"`
-	Enabled  bool                 `json:"enabled"`
+	User     string             `json:"user"`
+	Id       uuid.UUID          `json:"id"`
+	Name     string             `json:"name"`
+	EndPoint string             `json:"endpoint"`
+	Auth     *string            `json:"auth,omitempty"`
+	AuthHash string             `json:"authHash,omitempty"`
+	Scopes   NotificationScopes `json:"scopes"`
+	Enabled  bool               `json:"enabled"`
 }
 
 func (rec *WebhookRecord) CovertAuthHash() {

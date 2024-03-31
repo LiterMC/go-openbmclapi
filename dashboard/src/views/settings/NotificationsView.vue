@@ -347,7 +347,7 @@ onBeforeMount(() => {
 					>
 						<template #footer>
 							<MultiSelect
-								class="flex-auto width-full"
+								class="width-full"
 								style="max-width: 12rem"
 								:options="ALL_SUBSCRIBE_SCOPES"
 								v-model="newEmailItem.scopes"
@@ -488,7 +488,7 @@ onBeforeMount(() => {
 				<div v-if="webhookEditingItem._" class="p-text-secondary margin-1">
 					{{ tr('title.webhook.configure') }} "{{ webhookEditingItem._.name }}"
 				</div>
-				<div class="input-box">
+				<div class="input-box" style="margin-top: 0.3rem">
 					<div class="flex-row-center">
 						<label class="webhook-edit-label">{{ tr('title.webhook.name') }}</label>
 						<InputText

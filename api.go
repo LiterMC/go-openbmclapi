@@ -736,7 +736,7 @@ func (cr *Cluster) apiV0SubscribeEmailPOST(rw http.ResponseWriter, req *http.Req
 		})
 		return
 	}
-	rw.WriteHeader(http.StatusNoContent)
+	rw.WriteHeader(http.StatusCreated)
 }
 
 func (cr *Cluster) apiV0SubscribeEmailPATCH(rw http.ResponseWriter, req *http.Request, user string) {
@@ -861,7 +861,7 @@ func (cr *Cluster) apiV0WebhookPOST(rw http.ResponseWriter, req *http.Request, u
 		})
 		return
 	}
-	rw.WriteHeader(http.StatusNoContent)
+	rw.WriteHeader(http.StatusCreated)
 }
 
 func (cr *Cluster) apiV0WebhookPATCH(rw http.ResponseWriter, req *http.Request, user string) {

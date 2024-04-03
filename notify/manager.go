@@ -99,6 +99,7 @@ func (m *Manager) OnEnabled() {
 	res := make(chan error, 0)
 	for _, p := range m.plugins {
 		go func(p Plugin) {
+			defer log.RecoverPanic()
 			res <- p.OnEnabled(e)
 		}(p)
 	}
@@ -116,6 +117,7 @@ func (m *Manager) OnDisabled() {
 	res := make(chan error, 0)
 	for _, p := range m.plugins {
 		go func(p Plugin) {
+			defer log.RecoverPanic()
 			res <- p.OnDisabled(e)
 		}(p)
 	}
@@ -137,6 +139,7 @@ func (m *Manager) OnSyncBegin(count int, size int64) {
 	res := make(chan error, 0)
 	for _, p := range m.plugins {
 		go func(p Plugin) {
+			defer log.RecoverPanic()
 			res <- p.OnSyncBegin(e)
 		}(p)
 	}
@@ -154,6 +157,7 @@ func (m *Manager) OnSyncDone() {
 	res := make(chan error, 0)
 	for _, p := range m.plugins {
 		go func(p Plugin) {
+			defer log.RecoverPanic()
 			res <- p.OnSyncDone(e)
 		}(p)
 	}
@@ -176,6 +180,7 @@ func (m *Manager) OnUpdateAvaliable(release *update.GithubRelease) {
 	res := make(chan error, 0)
 	for _, p := range m.plugins {
 		go func(p Plugin) {
+			defer log.RecoverPanic()
 			res <- p.OnUpdateAvaliable(e)
 		}(p)
 	}
@@ -208,6 +213,7 @@ func (m *Manager) OnReportStatus(stats *Stats) {
 	res := make(chan error, 0)
 	for _, p := range m.plugins {
 		go func(p Plugin) {
+			defer log.RecoverPanic()
 			res <- p.OnReportStatus(e)
 		}(p)
 	}

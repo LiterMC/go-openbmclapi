@@ -52,7 +52,13 @@ var tmpl = func() *template.Template {
 				return "", fmt.Errorf("Except string or bytes, got %T", v)
 			}
 		},
-		"tojson": json.Marshal,
+		"tojson": func(v any) (string, error) {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return "", err
+			}
+			return (string)(buf), nil
+		},
 	})
 	template.Must(t.ParseFS(tmplFS, "**/*.gohtml"))
 	return t

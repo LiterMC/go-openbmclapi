@@ -526,6 +526,9 @@ func (db *SqlDB) setupSubscribeQuestionMark(ctx context.Context) (err error) {
 	if db.subscribeStmts.setUpdateScopesOnly, err = db.db.PrepareContext(ctx, setUpdateScopesOnlyCmd); err != nil {
 		return
 	}
+	if db.subscribeStmts.setUpdateLastReportOnly, err = db.db.PrepareContext(ctx, setUpdateLastReportOnlyCmd); err != nil {
+		return
+	}
 
 	const removeDeleteCmd = "DELETE FROM " + tableName +
 		" WHERE `user`=? AND `client`=?"

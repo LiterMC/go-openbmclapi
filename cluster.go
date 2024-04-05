@@ -525,16 +525,28 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	cr.waitEnable = cr.waitEnable[:0]
 	go cr.notifyManager.OnEnabled()
 
-	var keepaliveCtx context.Context
+	const maxFailCount = 3
+	var (
+		keepaliveCtx context.Context
+		failedCount  = 0
+	)
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
 	createInterval(keepaliveCtx, func() {
 		tctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
 		ok := cr.KeepAlive(tctx)
 		cancel()
 		if ok {
+			failedCount = 0
 			return
 		}
 		if keepaliveCtx.Err() == nil {
+			if tctx.Err() != nil {
+				failedCount++
+				log.Warnf("keep-alive failed (%d/%d)", failedCount, maxFailCount)
+				if failedCount < maxFailCount {
+					return
+				}
+			}
 			log.Info(Tr("info.cluster.reconnect.keepalive"))
 			cr.disable(ctx)
 			log.Info(Tr("info.cluster.reconnecting"))

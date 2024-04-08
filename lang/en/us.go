@@ -50,6 +50,7 @@ var areaUS = map[string]string{
 
 	"info.check.start":                "Start checking files for %s, heavy = %v",
 	"info.check.done":                 "File check finished for %s, missing %d files",
+	"error.check.failed":              "Failed to check %s: %v",
 	"hint.check.checking":             "> Checking ",
 	"warn.check.modified.size":        "Found modified file: size of %q is %d, expect %d",
 	"warn.check.modified.hash":        "Found modified file: hash of %q is %s, expect %s",

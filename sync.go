@@ -25,6 +25,7 @@ import (
 	"context"
 	"crypto"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -221,7 +222,7 @@ func (cr *Cluster) checkFileFor(
 	heavy bool,
 	missing *utils.SyncMap[string, *fileInfoWithTargets],
 	pg *mpb.Progress,
-) {
+) (err error) {
 	var missingCount atomic.Int32
 	addMissing := func(f FileInfo) {
 		missingCount.Add(1)
@@ -288,7 +289,7 @@ func (cr *Cluster) checkFileFor(
 	{
 		start := time.Now()
 		var checkedMp [256]bool
-		sto.WalkDir(func(hash string, size int64) error {
+		if err = sto.WalkDir(func(hash string, size int64) error {
 			if n := utils.HexTo256(hash); !checkedMp[n] {
 				checkedMp[n] = true
 				now := time.Now()
@@ -297,13 +298,15 @@ func (cr *Cluster) checkFileFor(
 			}
 			sizeMap[hash] = size
 			return nil
-		})
+		}); err != nil {
+			return
+		}
 	}
 
 	bar.SetCurrent(0)
 	bar.SetTotal((int64)(len(files)), false)
 	for _, f := range files {
-		if ctx.Err() != nil {
+		if err = ctx.Err(); err != nil {
 			return
 		}
 		start := time.Now()
@@ -326,7 +329,7 @@ func (cr *Cluster) checkFileFor(
 				} else {
 					_, buf, free := slots.Alloc(ctx)
 					if buf == nil {
-						return
+						return ctx.Err()
 					}
 					go func(f FileInfo, buf []byte, free func()) {
 						defer log.RecoverPanic(nil)
@@ -378,27 +381,41 @@ func (cr *Cluster) CheckFiles(
 	pg *mpb.Progress,
 ) (map[string]*fileInfoWithTargets, error) {
 	missingMap := utils.NewSyncMap[string, *fileInfoWithTargets]()
-	done := make(chan struct{}, 0)
+	done := make(chan bool, 0)
 
 	for _, s := range cr.storages {
 		go func(s storage.Storage) {
 			defer log.RecordPanic()
-			defer func() {
-				select {
-				case done <- struct{}{}:
-				case <-ctx.Done():
-				}
-			}()
-			cr.checkFileFor(ctx, s, files, heavyCheck, missingMap, pg)
+			err := cr.checkFileFor(ctx, s, files, heavyCheck, missingMap, pg)
+			if ctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				log.Errorf(Tr("error.check.failed"), s, err)
+			}
+			select {
+			case done <- err == nil:
+			case <-ctx.Done():
+			}
 		}(s)
 	}
+	goodCount := 0
 	for i := len(cr.storages); i > 0; i-- {
 		select {
-		case <-done:
+		case ok := <-done:
+			if ok {
+				goodCount++
+			}
 		case <-ctx.Done():
 			log.Warn(Tr("warn.sync.interrupted"))
 			return nil, ctx.Err()
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if goodCount == 0 {
+		return nil, errors.New("All storages are failed")
 	}
 	return missingMap.RawMap(), nil
 }

@@ -50,6 +50,7 @@ var areaCN = map[string]string{
 
 	"info.check.start":                "开始在 %s 检测文件. 强检查 = %v",
 	"info.check.done":                 "文件在 %s 检查完毕, 缺失 %d 个文件",
+	"error.check.failed":              "无法检查 %s: %v",
 	"hint.check.checking":             "> 检查中 ",
 	"warn.check.modified.size":        "找到修改过的文件: %q 的大小为 %d, 预期 %d",
 	"warn.check.modified.hash":        "找到修改过的文件: %q 的哈希值为 %s, 预期 %s",

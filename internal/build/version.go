@@ -23,7 +23,7 @@ import (
 	"fmt"
 )
 
-const ClusterVersion = "1.10.1"
+const ClusterVersion = "1.10.3"
 
 var BuildVersion string = "dev"
 

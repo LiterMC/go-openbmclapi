@@ -150,7 +150,7 @@ func (s *LocalStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, 
 		}
 	}
 
-	if !isGzip && rw.Header().Get("Range") != "" {
+	if !isGzip && req.Header.Get("Range") != "" {
 		fd, err := os.Open(path)
 		if err != nil {
 			return 0, err

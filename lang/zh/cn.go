@@ -39,7 +39,7 @@ var areaCN = map[string]string{
 	"error.cluster.stat.save.failed":      "Error when saving status: %v",
 	"error.cluster.keepalive.send.failed": "无法发送保活数据包: %v",
 	"error.cluster.keepalive.failed":      "保活失败: %v",
-	"info.cluster.keepalive.success":      "保活成功: hits=%d bytes=%s; %s",
+	"info.cluster.keepalive.success":      "保活成功: hits=%d bytes=%s; %v",
 
 	"warn.server.closing":          "关闭服务中 ...",
 	"warn.server.closed":           "服务器已关闭.",

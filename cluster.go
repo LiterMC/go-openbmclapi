@@ -612,8 +612,9 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 		log.Errorf(Tr("error.cluster.keepalive.failed"), ero)
 		return false
 	}
+	kicked := data[1] == false
 	log.Infof(Tr("info.cluster.keepalive.success"), hits, utils.BytesToUnit((float64)(hbts)), data[1])
-	return true
+	return !kicked
 }
 
 func (cr *Cluster) disconnected() bool {

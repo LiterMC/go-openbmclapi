@@ -101,7 +101,7 @@ var CurrentBuildTag = func() (v *ReleaseVersion) {
 	return
 }()
 
-func (v *ReleaseVersion) String() string {
+func (v ReleaseVersion) String() string {
 	return fmt.Sprintf("v%d.%d.%d-%d", v.Major, v.Minor, v.Patch, v.Build)
 }
 

@@ -31,6 +31,11 @@ Golang 版的 [OpenBmclAPI](https://github.com/bangbang93/openbmclapi)
 
 ## FAQ
 
+### 该项目目前为维护模式:
+
+**除非有重大错误，否则不会有commit  
+如果您想要新功能，或者修复一些小错误，请提交 Pull Request*
+
 Q: 如何运行 / 配置该程序?  
 A: 请查看 [`docs`](./docs) 文件夹下的文档
 

@@ -1,10 +1,7 @@
 
 name: Create tagged release
 
-on:
-  push:
-    tags:
-      - 'v*'
+on: push
 
 jobs:
   test:
@@ -12,10 +9,10 @@ jobs:
     steps:
       -
         name: Action Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       -
         name: Setup Golang
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
           cache-dependency-path: ./go.sum
@@ -28,13 +25,14 @@ jobs:
 
   create_release:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       # -
       #   name: Action Checkout
-      #   uses: actions/checkout@v3
+      #   uses: actions/checkout@v4
       -
         name: Output TAG
         id: tag
@@ -45,9 +43,7 @@ jobs:
       -
         name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
@@ -70,10 +66,10 @@ jobs:
     steps:
       -
         name: Action Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       -
         name: Setup Golang
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
           cache-dependency-path: ./go.sum
@@ -87,7 +83,7 @@ jobs:
         run: bash ./scripts/build.sh
       -
         name: Upload Release Assets
-        uses: zyxkad/upload-release-asset-dir@v1
+        uses: zyxkad/upload-release-asset-dir@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -101,10 +97,10 @@ jobs:
     steps:
       -
         name: Action Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       -
         name: Setup Golang
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version-file: ./go.mod
           cache-dependency-path: ./go.sum
@@ -123,7 +119,7 @@ jobs:
         run: go run ./scripts/build-windows.go
       -
         name: Upload Release Assets
-        uses: zyxkad/upload-release-asset-dir@v1
+        uses: zyxkad/upload-release-asset-dir@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -132,12 +128,13 @@ jobs:
 
   build-docker:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     needs:
       - test
     steps:
       -
         name: Action Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       -
         name: Get current tag
         run: echo "TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV

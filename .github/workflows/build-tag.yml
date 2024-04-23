@@ -1,10 +1,7 @@
 
 name: Create tagged release
 
-on:
-  push:
-    tags:
-      - 'v*'
+on: push
 
 jobs:
   test:
@@ -28,6 +25,7 @@ jobs:
 
   create_release:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       tag: ${{ steps.tag.outputs.tag }}
@@ -85,10 +83,12 @@ jobs:
         run: bash ./scripts/build.sh
       -
         name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
+        uses: zyxkad/upload-release-asset-dir@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          files: output/*
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_dir: ./output
 
   build-windows:
     runs-on: windows-2022
@@ -119,13 +119,16 @@ jobs:
         run: go run ./scripts/build-windows.go
       -
         name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
+        uses: zyxkad/upload-release-asset-dir@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          files: output/*
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_dir: ./output
 
   build-docker:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
     needs:
       - test
     steps:

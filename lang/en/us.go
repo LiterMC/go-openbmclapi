@@ -61,6 +61,7 @@ var areaUS = map[string]string{
 	"info.sync.prepare":             "Preparing to sync files, length of filelist is %d ...",
 	"hint.sync.start":               "Starting sync files, count: %d, bytes: %s",
 	"hint.sync.done":                "All files were synchronized, use time: %v, %s/s",
+	"error.sync.failed":             "File sync failed: %v",
 	"info.sync.none":                "All files were synchronized",
 	"warn.sync.interrupted":         "File sync interrupted",
 	"info.sync.config":              "Sync config: %#v",

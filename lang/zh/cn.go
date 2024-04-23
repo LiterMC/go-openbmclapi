@@ -61,6 +61,7 @@ var areaCN = map[string]string{
 	"info.sync.prepare":             "准备同步中, 文件列表长度为 %d ...",
 	"hint.sync.start":               "开始同步, 总计: %d, 字节: %s",
 	"hint.sync.done":                "文件同步完成, 用时: %v, %s/s",
+	"error.sync.failed":             "文件同步失败: %v",
 	"info.sync.none":                "所有文件已同步",
 	"warn.sync.interrupted":         "同步已中断",
 	"info.sync.config":              "同步配置: %#v",

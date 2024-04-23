@@ -485,8 +485,6 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	syncCfg := ccfg.Sync
 	log.Infof(Tr("info.sync.config"), syncCfg)
 
-	done := make(chan struct{}, 0)
-
 	var stats syncStats
 	stats.pg = pg
 	stats.noOpen = syncCfg.Source == "center"
@@ -520,6 +518,10 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	log.Infof(Tr("hint.sync.start"), totalFiles, utils.BytesToUnit((float64)(stats.totalSize)))
 	start := time.Now()
 
+	done := make(chan []storage.Storage, 1)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	for _, f := range missing {
 		log.Debugf("File %s is for %v", f.Hash, f.targets)
 		pathRes, err := cr.fetchFile(ctx, &stats, f.FileInfo)
@@ -529,49 +531,64 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		}
 		go func(f *fileInfoWithTargets, pathRes <-chan string) {
 			defer log.RecordPanic()
-			defer func() {
-				select {
-				case done <- struct{}{}:
-				case <-ctx.Done():
-				}
-			}()
 			select {
 			case path := <-pathRes:
 				cr.syncProg.Add(1)
-				if path != "" {
-					defer os.Remove(path)
-					// acquire slot here
-					slotId, buf, free := stats.slots.Alloc(ctx)
-					if buf == nil {
-						return
+				if path == "" {
+					return
+				}
+				defer os.Remove(path)
+				// acquire slot here
+				slotId, buf, free := stats.slots.Alloc(ctx)
+				if buf == nil {
+					return
+				}
+				defer free()
+				_ = slotId
+				var srcFd *os.File
+				if srcFd, err = os.Open(path); err != nil {
+					return
+				}
+				defer srcFd.Close()
+				var failed []storage.Storage
+				for _, target := range f.targets {
+					if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
+						log.Errorf("Cannot seek file %q to start: %v", path, err)
+						continue
 					}
-					defer free()
-					_ = slotId
-					var srcFd *os.File
-					if srcFd, err = os.Open(path); err != nil {
-						return
+					if err = target.Create(f.Hash, srcFd); err != nil {
+						failed = append(failed, target)
+						log.Errorf(Tr("error.sync.create.failed"), target.String(), f.Hash, err)
+						continue
 					}
-					defer srcFd.Close()
-					for _, target := range f.targets {
-						if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-							log.Errorf("Cannot seek file %q to start: %v", path, err)
-							continue
-						}
-						err := target.Create(f.Hash, srcFd)
-						if err != nil {
-							log.Errorf(Tr("error.sync.create.failed"), target.String(), f.Hash, err)
-							continue
-						}
-					}
+				}
+				select {
+				case done <- failed:
+				case <-ctx.Done():
 				}
 			case <-ctx.Done():
 				return
 			}
 		}(f, pathRes)
 	}
+
+	stLen := len(cr.storages)
+	broken := make(map[storage.Storage]bool, stLen)
+
 	for i := len(missing); i > 0; i-- {
 		select {
-		case <-done:
+		case failed := <-done:
+			for _, s := range failed {
+				if !broken[s] {
+					broken[s] = true
+					if len(broken) >= stLen {
+						cancel()
+						err := errors.New("All storages are broken")
+						log.Errorf(Tr("error.sync.failed"), err)
+						return err
+					}
+				}
+			}
 		case <-ctx.Done():
 			log.Warn(Tr("warn.sync.interrupted"))
 			return ctx.Err()

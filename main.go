@@ -419,8 +419,7 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 	}
 
 	if !config.Advanced.SkipFirstSync {
-		r.cluster.SyncFiles(ctx, fl, false)
-		if ctx.Err() != nil {
+		if !r.cluster.SyncFiles(ctx, fl, false) {
 			return
 		}
 		go r.UpdateFileRecords(fl, nil)
@@ -460,10 +459,11 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 
 		checkCount = (checkCount + 1) % heavyCheckInterval
 		oldfileset := r.cluster.CloneFileset()
-		r.cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0)
-		go r.UpdateFileRecords(fl, oldfileset)
-		if !config.Advanced.NoGC && !config.OnlyGcWhenStart {
-			go r.cluster.Gc()
+		if r.cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0) {
+			go r.UpdateFileRecords(fl, oldfileset)
+			if !config.Advanced.NoGC && !config.OnlyGcWhenStart {
+				go r.cluster.Gc()
+			}
 		}
 	}, (time.Duration)(config.SyncInterval)*time.Minute)
 }

@@ -45,6 +45,7 @@ func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
 	if !expired {
 		token = cr.authToken.Token
 	}
+	almostExpired := !expired && cr.authToken.ExpireAt.Add(-10 * time.Minute).Before(time.Now())
 	cr.authTokenMux.RUnlock()
 	if expired {
 		cr.authTokenMux.Lock()
@@ -55,6 +56,21 @@ func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
 			}
 		}
 		token = cr.authToken.Token
+	} else if almostExpired {
+		go func() {
+			tctx, cancel := context.WithTimeout(ctx, time.Second * 30)
+			defer cancel()
+			cr.authTokenMux.Lock()
+			defer cr.authTokenMux.Unlock()
+			if cr.authToken != nil && cr.authToken.ExpireAt.Add(-10 * time.Minute).Before(time.Now()) {
+				tk, err := cr.refreshToken(tctx, cr.authToken.Token)
+				if err != nil {
+					log.Errorf("Cannot refresh token: %v", err)
+					return
+				}
+				cr.authToken = tk
+			}
+		}()
 	}
 	return
 }
@@ -128,6 +144,47 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 	err = json.NewDecoder(res.Body).Decode(&res2)
 	res.Body.Close()
 	if err != nil {
+		return
+	}
+
+	return &ClusterToken{
+		Token:    res2.Token,
+		ExpireAt: time.Now().Add((time.Duration)(res2.TTL)*time.Millisecond - 10*time.Minute),
+	}, nil
+}
+
+func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *ClusterToken, err error) {
+	payload, err := json.Marshal(struct {
+		ClusterId string `json:"clusterId"`
+		Token string `json:"token"`
+	}{
+		ClusterId: cr.clusterId,
+		Token: oldToken,
+	})
+	if err != nil {
+		return
+	}
+
+	req, err := cr.makeReqWithBody(ctx, http.MethodPost, "/openbmclapi-agent/token", nil, bytes.NewReader(payload))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := cr.client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		err = utils.NewHTTPStatusErrorFromResponse(resp)
+		return
+	}
+	var res struct {
+		Token string `json:"token"`
+		TTL   int64  `json:"ttl"`
+	}
+	if err = json.NewDecoder(resp.Body).Decode(&res); err != nil {
 		return
 	}
 

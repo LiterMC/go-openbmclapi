@@ -149,7 +149,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 
 	return &ClusterToken{
 		Token:    res2.Token,
-		ExpireAt: time.Now().Add((time.Duration)(res2.TTL)*time.Millisecond - 10*time.Minute),
+		ExpireAt: time.Now().Add((time.Duration)(res2.TTL)*time.Millisecond - 10*time.Second),
 	}, nil
 }
 
@@ -189,7 +189,7 @@ func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *Cl
 	}
 
 	return &ClusterToken{
-		Token:    res2.Token,
-		ExpireAt: time.Now().Add((time.Duration)(res2.TTL)*time.Millisecond - 10*time.Minute),
+		Token:    res.Token,
+		ExpireAt: time.Now().Add((time.Duration)(res.TTL)*time.Millisecond - 10*time.Second),
 	}, nil
 }

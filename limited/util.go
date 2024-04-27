@@ -22,6 +22,7 @@ package limited
 import (
 	"context"
 	"io"
+	"sync"
 	"sync/atomic"
 )
 
@@ -58,9 +59,9 @@ func (s *BufSlots) Cap() int {
 func (s *BufSlots) Alloc(ctx context.Context) (slotId int, buf []byte, free func()) {
 	select {
 	case slot := <-s.c:
-		return slot.id, slot.buf, func() {
+		return slot.id, slot.buf, sync.OnceFunc(func() {
 			s.c <- slot
-		}
+		})
 	case <-ctx.Done():
 		return 0, nil, nil
 	}

@@ -350,6 +350,7 @@ func (cr *Cluster) checkFileFor(
 								miss = false
 							}
 						}
+						free()
 						if miss {
 							addMissing(f)
 						}
@@ -562,6 +563,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 						continue
 					}
 				}
+				free()
 				select {
 				case done <- failed:
 				case <-ctx.Done():

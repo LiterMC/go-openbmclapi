@@ -40,7 +40,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
-var errNotWorking = errors.New("storage is down")
+var ErrNotWorking = errors.New("storage is down")
 
 type MountStorageOption struct {
 	Path           string `yaml:"path"`
@@ -215,7 +215,7 @@ func (s *MountStorage) preServe(ctx context.Context) bool {
 
 func (s *MountStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
 	if !s.preServe(req.Context()) {
-		return 0, errNotWorking
+		return 0, ErrNotWorking
 	}
 	return s.serveDownload(rw, req, hash, size)
 }

@@ -541,6 +541,10 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		} else {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
+		if err == storage.ErrNotWorking {
+			log.Errorf("All storages are down, exit.")
+			osExit(CodeClientOrEnvionmentError)
+		}
 		return
 	}
 	log.Debug("[handler]: download served successed")

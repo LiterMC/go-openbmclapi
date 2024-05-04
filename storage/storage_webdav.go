@@ -357,7 +357,7 @@ func (s *WebDavStorage) preServe(ctx context.Context) bool {
 
 func (s *WebDavStorage) ServeDownload(rw http.ResponseWriter, req *http.Request, hash string, size int64) (int64, error) {
 	if !s.preServe(req.Context()) {
-		return 0, errNotWorking
+		return 0, ErrNotWorking
 	}
 	return s.serveDownload(rw, req, hash, size)
 }

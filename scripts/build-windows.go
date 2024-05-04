@@ -93,6 +93,9 @@ func main() {
 				fmt.Println("Error when building:", err)
 				os.Exit(1)
 			}
+			if true {
+				continue // do not build msi until get better understanding on it
+			}
 		}
 
 		if err := signProgram(outputName, ""); err != nil {

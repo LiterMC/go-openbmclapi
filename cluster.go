@@ -533,10 +533,15 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
 	createInterval(keepaliveCtx, func() {
 		tctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
-		ok := cr.KeepAlive(tctx)
+		status := cr.KeepAlive(tctx)
 		cancel()
-		if ok {
+		if status == 0 {
 			failedCount = 0
+			return
+		}
+		if status == -1 {
+			log.Errorf("Kicked by remote server!!!")
+			osExit(CodeEnvironmentError)
 			return
 		}
 		if keepaliveCtx.Err() == nil {
@@ -570,7 +575,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 }
 
 // KeepAlive will fresh hits & hit bytes data and send the keep-alive packet
-func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
+func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
 	hits, hbts := cr.hits.Swap(0), cr.hbts.Swap(0)
 	hits2, hbts2 := cr.statHits.Swap(0), cr.statHbts.Swap(0)
 	cr.stats.AddHits(hits+hits2, hbts+hbts2)
@@ -586,12 +591,12 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 	}
 	if err != nil {
 		log.Errorf(Tr("error.cluster.keepalive.send.failed"), err)
-		return false
+		return 1
 	}
 	var data []any
 	select {
 	case <-ctx.Done():
-		return false
+		return 1
 	case data = <-resCh:
 	}
 	log.Debugf("Keep-alive response: %v", data)
@@ -606,15 +611,17 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (ok bool) {
 					}
 				}
 				log.Errorf(Tr("error.cluster.keepalive.failed"), msg)
-				return false
+				return 1
 			}
 		}
 		log.Errorf(Tr("error.cluster.keepalive.failed"), ero)
-		return false
+		return 1
 	}
-	kicked := data[1] == false
 	log.Infof(Tr("info.cluster.keepalive.success"), hits, utils.BytesToUnit((float64)(hbts)), data[1])
-	return !kicked
+	if data[1] == false {
+		return -1
+	}
+	return 0
 }
 
 func (cr *Cluster) disconnected() bool {

@@ -523,6 +523,22 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	aliveStorages := len(cr.storages)
+	for _, s := range cr.storages {
+		tctx, cancel := context.WithTimeout(ctx, time.Second * 10)
+		err := s.CheckUpload(tctx)
+		cancel()
+		if err != nil {
+			aliveStorages--
+			log.Errorf("Storage %s does not work: %v", s.String(), err)
+		}
+	}
+	if aliveStorages == 0 {
+		err := errors.New("All storages are broken")
+		log.Errorf(Tr("error.sync.failed"), err)
+		return err
+	}
+
 	for _, f := range missing {
 		log.Debugf("File %s is for %v", f.Hash, f.targets)
 		pathRes, err := cr.fetchFile(ctx, &stats, f.FileInfo)
@@ -583,6 +599,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 			for _, s := range failed {
 				if !broken[s] {
 					broken[s] = true
+					log.Debugf("Broken storage %d / %d", len(broken), stLen)
 					if len(broken) >= stLen {
 						cancel()
 						err := errors.New("All storages are broken")

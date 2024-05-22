@@ -229,3 +229,14 @@ func (s *LocalStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 	}
 	return nil
 }
+
+func (s *LocalStorage) CheckUpload(ctx context.Context) (err error) {
+	const fileName = ".check"
+
+	data := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	if err = os.WriteFile(filepath.Join(s.opt.CachePath, fileName), ([]byte)(data), 0600); err != nil {
+		return
+	}
+	os.Remove(fileName)
+	return nil
+}

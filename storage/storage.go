@@ -42,6 +42,7 @@ type Storage interface {
 	SetOptions(any)
 	// Init will be called before start to use a storage
 	Init(context.Context) error
+	CheckUpload(context.Context) error
 
 	Size(hash string) (int64, error)
 	Open(hash string) (io.ReadCloser, error)

@@ -353,3 +353,8 @@ func (s *MountStorage) checkAlive(ctx context.Context, size int) (supportRange b
 	log.Infof("Check finished for %q, used %v, %s/s; supportRange=%v", target, used, utils.BytesToUnit(rate), supportRange)
 	return
 }
+
+func (s *MountStorage) CheckUpload(ctx context.Context) (err error) {
+	// TODO: Check upload
+	return nil
+}

@@ -39,6 +39,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/notify"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
@@ -144,6 +145,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 
 	mux.HandleFunc("/ping", cr.apiV0Ping)
 	mux.HandleFunc("/status", cr.apiV0Status)
+	mux.HandleFunc("/stat", cr.apiV0Stat)
 
 	mux.HandleFunc("/login", cr.apiV0Login)
 	mux.Handle("/requestToken", cr.apiAuthHandleFunc(cr.apiV0RequestToken))
@@ -166,6 +168,7 @@ func (cr *Cluster) apiV0Ping(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
+	limited.SetSkipRateLimit(req)
 	authed := getRequestTokenType(req) == tokenTypeAuth
 	writeJson(rw, http.StatusOK, Map{
 		"version": build.BuildVersion,
@@ -178,6 +181,7 @@ func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
+	limited.SetSkipRateLimit(req)
 	type syncData struct {
 		Prog  int64 `json:"prog"`
 		Total int64 `json:"total"`
@@ -202,6 +206,24 @@ func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 	writeJson(rw, http.StatusOK, &status)
+}
+
+func (cr *Cluster) apiV0Stat(rw http.ResponseWriter, req *http.Request) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+		return
+	}
+	limited.SetSkipRateLimit(req)
+	query := req.URL.Query()
+	name := query.Get("name")
+	if name == "" {
+		writeJson(rw, http.StatusOK, &cr.stats)
+		return
+	}
+	data, err := cr.stats.MarshalSubStat(name)
+	if err != nil {
+		http.Error(rw, "Error when encoding response: "+err.Error(), http.StatusInternalServerError)
+	}
+	writeJson(rw, http.StatusOK, (json.RawMessage)(data))
 }
 
 func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
@@ -311,6 +333,7 @@ func (cr *Cluster) apiV0Logout(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodPost) {
 		return
 	}
+	limited.SetSkipRateLimit(req)
 	tid := req.Context().Value(tokenIdKey).(string)
 	cr.database.RemoveJTI(tid)
 	rw.WriteHeader(http.StatusNoContent)

@@ -77,8 +77,8 @@ type Cluster struct {
 	hijackProxy        *HjProxy
 
 	stats          notify.Stats
-	hits, statHits atomic.Int32
-	hbts, statHbts atomic.Int64
+	lastHits, statOnlyHits atomic.Int32
+	lastHbts, statOnlyHbts atomic.Int64
 	issync         atomic.Bool
 	syncProg       atomic.Int64
 	syncTotal      atomic.Int64
@@ -576,13 +576,13 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 // KeepAlive will fresh hits & hit bytes data and send the keep-alive packet
 func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
-	hits, hbts := cr.hits.Swap(0), cr.hbts.Swap(0)
-	hits2, hbts2 := cr.statHits.Swap(0), cr.statHbts.Swap(0)
-	cr.stats.AddHits(hits+hits2, hbts+hbts2)
+	hits, hbts := cr.stats.GetTmpHits()
+	lhits, lhbts := cr.lastHits.Load(), cr.lastHbts.Load()
+	hits2, hbts2 := cr.statOnlyHits.Load(), cr.statOnlyHbts.Load()
 	resCh, err := cr.socket.EmitWithAck("keep-alive", Map{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		"hits":  hits,
-		"bytes": hbts,
+		"hits":  hits - lhits - hits2,
+		"bytes": hbts - lhbts - hbts2,
 	})
 	go cr.notifyManager.OnReportStatus(&cr.stats)
 
@@ -618,6 +618,10 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
 		return 1
 	}
 	log.Infof(Tr("info.cluster.keepalive.success"), hits, utils.BytesToUnit((float64)(hbts)), data[1])
+	cr.lastHits.Store(hits)
+	cr.lastHbts.Store(hbts)
+	cr.statOnlyHits.Add(-hits2)
+	cr.statOnlyHbts.Add(-hbts2)
 	if data[1] == false {
 		return -1
 	}

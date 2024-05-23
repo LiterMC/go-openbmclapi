@@ -213,9 +213,6 @@ type Config struct {
 	Storages     []storage.StorageOption        `yaml:"storages"`
 	WebdavUsers  map[string]*storage.WebDavUser `yaml:"webdav-users"`
 	Advanced     AdvancedConfig                 `yaml:"advanced"`
-
-	IamTeaPot      bool     `yaml:"i-am-a-tea-pot"`
-	TeapotMessages []string `yaml:"teapot-messages"`
 }
 
 func (cfg *Config) applyWebManifest(manifest map[string]any) {
@@ -330,14 +327,6 @@ var defaultConfig = Config{
 		SkipFirstSync:      false,
 		NoFastEnable:       false,
 		WaitBeforeEnable:   0,
-	},
-
-	IamTeaPot: false,
-	TeapotMessages: []string{
-		"This is OpemBnclApi golang edition",
-		"Your internet is shutdown",
-		"Virus detected, removing your game data ...",
-		":)",
 	},
 }
 

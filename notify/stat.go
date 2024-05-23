@@ -22,10 +22,12 @@ package notify
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -217,8 +219,14 @@ func (d *StatData) update(newData *statInstData) {
 type Stats struct {
 	sync.RWMutex
 	StatData
+
+	subStat map[string]*StatData
+
+	hits atomic.Int32
+	bts atomic.Int64
 }
 
+const statsDirName = "stats"
 const statsFileName = "stat.json"
 
 func (s *Stats) Clone() *StatData {
@@ -234,12 +242,16 @@ func (s *Stats) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&s.StatData)
 }
 
-func (s *Stats) Load(dir string) (err error) {
-	s.Lock()
-	defer s.Unlock()
+func (s *Stats) MarshalSubStat(name string) ([]byte, error) {
+	s.RLock()
+	defer s.RUnlock()
 
-	if err = parseFileOrOld(filepath.Join(dir, statsFileName), func(buf []byte) error {
-		return json.Unmarshal(buf, &s.StatData)
+	return json.Marshal(s.subStat[name])
+}
+
+func (s *StatData) load(name string) (err error) {
+	if err = parseFileOrOld(name, func(buf []byte) error {
+		return json.Unmarshal(buf, s)
 	}); err != nil {
 		return
 	}
@@ -253,30 +265,81 @@ func (s *Stats) Load(dir string) (err error) {
 	return
 }
 
+func (s *Stats) Load(dir string) (err error) {
+	s.Lock()
+	defer s.Unlock()
+
+	if err = s.StatData.load(filepath.Join(dir, statsFileName)); err != nil {
+		return
+	}
+
+	if entries, err := os.ReadDir(filepath.Join(dir, statsDirName)); err == nil {
+		for _, entry := range entries {
+			if name, ok := strings.CutSuffix(entry.Name(), ".json"); ok {
+				data := new(StatData)
+				if err := data.load(filepath.Join(dir, statsFileName)); err != nil {
+					return err
+				}
+				s.subStat[name] = data
+			}
+		}
+	}
+	return
+}
+
 // Save
 func (s *Stats) Save(dir string) (err error) {
 	s.RLock()
 	defer s.RUnlock()
 
-	buf, err := json.Marshal(&s.StatData)
-	if err != nil {
+	var buf []byte
+	if buf, err = json.Marshal(&s.StatData); err != nil {
+		return
+	}
+	if err = writeFileWithOld(filepath.Join(dir, statsFileName), buf, 0644); err != nil {
 		return
 	}
 
-	if err = writeFileWithOld(filepath.Join(dir, statsFileName), buf, 0644); err != nil {
-		return
+	if err := os.Mkdir(filepath.Join(dir, statsDirName), 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	for name, data := range s.subStat {
+		if buf, err = json.Marshal(data); err != nil {
+			return
+		}
+		if err = writeFileWithOld(filepath.Join(dir, statsDirName, name + ".json"), buf, 0644); err != nil {
+			return
+		}
 	}
 	return
 }
 
-func (s *Stats) AddHits(hits int32, bytes int64) {
+func (s *Stats) GetTmpHits() (hits int32, bts int64) {
+	return s.hits.Load(), s.bts.Load()
+}
+
+func (s *Stats) AddHits(hits int32, bytes int64, name string) {
+	s.hits.Add(hits)
+	s.bts.Add(bytes)
+
 	s.Lock()
 	defer s.Unlock()
 
-	s.update(&statInstData{
+	data := &statInstData{
 		Hits:  hits,
 		Bytes: bytes,
-	})
+	}
+	s.update(data)
+	if name != "" {
+		ss := s.subStat[name]
+		if ss == nil {
+			ss = new(StatData)
+			ss.Years = make(map[string]statInstData, 2)
+			ss.Accesses = make(map[string]int, 5)
+			s.subStat[name] = ss
+		}
+		ss.update(data)
+	}
 }
 
 func parseFileOrOld(path string, parser func(buf []byte) error) error {

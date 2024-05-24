@@ -162,8 +162,8 @@ func (db *SqlDB) setupJTI(ctx context.Context) (err error) {
 	go func(ticker *time.Ticker, cleanStmt *sql.Stmt) {
 		defer cleanStmt.Close()
 		for range ticker.C {
-			ctx, cancel := context.WithTimeout(ctx, time.Second*15)
-			_, err := cleanStmt.ExecContext(ctx)
+			tctx, cancel := context.WithTimeout(ctx, time.Second*15)
+			_, err := cleanStmt.ExecContext(tctx)
 			cancel()
 			if err != nil {
 				log.Errorf("Error when cleaning expired tokens: %v", err)

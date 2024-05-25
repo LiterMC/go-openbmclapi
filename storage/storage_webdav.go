@@ -214,6 +214,10 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 }
 
 func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
+	return s.putFileWithClient(s.httpCli, path, r)
+}
+
+func (s *WebDavStorage) putFileWithClient(cli *http.Client, path string, r io.ReadSeeker) error {
 	size, err := utils.GetReaderRemainSize(r)
 	if err != nil {
 		return err
@@ -232,7 +236,7 @@ func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
 	req.Header.Set("User-Agent", build.ClusterUserAgentFull)
 	req.ContentLength = size
 
-	res, err := s.httpCli.Do(req)
+	res, err := cli.Do(req)
 	if err != nil {
 		return err
 	}
@@ -570,7 +574,7 @@ func (s *WebDavStorage) checkAlive(ctx context.Context, size int) (err error) {
 	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
 	req.Header.Set("User-Agent", build.ClusterUserAgentFull)
 
-	resp, err := s.httpCli.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -600,7 +604,7 @@ func (s *WebDavStorage) CheckUpload(ctx context.Context) (err error) {
 	log.Infof("Checking upload at %s ...", s.String())
 
 	data := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	if err = s.putFile(fileName, strings.NewReader(data)); err != nil {
+	if err = s.putFileWithClient(http.DefaultClient, fileName, strings.NewReader(data)); err != nil {
 		return err
 	}
 
@@ -615,7 +619,7 @@ func (s *WebDavStorage) CheckUpload(ctx context.Context) (err error) {
 	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
 	req.Header.Set("User-Agent", build.ClusterUserAgentFull)
 
-	resp, err := s.httpCli.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}

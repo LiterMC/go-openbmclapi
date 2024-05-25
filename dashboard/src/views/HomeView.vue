@@ -1,23 +1,25 @@
 <script setup lang="ts">
 import { onMounted, ref, computed, watch, inject, type Ref } from 'vue'
+import { computedAsync } from '@vueuse/core'
 import { RouterLink } from 'vue-router'
 import { useRequest } from 'vue-request'
 import Button from 'primevue/button'
-import Chart from 'primevue/chart'
+import InputSwitch from 'primevue/inputswitch'
+import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import Skeleton from 'primevue/skeleton'
-import Message from 'primevue/message'
-import InputSwitch from 'primevue/inputswitch'
+import TabMenu from 'primevue/tabmenu'
 import { useToast } from 'primevue/usetoast'
-import { formatNumber, formatBytes, formatTime } from '@/utils'
-import HitsChart from '@/components/HitsChart.vue'
+import { formatTime } from '@/utils'
+import HitsCharts from '@/components/HitsCharts.vue'
 import UAChart from '@/components/UAChart.vue'
 import LogBlock from '@/components/LogBlock.vue'
 import StatusButton from '@/components/StatusButton.vue'
 import {
 	getStatus,
+	getStat,
 	getPprofURL,
-	type StatInstData,
+	EMPTY_STAT,
 	type StatusRes,
 	type PprofLookups,
 } from '@/api/v0'
@@ -61,70 +63,36 @@ const status = computed(() =>
 	error.value ? 'error' : data.value && data.value.enabled ? 'enabled' : 'disabled',
 )
 
-const stat = computed(() => {
-	if (!data.value) {
-		return
+const OVERALL_ID = ':Overall:'
+const avaliableStorages = computed(() => {
+	const s = [{ label: OVERALL_ID }]
+	if (data.value) {
+		for (const storage of data.value.storages) {
+			s.push({ label: storage })
+		}
 	}
-	const stat = data.value.stats
-	stat.days = cutDays(stat.days, stat.date.year, stat.date.month)
-	stat.prev.days = cutDays(stat.prev.days, stat.date.year, stat.date.month - 1)
-
-	stat.days[stat.date.day] = stat.hours.reduce((sum, v) => ({
-		hits: sum.hits + v.hits,
-		bytes: sum.bytes + v.bytes,
-	}))
-	stat.months[stat.date.month] = stat.days.reduce((sum, v) => ({
-		hits: sum.hits + v.hits,
-		bytes: sum.bytes + v.bytes,
-	}))
-	stat.years[stat.date.year.toString()] = stat.months.reduce((sum, v) => ({
-		hits: sum.hits + v.hits,
-		bytes: sum.bytes + v.bytes,
-	}))
-	return stat
+	return s
 })
+const activeStorageIndex = ref(0)
 
-function formatHour(hour: number): string {
-	const offset = -new Date().getTimezoneOffset()
-	let min = hour * 60 + offset
-	hour = Math.floor(min / 60) % 24
-	min %= 60
-	if (hour < 0) {
-		hour += 24
+const activeStats = computedAsync(async () => {
+	if (!data.value) {
+		return null
 	}
-	if (min < 0) {
-		min += 60
+	if (!activeStorageIndex.value) {
+		return data.value.stats
 	}
-	return `${hour}:${min.toString().padStart(2, '0')}`
-}
-
-function cutDays(days: StatInstData[], year: number, month: number): StatInstData[] {
-	const dayCount = new Date(year, month, 0).getDate()
-	days.length = dayCount
-	return days
-}
-
-function formatDay(day: number): string {
-	if (!stat.value) {
-		return ''
+	const storageId = data.value.storages[activeStorageIndex.value - 1]
+	if (!storageId) {
+		activeStorageIndex.value = 0
+		return null
 	}
-	const date = new Date(Date.UTC(stat.value.date.year, stat.value.date.month, day))
-	return `${date.getMonth() + 1}-${date.getDate()}`
-}
-
-function formatMonth(month: number): string {
-	if (!stat.value) {
-		return ''
+	const res = await getStat(storageId, token.value)
+	if (res === null) {
+		return EMPTY_STAT
 	}
-	const date = new Date(Date.UTC(stat.value.date.year, month + 1, 1))
-	return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`
-}
-
-function getDaysInMonth(): number {
-	const date = new Date()
-	const days = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
-	return date.getDate() / days
-}
+	return res
+})
 
 async function requestPprof(lookup: PprofLookups, view?: boolean): Promise<void> {
 	if (!token.value || requestingPprof.value) {
@@ -260,54 +228,20 @@ onMounted(() => {
 					</div>
 				</template>
 			</div>
-			<div class="hits-chart-box">
-				<div class="chart-card">
-					<h3>{{ tr('title.day') }}</h3>
-					<HitsChart
-						v-if="stat"
-						class="hits-chart"
-						:max="25"
-						:offset="23"
-						:data="stat.hours"
-						:oldData="stat.prev.hours"
-						:current="stat.date.hour + new Date().getMinutes() / 60"
-						:formatXLabel="formatHour"
-					/>
-					<Skeleton v-else width="" height="" class="hits-chart" />
-				</div>
-				<div class="chart-card">
-					<h3>{{ tr('title.month') }}</h3>
-					<HitsChart
-						v-if="stat"
-						class="hits-chart"
-						:max="31"
-						:offset="29"
-						:data="stat.days"
-						:oldData="stat.prev.days"
-						:current="stat.date.day + new Date().getUTCHours() / 24"
-						:formatXLabel="formatDay"
-					/>
-					<Skeleton v-else width="" height="" class="hits-chart" />
-				</div>
-				<div class="chart-card">
-					<h3>{{ tr('title.year') }}</h3>
-					<HitsChart
-						v-if="stat"
-						class="hits-chart"
-						:max="13"
-						:offset="11"
-						:data="stat.months"
-						:oldData="stat.prev.months"
-						:current="stat.date.month + getDaysInMonth()"
-						:formatXLabel="formatMonth"
-					/>
-					<Skeleton v-else width="" height="" class="hits-chart" />
-				</div>
-				<!-- TODO: show yearly chart -->
+			<div class="charts-tab">
+				<TabMenu
+					style="
+						border-top-left-radius: var(--border-radius);
+						border-top-right-radius: var(--border-radius);
+					"
+					:model="avaliableStorages"
+					v-model:activeIndex="activeStorageIndex"
+				/>
+				<HitsCharts class="charts-tab-charts" :stats="activeStats" />
 			</div>
 			<div class="info-chart-box">
 				<h3>{{ tr('title.user_agents') }}</h3>
-				<UAChart v-if="stat" class="ua-chart" :max="5" :data="stat.accesses" />
+				<UAChart v-if="data && data.stats" class="ua-chart" :max="5" :data="data.stats.accesses" />
 				<Skeleton v-else width="" height="" class="ua-chart" />
 			</div>
 		</div>
@@ -382,10 +316,6 @@ onMounted(() => {
 	font-weight: 200;
 }
 
-.hits-chart-box {
-	grid-area: b;
-}
-
 .info-chart-box {
 	grid-area: c;
 }
@@ -400,15 +330,14 @@ onMounted(() => {
 	font-style: italic;
 }
 
-.chart-card {
-	margin-bottom: 1rem;
+.charts-tab {
+	border: 1px solid var(--surface-border);
+	border-radius: var(--border-radius);
 }
 
-.hits-chart {
-	max-width: 100%;
-	width: 45rem;
-	height: 13rem;
-	user-select: none;
+.charts-tab-charts {
+	margin: 0.5rem;
+	margin-top: 0;
 }
 
 .ua-chart {
@@ -453,7 +382,12 @@ onMounted(() => {
 		height: unset;
 	}
 
-	.hits-chart,
+	.charts-tab {
+		position: relative;
+		left: -7%;
+		width: 114%;
+	}
+
 	.ua-chart {
 		width: 100%;
 	}

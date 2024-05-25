@@ -525,7 +525,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 
 	aliveStorages := len(cr.storages)
 	for _, s := range cr.storages {
-		tctx, cancel := context.WithTimeout(ctx, time.Second * 10)
+		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
 		err := s.CheckUpload(tctx)
 		cancel()
 		if err != nil {

@@ -192,9 +192,7 @@ async function openRemoveWebhookDialog(index: number): Promise<void> {
 }
 
 function scopeFlagsToArray(o: ScopeFlags): SubscribeScope[] {
-	return (Object.keys(o) as SubscribeScope[])
-		.filter((v) => o[v])
-		.sort()
+	return (Object.keys(o) as SubscribeScope[]).filter((v) => o[v]).sort()
 }
 
 function openWebhookEditDialog(item: WebhookItemRes): void {

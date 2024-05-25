@@ -45,7 +45,7 @@ func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
 	if !expired {
 		token = cr.authToken.Token
 	}
-	almostExpired := !expired && cr.authToken.ExpireAt.Add(-10 * time.Minute).Before(time.Now())
+	almostExpired := !expired && cr.authToken.ExpireAt.Add(-10*time.Minute).Before(time.Now())
 	cr.authTokenMux.RUnlock()
 	if expired {
 		cr.authTokenMux.Lock()
@@ -58,11 +58,11 @@ func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
 		token = cr.authToken.Token
 	} else if almostExpired {
 		go func() {
-			tctx, cancel := context.WithTimeout(ctx, time.Second * 30)
+			tctx, cancel := context.WithTimeout(ctx, time.Second*30)
 			defer cancel()
 			cr.authTokenMux.Lock()
 			defer cr.authTokenMux.Unlock()
-			if cr.authToken != nil && cr.authToken.ExpireAt.Add(-10 * time.Minute).Before(time.Now()) {
+			if cr.authToken != nil && cr.authToken.ExpireAt.Add(-10*time.Minute).Before(time.Now()) {
 				tk, err := cr.refreshToken(tctx, cr.authToken.Token)
 				if err != nil {
 					log.Errorf("Cannot refresh token: %v", err)
@@ -156,10 +156,10 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *ClusterToken, err error) {
 	payload, err := json.Marshal(struct {
 		ClusterId string `json:"clusterId"`
-		Token string `json:"token"`
+		Token     string `json:"token"`
 	}{
 		ClusterId: cr.clusterId,
-		Token: oldToken,
+		Token:     oldToken,
 	})
 	if err != nil {
 		return

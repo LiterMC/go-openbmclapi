@@ -38,8 +38,8 @@ import (
 
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
-	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/limited"
+	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/notify"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
@@ -187,17 +187,23 @@ func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
 		Total int64 `json:"total"`
 	}
 	type statusData struct {
-		StartAt time.Time     `json:"startAt"`
-		Stats   *notify.Stats `json:"stats"`
-		Enabled bool          `json:"enabled"`
-		IsSync  bool          `json:"isSync"`
-		Sync    *syncData     `json:"sync,omitempty"`
+		StartAt  time.Time     `json:"startAt"`
+		Stats    *notify.Stats `json:"stats"`
+		Enabled  bool          `json:"enabled"`
+		IsSync   bool          `json:"isSync"`
+		Sync     *syncData     `json:"sync,omitempty"`
+		Storages []string      `json:"storages"`
+	}
+	storages := make([]string, len(cr.storageOpts))
+	for i, opt := range cr.storageOpts {
+		storages[i] = opt.Id
 	}
 	status := statusData{
-		StartAt: startTime,
-		Stats:   &cr.stats,
-		Enabled: cr.enabled.Load(),
-		IsSync:  cr.issync.Load(),
+		StartAt:  startTime,
+		Stats:    &cr.stats,
+		Enabled:  cr.enabled.Load(),
+		IsSync:   cr.issync.Load(),
+		Storages: storages,
 	}
 	if status.IsSync {
 		status.Sync = &syncData{

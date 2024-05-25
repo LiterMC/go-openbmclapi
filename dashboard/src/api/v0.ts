@@ -28,6 +28,25 @@ export type Stats = StatHistoryData & {
 	accesses: { [ua: string]: number }
 }
 
+const EMPTY_HIST_STAT: StatHistoryData = {
+	hours: Array(24).fill({ hits: 0, bytes: 0 }),
+	days: Array(31).fill({ hits: 0, bytes: 0 }),
+	months: Array(12).fill({ hits: 0, bytes: 0 }),
+}
+
+export const EMPTY_STAT: Stats = {
+	...EMPTY_HIST_STAT,
+	date: {
+		hour: 0,
+		day: 0,
+		month: 0,
+		year: 0,
+	},
+	prev: EMPTY_HIST_STAT,
+	years: {},
+	accesses: {},
+}
+
 export interface TokenRes {
 	token: string
 }
@@ -47,6 +66,7 @@ export interface StatusRes {
 		prog: number
 		total: number
 	}
+	storages: string[]
 }
 
 async function requestToken(
@@ -88,6 +108,19 @@ export async function getStatus(token?: string | null): Promise<StatusRes> {
 	return res.data
 }
 
+export async function getStat(name: string, token?: string | null): Promise<Stats | null> {
+	const STAT_URL = `/api/v0/stat`
+	const u = new URL(window.location.toString())
+	u.pathname = STAT_URL
+	u.searchParams.set('name', name)
+	const res = await axios.get<Stats | null>(u.toString(), {
+		headers: {
+			Authorization: token ? `Bearer ${token}` : undefined,
+		},
+	})
+	return res.data
+}
+
 export async function login(username: string, password: string): Promise<string> {
 	const res = await axios.post<TokenRes>(`/api/v0/login`, {
 		username: username,
@@ -115,12 +148,12 @@ export interface PprofOptions {
 }
 
 export async function getPprofURL(token: string, opts: PprofOptions): Promise<string> {
-	const pprofURL = `/api/v0/pprof`
-	const tk = await requestToken(token, pprofURL, {
+	const PPROF_URL = `/api/v0/pprof`
+	const tk = await requestToken(token, PPROF_URL, {
 		lookup: opts.lookup,
 	})
 	const u = new URL(window.location.toString())
-	u.pathname = pprofURL
+	u.pathname = PPROF_URL
 	u.searchParams.set('lookup', opts.lookup)
 	u.searchParams.set('_t', tk)
 	if (opts.debug === false) {

@@ -495,7 +495,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		}
 		if err == storage.ErrNotWorking {
 			log.Errorf("All storages are down, exit.")
-			tctx, cancel := context.WithTimeout(context.TODO(), time.Second * 10)
+			tctx, cancel := context.WithTimeout(context.TODO(), time.Second*10)
 			cr.Disable(tctx)
 			cancel()
 			osExit(CodeClientOrEnvionmentError)

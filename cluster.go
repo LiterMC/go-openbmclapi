@@ -76,12 +76,12 @@ type Cluster struct {
 	apiHmacKey         []byte
 	hijackProxy        *HjProxy
 
-	stats          notify.Stats
+	stats                  notify.Stats
 	lastHits, statOnlyHits atomic.Int32
 	lastHbts, statOnlyHbts atomic.Int64
-	issync         atomic.Bool
-	syncProg       atomic.Int64
-	syncTotal      atomic.Int64
+	issync                 atomic.Bool
+	syncProg               atomic.Int64
+	syncTotal              atomic.Int64
 
 	mux             sync.RWMutex
 	enabled         atomic.Bool

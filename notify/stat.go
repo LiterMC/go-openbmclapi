@@ -272,6 +272,7 @@ func (s *Stats) Load(dir string) (err error) {
 	if err = s.StatData.load(filepath.Join(dir, statsFileName)); err != nil {
 		return
 	}
+	s.subStat = make(map[string]*StatData)
 
 	if entries, err := os.ReadDir(filepath.Join(dir, statsDirName)); err == nil {
 		for _, entry := range entries {
@@ -336,6 +337,9 @@ func (s *Stats) AddHits(hits int32, bytes int64, name string) {
 			ss = new(StatData)
 			ss.Years = make(map[string]statInstData, 2)
 			ss.Accesses = make(map[string]int, 5)
+			if s.subStat == nil {
+				s.subStat = make(map[string]*StatData)
+			}
 			s.subStat[name] = ss
 		}
 		ss.update(data)

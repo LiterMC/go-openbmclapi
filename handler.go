@@ -185,7 +185,7 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 		used    float64
 		bytes   float64
 		ua      string
-		isRange bool
+		skipUA bool
 	}
 	recordCh := make(chan record, 1024)
 
@@ -228,7 +228,7 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 				total++
 				totalUsed += rec.used
 				totalBytes += rec.bytes
-				if !rec.isRange {
+				if !rec.skipUA {
 					uas[rec.ua]++
 				}
 			case <-disabled:
@@ -306,7 +306,7 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 		rec.bytes = (float64)(srw.Wrote)
 		ua, _, _ = strings.Cut(ua, " ")
 		rec.ua, _, _ = strings.Cut(ua, "/")
-		rec.isRange = extraInfoMap["skip-ua-count"] != nil
+		rec.skipUA = extraInfoMap["skip-ua-count"] != nil
 		select {
 		case recordCh <- rec:
 		default:

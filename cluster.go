@@ -579,10 +579,11 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
 	hits, hbts := cr.stats.GetTmpHits()
 	lhits, lhbts := cr.lastHits.Load(), cr.lastHbts.Load()
 	hits2, hbts2 := cr.statOnlyHits.Load(), cr.statOnlyHbts.Load()
+	ahits, ahbts := hits - lhits - hits2, hbts - lhbts - hbts2
 	resCh, err := cr.socket.EmitWithAck("keep-alive", Map{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		"hits":  hits - lhits - hits2,
-		"bytes": hbts - lhbts - hbts2,
+		"hits":  ahits,
+		"bytes": ahbts,
 	})
 	go cr.notifyManager.OnReportStatus(&cr.stats)
 
@@ -617,7 +618,7 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
 		log.Errorf(Tr("error.cluster.keepalive.failed"), ero)
 		return 1
 	}
-	log.Infof(Tr("info.cluster.keepalive.success"), hits, utils.BytesToUnit((float64)(hbts)), data[1])
+	log.Infof(Tr("info.cluster.keepalive.success"), ahits, utils.BytesToUnit((float64)(ahbts)), data[1])
 	cr.lastHits.Store(hits)
 	cr.lastHbts.Store(hbts)
 	cr.statOnlyHits.Add(-hits2)

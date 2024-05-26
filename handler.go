@@ -182,9 +182,9 @@ func (cr *Cluster) GetHandler() http.Handler {
 
 func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 	type record struct {
-		used    float64
-		bytes   float64
-		ua      string
+		used   float64
+		bytes  float64
+		ua     string
 		skipUA bool
 	}
 	recordCh := make(chan record, 1024)

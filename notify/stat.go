@@ -22,10 +22,10 @@ package notify
 import (
 	"encoding/json"
 	"errors"
-	"strings"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -223,7 +223,7 @@ type Stats struct {
 	subStat map[string]*StatData
 
 	hits atomic.Int32
-	bts atomic.Int64
+	bts  atomic.Int64
 }
 
 const statsDirName = "stats"
@@ -308,7 +308,7 @@ func (s *Stats) Save(dir string) (err error) {
 		if buf, err = json.Marshal(data); err != nil {
 			return
 		}
-		if err = writeFileWithOld(filepath.Join(dir, statsDirName, name + ".json"), buf, 0644); err != nil {
+		if err = writeFileWithOld(filepath.Join(dir, statsDirName, name+".json"), buf, 0644); err != nil {
 			return
 		}
 	}

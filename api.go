@@ -224,7 +224,6 @@ func (cr *Cluster) apiV0Stat(rw http.ResponseWriter, req *http.Request) {
 		writeJson(rw, http.StatusOK, &cr.stats)
 		return
 	}
-	print("name:", name)
 	data, err := cr.stats.MarshalSubStat(name)
 	if err != nil {
 		http.Error(rw, "Error when encoding response: "+err.Error(), http.StatusInternalServerError)

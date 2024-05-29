@@ -20,6 +20,7 @@ import {
 	getStat,
 	getPprofURL,
 	EMPTY_STAT,
+	type Stats,
 	type StatusRes,
 	type PprofLookups,
 } from '@/api/v0'
@@ -75,23 +76,34 @@ const avaliableStorages = computed(() => {
 })
 const activeStorageIndex = ref(0)
 
-const activeStats = computedAsync(async () => {
-	if (!data.value) {
-		return null
+const activeStats = ref<Stats | null>(null)
+
+watch([data, activeStorageIndex], async ([data, newIndex]) => {
+	if (!data) {
+		activeStats.value = null
+		return
 	}
-	if (!activeStorageIndex.value) {
-		return data.value.stats
+	if (!newIndex) {
+		activeStats.value = data.stats
+		return
 	}
-	const storageId = data.value.storages[activeStorageIndex.value - 1]
+	const storageId = data.storages[newIndex - 1]
 	if (!storageId) {
 		activeStorageIndex.value = 0
-		return null
+		activeStats.value = null
+		return
 	}
+	const clearTimerId = setTimeout(() => {
+		activeStats.value = null
+	}, 300)
 	const res = await getStat(storageId, token.value)
+	clearTimeout(clearTimerId)
 	if (res === null) {
-		return JSON.parse(JSON.stringify(EMPTY_STAT))
+		activeStats.value = JSON.parse(JSON.stringify(EMPTY_STAT))
+		return
 	}
-	return res
+	activeStats.value = res
+	return
 })
 
 async function requestPprof(lookup: PprofLookups, view?: boolean): Promise<void> {

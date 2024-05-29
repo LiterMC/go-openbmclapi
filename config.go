@@ -249,7 +249,7 @@ var defaultConfig = Config{
 	Tunneler: TunnelConfig{
 		Enable:        false,
 		TunnelProg:    "./path/to/tunnel/program",
-		OutputRegex:   `\bNATedAddr\s+(?<host>[0-9.]+|\[[0-9a-f:]+\]):(?<port>\d+)$`,
+		OutputRegex:   `\bNATedAddr\s+(?P<host>[0-9.]+|\[[0-9a-f:]+\]):(?P<port>\d+)$`,
 		TunnelTimeout: 0,
 	},
 

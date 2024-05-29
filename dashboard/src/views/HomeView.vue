@@ -89,7 +89,7 @@ const activeStats = computedAsync(async () => {
 	}
 	const res = await getStat(storageId, token.value)
 	if (res === null) {
-		return EMPTY_STAT
+		return JSON.parse(JSON.stringify(EMPTY_STAT))
 	}
 	return res
 })

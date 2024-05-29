@@ -109,11 +109,7 @@ export async function getStatus(token?: string | null): Promise<StatusRes> {
 }
 
 export async function getStat(name: string, token?: string | null): Promise<Stats | null> {
-	const STAT_URL = `/api/v0/stat`
-	const u = new URL(window.location.toString())
-	u.pathname = STAT_URL
-	u.searchParams.set('name', name)
-	const res = await axios.get<Stats | null>(u.toString(), {
+	const res = await axios.get<Stats | null>(`/api/v0/stat/${name}`, {
 		headers: {
 			Authorization: token ? `Bearer ${token}` : undefined,
 		},

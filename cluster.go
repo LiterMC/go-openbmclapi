@@ -579,7 +579,7 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
 	hits, hbts := cr.stats.GetTmpHits()
 	lhits, lhbts := cr.lastHits.Load(), cr.lastHbts.Load()
 	hits2, hbts2 := cr.statOnlyHits.Load(), cr.statOnlyHbts.Load()
-	ahits, ahbts := hits - lhits - hits2, hbts - lhbts - hbts2
+	ahits, ahbts := hits-lhits-hits2, hbts-lhbts-hbts2
 	resCh, err := cr.socket.EmitWithAck("keep-alive", Map{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"hits":  ahits,

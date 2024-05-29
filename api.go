@@ -145,7 +145,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 
 	mux.HandleFunc("/ping", cr.apiV0Ping)
 	mux.HandleFunc("/status", cr.apiV0Status)
-	mux.HandleFunc("/stat", cr.apiV0Stat)
+	mux.Handle("/stat/", http.StripPrefix("/stat/", (http.HandlerFunc)(cr.apiV0Stat)))
 
 	mux.HandleFunc("/login", cr.apiV0Login)
 	mux.Handle("/requestToken", cr.apiAuthHandleFunc(cr.apiV0RequestToken))
@@ -219,12 +219,12 @@ func (cr *Cluster) apiV0Stat(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	limited.SetSkipRateLimit(req)
-	query := req.URL.Query()
-	name := query.Get("name")
+	name := req.URL.Path
 	if name == "" {
 		writeJson(rw, http.StatusOK, &cr.stats)
 		return
 	}
+	print("name:", name)
 	data, err := cr.stats.MarshalSubStat(name)
 	if err != nil {
 		http.Error(rw, "Error when encoding response: "+err.Error(), http.StatusInternalServerError)

@@ -221,13 +221,16 @@ func (cr *Cluster) apiV0Stat(rw http.ResponseWriter, req *http.Request) {
 	limited.SetSkipRateLimit(req)
 	name := req.URL.Path
 	if name == "" {
+		rw.Header().Set("Cache-Control", "public, max-age=60")
 		writeJson(rw, http.StatusOK, &cr.stats)
 		return
 	}
 	data, err := cr.stats.MarshalSubStat(name)
 	if err != nil {
 		http.Error(rw, "Error when encoding response: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
+	rw.Header().Set("Cache-Control", "public, max-age=30")
 	writeJson(rw, http.StatusOK, (json.RawMessage)(data))
 }
 

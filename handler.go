@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -331,6 +332,9 @@ var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/Li
 var accessedTeapotMux sync.RWMutex
 var accessedTeapot = make(map[string]struct{})
 
+//go:embed robots.txt
+var robotTxtContent string
+
 func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	u := req.URL
@@ -401,6 +405,9 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			cr.handlerAPIv0.ServeHTTP(rw, req)
 			return
 		}
+	case rawpath == "/robots.txt":
+		http.ServeContent(rw, req, "robots.txt", time.Time{}, strings.NewReader(robotTxtContent))
+		return
 	case strings.HasPrefix(rawpath, "/dashboard/"):
 		if !config.Dashboard.Enable {
 			http.NotFound(rw, req)

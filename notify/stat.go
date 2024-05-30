@@ -276,9 +276,12 @@ func (s *Stats) Load(dir string) (err error) {
 
 	if entries, err := os.ReadDir(filepath.Join(dir, statsDirName)); err == nil {
 		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
 			if name, ok := strings.CutSuffix(entry.Name(), ".json"); ok {
 				data := new(StatData)
-				if err := data.load(filepath.Join(dir, statsFileName)); err != nil {
+				if err := data.load(filepath.Join(dir, statsDirName, entry.Name())); err != nil {
 					return err
 				}
 				s.subStat[name] = data

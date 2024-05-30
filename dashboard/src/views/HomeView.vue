@@ -75,14 +75,42 @@ const avaliableStorages = computed(() => {
 	return s
 })
 const activeStorageIndex = ref(0)
-
 const activeStats = ref<Stats | null>(null)
 
-watch([data, activeStorageIndex], async ([data, newIndex]) => {
+watch(activeStorageIndex, async (newIndex) => {
+	if (!data.value) {
+		activeStats.value = null
+		return
+	}
+	if (!newIndex) {
+		activeStats.value = data.value.stats
+		return
+	}
+	const storageId = data.value.storages[newIndex - 1]
+	if (!storageId) {
+		activeStorageIndex.value = 0
+		activeStats.value = null
+		return
+	}
+	const statClearTimerId = setTimeout(() => {
+		activeStats.value = null
+	}, 500)
+	const res = await getStat(storageId, token.value)
+	clearTimeout(statClearTimerId)
+	if (res === null) {
+		activeStats.value = JSON.parse(JSON.stringify(EMPTY_STAT))
+		return
+	}
+	activeStats.value = res
+	return
+})
+
+watch(data, async (data) => {
 	if (!data) {
 		activeStats.value = null
 		return
 	}
+	const newIndex = activeStorageIndex.value
 	if (!newIndex) {
 		activeStats.value = data.stats
 		return
@@ -93,11 +121,7 @@ watch([data, activeStorageIndex], async ([data, newIndex]) => {
 		activeStats.value = null
 		return
 	}
-	const clearTimerId = setTimeout(() => {
-		activeStats.value = null
-	}, 300)
 	const res = await getStat(storageId, token.value)
-	clearTimeout(clearTimerId)
 	if (res === null) {
 		activeStats.value = JSON.parse(JSON.stringify(EMPTY_STAT))
 		return

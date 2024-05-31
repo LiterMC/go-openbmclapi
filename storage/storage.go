@@ -97,9 +97,10 @@ func (e *UnexpectedStorageTypeError) Error() string {
 }
 
 type BasicStorageOption struct {
-	Type   string `yaml:"type"`
-	Id     string `yaml:"id"`
-	Weight uint   `yaml:"weight"`
+	Type    string `yaml:"type"`
+	Id      string `yaml:"id"`
+	Weight  uint   `yaml:"weight"`
+	Cluster string `yaml:"cluster"`
 }
 
 type StorageOption struct {

@@ -45,6 +45,11 @@ type UserItem struct {
 	Password string `yaml:"password"`
 }
 
+type ClusterItem struct {
+	Id     string `yaml:"id"`
+	Secret string `yaml:"secret"`
+}
+
 type AdvancedConfig struct {
 	DebugLog           bool `yaml:"debug-log"`
 	SocketIOLog        bool `yaml:"socket-io-log"`
@@ -193,13 +198,12 @@ type Config struct {
 	PublicHost           string `yaml:"public-host"`
 	PublicPort           uint16 `yaml:"public-port"`
 	Port                 uint16 `yaml:"port"`
-	ClusterId            string `yaml:"cluster-id"`
-	ClusterSecret        string `yaml:"cluster-secret"`
 	SyncInterval         int    `yaml:"sync-interval"`
 	OnlyGcWhenStart      bool   `yaml:"only-gc-when-start"`
 	DownloadMaxConn      int    `yaml:"download-max-conn"`
 	MaxReconnectCount    int    `yaml:"max-reconnect-count"`
 
+	Clusters     map[string]ClusterItem         `yaml:"clusters"`
 	Certificates []CertificateConfig            `yaml:"certificates"`
 	Tunneler     TunnelConfig                   `yaml:"tunneler"`
 	Cache        CacheConfig                    `yaml:"cache"`
@@ -232,19 +236,14 @@ var defaultConfig = Config{
 	PublicHost:           "",
 	PublicPort:           0,
 	Port:                 4000,
-	ClusterId:            "${CLUSTER_ID}",
-	ClusterSecret:        "${CLUSTER_SECRET}",
-	SyncInterval:         10,
-	OnlyGcWhenStart:      false,
-	DownloadMaxConn:      16,
-	MaxReconnectCount:    10,
+	SyncInterval:      10,
+	OnlyGcWhenStart:   false,
+	DownloadMaxConn:   16,
+	MaxReconnectCount: 10,
 
-	Certificates: []CertificateConfig{
-		{
-			Cert: "/path/to/cert.pem",
-			Key:  "/path/to/key.pem",
-		},
-	},
+	Clusters: map[string]ClusterItem{},
+
+	Certificates: []CertificateConfig{},
 
 	Tunneler: TunnelConfig{
 		Enable:        false,
@@ -345,6 +344,18 @@ func migrateConfig(data []byte, config *Config) {
 	if v, ok := oldConfig["keepalive-timeout"].(int); ok {
 		config.Advanced.KeepaliveTimeout = v
 	}
+	if oldConfig["clusters"].(map[string]any) == nil {
+		id, ok1 := oldConfig["cluster-id"].(string)
+		secret, ok2 := oldConfig["cluster-secret"].(string)
+		if ok1 && ok2 {
+			config.Clusters = map[string]ClusterItem{
+				"main": {
+					Id: id,
+					Secret: secret,
+				},
+			}
+		}
+	}
 }
 
 func readConfig() (config Config) {
@@ -366,6 +377,22 @@ func readConfig() (config Config) {
 		if err = yaml.Unmarshal(data, &config); err != nil {
 			log.Errorf(Tr("error.config.parse.failed"), err)
 			osExit(CodeClientError)
+		}
+		if len(config.Clusters) == 0 {
+			config.Clusters = map[string]ClusterItem{
+				"main": {
+					Id:     "${CLUSTER_ID}",
+					Secret: "${CLUSTER_SECRET}",
+				},
+			}
+		}
+		if len(config.Certificates) == 0 {
+			config.Certificates = []CertificateConfig{
+				{
+					Cert: "/path/to/cert.pem",
+					Key:  "/path/to/key.pem",
+				},
+			}
 		}
 		if len(config.Storages) == 0 {
 			config.Storages = []storage.StorageOption{
@@ -399,6 +426,12 @@ func readConfig() (config Config) {
 				osExit(CodeClientError)
 			}
 			ids[s.Id] = i
+			if s.Cluster != "" && s.Cluster != "-" {
+				if _, ok := config.Clusters[s.Cluster]; !ok {
+					log.Errorf("Storage %q is trying to connect to a not exists cluster %q.", s.Id, s.Cluster)
+					osExit(CodeClientError)
+				}
+			}
 		}
 	}
 

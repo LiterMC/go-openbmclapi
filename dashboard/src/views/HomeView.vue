@@ -420,8 +420,8 @@ onMounted(() => {
 
 	.charts-tab {
 		position: relative;
-		left: -7%;
-		width: 114%;
+		left: -1.5rem;
+		width: calc(100% - 3rem);
 	}
 
 	.ua-chart {

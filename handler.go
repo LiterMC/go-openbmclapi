@@ -315,6 +315,37 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 	}
 }
 
+func (cr *Cluster) checkQuerySign(req *http.Request, hash string, secret string) bool {
+	if config.Advanced.SkipSignatureCheck {
+		return true
+	}
+	query := req.Query()
+	sign, e := query.Get("s"), query.Get("e")
+	if len(sign) == 0 || len(e) == 0 {
+		return false
+	}
+	before, err := strconv.ParseInt(e, 36, 64)
+	if err != nil {
+		return false
+	}
+	if time.Now().UnixMilli() > before {
+		return false
+	}
+	hs := crypto.SHA1.New()
+	io.WriteString(hs, secret)
+	io.WriteString(hs, hash)
+	io.WriteString(hs, e)
+	var (
+		buf  [20]byte
+		sbuf [27]byte
+	)
+	base64.RawURLEncoding.Encode(sbuf[:], hs.Sum(buf[:0]))
+	if (string)(sbuf[:]) != sign {
+		return false
+	}
+	return true
+}
+
 var emptyHashes = func() (hashes map[string]struct{}) {
 	hashMethods := []crypto.Hash{
 		crypto.MD5, crypto.SHA1,
@@ -328,9 +359,6 @@ var emptyHashes = func() (hashes map[string]struct{}) {
 }()
 
 var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", build.BuildVersion)
-
-var accessedTeapotMux sync.RWMutex
-var accessedTeapot = make(map[string]struct{})
 
 //go:embed robots.txt
 var robotTxtContent string
@@ -357,7 +385,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		query := req.URL.Query()
-		if !checkQuerySign(hash, cr.clusterSecret, query) {
+		if !cr.checkQuerySign(req, hash, cr.clusterSecret) {
 			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
 			return
 		}
@@ -379,7 +407,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		query := req.URL.Query()
-		if !checkQuerySign(u.Path, cr.clusterSecret, query) {
+		if !cr.checkQuerySign(req, u.Path, cr.clusterSecret) {
 			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
 			return
 		}

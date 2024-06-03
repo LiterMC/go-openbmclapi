@@ -147,6 +147,7 @@ func (cr *Cluster) initAPIv0() http.Handler {
 	mux.HandleFunc("/status", cr.apiV0Status)
 	mux.Handle("/stat/", http.StripPrefix("/stat/", (http.HandlerFunc)(cr.apiV0Stat)))
 
+	mux.HandleFunc("/challenge", cr.apiV0Challenge)
 	mux.HandleFunc("/login", cr.apiV0Login)
 	mux.Handle("/requestToken", cr.apiAuthHandleFunc(cr.apiV0RequestToken))
 	mux.Handle("/logout", cr.apiAuthHandleFunc(cr.apiV0Logout))
@@ -234,6 +235,26 @@ func (cr *Cluster) apiV0Stat(rw http.ResponseWriter, req *http.Request) {
 	writeJson(rw, http.StatusOK, (json.RawMessage)(data))
 }
 
+func (cr *Cluster) apiV0Challenge(rw http.ResponseWriter, req *http.Request) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+		return
+	}
+	cli := apiGetClientId(req)
+	query := req.URL.Query()
+	action := query.Get("action")
+	token, err := cr.generateChallengeToken(cli, action)
+	if err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "Cannot generate token",
+			"message": err.Error(),
+		})
+		return
+	}
+	writeJson(rw, http.StatusOK, Map{
+		"token": token,
+	})
+}
+
 func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodPost) {
 		return
@@ -247,14 +268,16 @@ func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 	cli := apiGetClientId(req)
 
 	type T = struct {
-		User string `json:"username"`
-		Pass string `json:"password"`
+		User      string `json:"username"`
+		Challenge string `json:"challenge"`
+		Signature string `json:"signature"`
 	}
 	data, ok := parseRequestBody(rw, req, func(rw http.ResponseWriter, req *http.Request, ct string, data *T) error {
 		switch ct {
 		case "application/x-www-form-urlencoded":
 			data.User = req.PostFormValue("username")
-			data.Pass = req.PostFormValue("password")
+			data.Challenge = req.PostFormValue("challenge")
+			data.Signature = req.PostFormValue("signature")
 			return nil
 		default:
 			return errUnknownContent
@@ -271,9 +294,17 @@ func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 		})
 		return
 	}
+
+	if err := cr.verifyChallengeToken(cli, "login", data.Challenge); err != nil {
+		writeJson(rw, http.StatusUnauthorized, Map{
+			"error": "Invalid challenge",
+		})
+		return
+	}
 	expectPassword = utils.AsSha256Hex(expectPassword)
+	expectSignature := utils.HMACSha256Hex(expectPassword, data.Challenge)
 	if subtle.ConstantTimeCompare(([]byte)(expectUsername), ([]byte)(data.User)) == 0 ||
-		subtle.ConstantTimeCompare(([]byte)(expectPassword), ([]byte)(data.Pass)) == 0 {
+		subtle.ConstantTimeCompare(([]byte)(expectSignature), ([]byte)(data.Signature)) == 0 {
 		writeJson(rw, http.StatusUnauthorized, Map{
 			"error": "The username or password is incorrect",
 		})

@@ -24,17 +24,18 @@ import (
 	"context"
 	"crypto"
 	_ "embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/textproto"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/LiterMC/go-openbmclapi/internal/build"
@@ -319,7 +320,7 @@ func (cr *Cluster) checkQuerySign(req *http.Request, hash string, secret string)
 	if config.Advanced.SkipSignatureCheck {
 		return true
 	}
-	query := req.Query()
+	query := req.URL.Query()
 	sign, e := query.Get("s"), query.Get("e")
 	if len(sign) == 0 || len(e) == 0 {
 		return false
@@ -384,7 +385,6 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		query := req.URL.Query()
 		if !cr.checkQuerySign(req, hash, cr.clusterSecret) {
 			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
 			return
@@ -406,7 +406,6 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		query := req.URL.Query()
 		if !cr.checkQuerySign(req, u.Path, cr.clusterSecret) {
 			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
 			return

@@ -76,9 +76,58 @@ func (cr *Cluster) getJWTKey(t *jwt.Token) (any, error) {
 }
 
 const (
-	authTokenSubject = "GOBA-auth"
-	apiTokenSubject  = "GOBA-API"
+	challengeTokenSubject = "GOBA-chanllenge"
+	authTokenSubject      = "GOBA-auth"
+	apiTokenSubject       = "GOBA-API"
 )
+
+type challengeTokenClaims struct {
+	jwt.RegisteredClaims
+
+	Client string `json:"cli"`
+	Action string `json:"act"`
+}
+
+func (cr *Cluster) generateChallengeToken(cliId string, action string) (string, error) {
+	now := time.Now()
+	exp := now.Add(time.Minute * 1)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &challengeTokenClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   challengeTokenSubject,
+			Issuer:    cr.jwtIssuer,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(exp),
+		},
+		Client: cliId,
+		Action: action,
+	})
+	tokenStr, err := token.SignedString(cr.apiHmacKey)
+	if err != nil {
+		return "", err
+	}
+	return tokenStr, nil
+}
+
+func (cr *Cluster) verifyChallengeToken(cliId string, action string, token string) (err error) {
+	var claims challengeTokenClaims
+	if _, err = jwt.ParseWithClaims(
+		token,
+		&claims,
+		cr.getJWTKey,
+		jwt.WithSubject(challengeTokenSubject),
+		jwt.WithIssuedAt(),
+		jwt.WithIssuer(cr.jwtIssuer),
+	); err != nil {
+		return
+	}
+	if claims.Client != cliId {
+		return ErrClientIdNotMatch
+	}
+	if claims.Action != action {
+		return ErrJTINotExists
+	}
+	return
+}
 
 type authTokenClaims struct {
 	jwt.RegisteredClaims

@@ -47,6 +47,10 @@ export const EMPTY_STAT: Stats = {
 	accesses: {},
 }
 
+interface ChallengeRes {
+	token: string
+}
+
 export interface TokenRes {
 	token: string
 }
@@ -117,10 +121,31 @@ export async function getStat(name: string, token?: string | null): Promise<Stat
 	return res.data
 }
 
+export async function getChallenge(action: string): Promise<string> {
+	const u = new URL(window.location.toString())
+	u.pathname = `/api/v0/challenge`
+	u.searchParams.set('action', action)
+	const res = await axios.get<ChallengeRes>(u.toString())
+	const token = res.data.token
+	const body = JSON.parse(atob(token.split('.')[1]))
+	if (body.act !== action) {
+		throw new Error(`Challenge action not match, got ${body.act}, expect ${action}`)
+	}
+	return token
+}
+
+export function signChallenge(challenge: string, secret: string): string {
+	const signed = sha256.hmac(sha256(secret), challenge);
+	return signed
+}
+
 export async function login(username: string, password: string): Promise<string> {
+	const challenge = await getChallenge('login')
+	const signature = signChallenge(challenge, password)
 	const res = await axios.post<TokenRes>(`/api/v0/login`, {
 		username: username,
-		password: sha256(password),
+		challenge: challenge,
+		signature: signature,
 	})
 	return res.data.token
 }

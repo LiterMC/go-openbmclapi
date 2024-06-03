@@ -29,6 +29,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"crypto/hmac"
 )
 
 func ComparePasswd(p1, p2 string) bool {
@@ -50,6 +51,13 @@ func AsSha256(s string) string {
 
 func AsSha256Hex(s string) string {
 	buf := sha256.Sum256(([]byte)(s))
+	return hex.EncodeToString(buf[:])
+}
+
+func HMACSha256Hex(key, data string) string {
+	m := hmac.New(sha256.New, ([]byte)(key))
+	m.Write(([]byte)(data))
+	buf := m.Sum(nil)
 	return hex.EncodeToString(buf[:])
 }
 

@@ -631,7 +631,10 @@ func (r *Runner) enableClusterByTunnel(ctx context.Context) {
 			select {
 			case addr := <-detectedCh:
 				log.Infof(Tr("info.tunnel.detected"), addr.host, addr.port)
-				r.cluster.host, r.cluster.publicPort = addr.host, addr.port
+				r.cluster.publicPort = addr.port
+				if !r.cluster.byoc {
+					r.cluster.host = addr.host
+				}
 				strPort := strconv.Itoa((int)(r.getPublicPort()))
 				if spp, ok := r.listener.(interface{ SetPublicPort(port string) }); ok {
 					spp.SetPublicPort(strPort)

@@ -188,11 +188,11 @@ func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
 	}
 	type statusData struct {
 		StartAt  time.Time     `json:"startAt"`
-		Stats    *notify.Stats `json:"stats"`
-		Enabled  bool          `json:"enabled"`
+		Status   string        `json:"status"`
 		IsSync   bool          `json:"isSync"`
 		Sync     *syncData     `json:"sync,omitempty"`
 		Storages []string      `json:"storages"`
+		Stats    *notify.Stats `json:"stats"`
 	}
 	storages := make([]string, len(cr.storageOpts))
 	for i, opt := range cr.storageOpts {
@@ -200,10 +200,16 @@ func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
 	}
 	status := statusData{
 		StartAt:  startTime,
-		Stats:    &cr.stats,
-		Enabled:  cr.enabled.Load(),
+		Status:   "idle",
 		IsSync:   cr.issync.Load(),
 		Storages: storages,
+		Stats:    &cr.stats,
+	}
+	for _, c := range cr.clusters {
+		if c.enabled.Load() {
+			status.Status = "enabled"
+			break
+		}
 	}
 	if status.IsSync {
 		status.Sync = &syncData{

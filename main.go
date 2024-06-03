@@ -54,8 +54,6 @@ import (
 	_ "github.com/LiterMC/go-openbmclapi/lang/zh"
 )
 
-const ClusterServerURL = "https://openbmclapi.bangbang93.com"
-
 var (
 	KeepAliveInterval = time.Second * 59
 )
@@ -166,19 +164,17 @@ START:
 
 	log.Infof(Tr("program.starting"), build.ClusterVersion, build.BuildVersion)
 
-	if config.ClusterId == defaultConfig.ClusterId || config.ClusterSecret == defaultConfig.ClusterSecret {
-		log.Error(Tr("error.set.cluster.id"))
-		osExit(CodeClientError)
+	for _, item := range config.Clusters {
+		if item.Id == "${CLUSTER_ID}" || item.Secret == "${CLUSTER_SECRET}" {
+			log.Error(Tr("error.set.cluster.id"))
+			osExit(CodeClientError)
+		}
 	}
 
 	r.InitCluster(ctx)
 
 	go func(ctx context.Context) {
 		defer log.RecordPanic()
-
-		if !r.cluster.Connect(ctx) {
-			osExit(CodeClientOrServerError)
-		}
 
 		firstSyncDone := make(chan struct{}, 0)
 		go func() {
@@ -222,6 +218,10 @@ START:
 
 		r.EnableCluster(ctx)
 	}(ctx)
+
+	// if !r.cluster.Connect(ctx) {
+	// 	osExit(CodeClientOrServerError)
+	// }
 
 	code := r.DoSignals(cancel)
 	if r.restartFlag {
@@ -313,7 +313,7 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 			go func() {
 				defer close(shutExit)
 				defer cancelShut()
-				r.cluster.Disable(shutCtx)
+				r.DisableClusters(shutCtx)
 				log.Warn(Tr("warn.httpserver.closing"))
 				r.clusterSvr.Shutdown(shutCtx)
 			}()
@@ -344,10 +344,9 @@ func (r *Runner) InitCluster(ctx context.Context) {
 	_ = doh.NewResolver // TODO: use doh resolver
 
 	r.cluster = NewCluster(ctx,
-		ClusterServerURL,
 		baseDir,
 		config.PublicHost, r.getPublicPort(),
-		config.ClusterId, config.ClusterSecret,
+		config.Clusters,
 		config.Byoc, dialer,
 		config.Storages,
 		cache,
@@ -405,9 +404,6 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		log.Errorf(Tr("error.filelist.fetch.failed"), err)
 		if errors.Is(err, context.Canceled) {
 			return
-		}
-		if !config.Advanced.SkipFirstSync {
-			osExit(CodeClientOrServerError)
 		}
 	}
 
@@ -668,6 +664,17 @@ func (r *Runner) enableClusterByTunnel(ctx context.Context) {
 		osExit(CodeClientError)
 	}
 	// TODO: maybe restart the tunnel program?
+}
+
+func (r *Runner) DisableClusters(ctx context.Context) {
+	var wg sync.WaitGroup
+	for _, c := range r.cluster.clusters {
+		go func(){
+			defer wg.Done()
+			c.Disable(ctx)
+		}()
+	}
+	wg.Wait()
 }
 
 func Tr(name string) string {

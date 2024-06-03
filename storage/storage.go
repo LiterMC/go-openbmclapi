@@ -21,6 +21,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,6 +59,10 @@ const (
 	StorageLocal  = "local"
 	StorageMount  = "mount"
 	StorageWebdav = "webdav"
+)
+
+var (
+	ErrAllDown = errors.New("All storages are down :(")
 )
 
 type StorageFactory struct {

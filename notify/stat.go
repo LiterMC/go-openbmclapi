@@ -27,7 +27,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -221,9 +220,6 @@ type Stats struct {
 	StatData
 
 	subStat map[string]*StatData
-
-	hits atomic.Int32
-	bts  atomic.Int64
 }
 
 const statsDirName = "stats"
@@ -318,14 +314,7 @@ func (s *Stats) Save(dir string) (err error) {
 	return
 }
 
-func (s *Stats) GetTmpHits() (hits int32, bts int64) {
-	return s.hits.Load(), s.bts.Load()
-}
-
 func (s *Stats) AddHits(hits int32, bytes int64, name string) {
-	s.hits.Add(hits)
-	s.bts.Add(bytes)
-
 	s.Lock()
 	defer s.Unlock()
 

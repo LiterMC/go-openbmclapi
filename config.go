@@ -46,8 +46,11 @@ type UserItem struct {
 }
 
 type ClusterItem struct {
-	Id     string `yaml:"id"`
-	Secret string `yaml:"secret"`
+	Id          string   `yaml:"id"`
+	Secret      string   `yaml:"secret"`
+	Host        string   `yaml:"host"`
+	PublicHosts []string `yaml:"public-hosts"`
+	Prefix      string   `yaml:"prefix"`
 }
 
 type AdvancedConfig struct {
@@ -57,7 +60,6 @@ type AdvancedConfig struct {
 	NoGC               bool `yaml:"no-gc"`
 	HeavyCheckInterval int  `yaml:"heavy-check-interval"`
 	KeepaliveTimeout   int  `yaml:"keepalive-timeout"`
-	SkipFirstSync      bool `yaml:"skip-first-sync"`
 	SkipSignatureCheck bool `yaml:"skip-signature-check"`
 	NoFastEnable       bool `yaml:"no-fast-enable"`
 	WaitBeforeEnable   int  `yaml:"wait-before-enable"`
@@ -236,10 +238,10 @@ var defaultConfig = Config{
 	PublicHost:           "",
 	PublicPort:           0,
 	Port:                 4000,
-	SyncInterval:      10,
-	OnlyGcWhenStart:   false,
-	DownloadMaxConn:   16,
-	MaxReconnectCount: 10,
+	SyncInterval:         10,
+	OnlyGcWhenStart:      false,
+	DownloadMaxConn:      16,
+	MaxReconnectCount:    10,
 
 	Clusters: map[string]ClusterItem{},
 
@@ -323,7 +325,6 @@ var defaultConfig = Config{
 		NoGC:               false,
 		HeavyCheckInterval: 120,
 		KeepaliveTimeout:   10,
-		SkipFirstSync:      false,
 		NoFastEnable:       false,
 		WaitBeforeEnable:   0,
 	},
@@ -350,7 +351,7 @@ func migrateConfig(data []byte, config *Config) {
 		if ok1 && ok2 {
 			config.Clusters = map[string]ClusterItem{
 				"main": {
-					Id: id,
+					Id:     id,
 					Secret: secret,
 				},
 			}
@@ -478,36 +479,6 @@ func readConfig() (config Config) {
 	if notexists {
 		log.Error(Tr("error.config.created"))
 		osExit(0xff)
-	}
-
-	if os.Getenv("DEBUG") == "true" {
-		config.Advanced.DebugLog = true
-	}
-	if v := os.Getenv("CLUSTER_IP"); v != "" {
-		config.PublicHost = v
-	}
-	if v := os.Getenv("CLUSTER_PORT"); v != "" {
-		if n, err := strconv.Atoi(v); err != nil {
-			log.Errorf("Cannot parse CLUSTER_PORT %q: %v", v, err)
-		} else {
-			config.Port = (uint16)(n)
-		}
-	}
-	if v := os.Getenv("CLUSTER_PUBLIC_PORT"); v != "" {
-		if n, err := strconv.Atoi(v); err != nil {
-			log.Errorf("Cannot parse CLUSTER_PUBLIC_PORT %q: %v", v, err)
-		} else {
-			config.PublicPort = (uint16)(n)
-		}
-	}
-	if v := os.Getenv("CLUSTER_ID"); v != "" {
-		config.ClusterId = v
-	}
-	if v := os.Getenv("CLUSTER_SECRET"); v != "" {
-		config.ClusterSecret = v
-	}
-	if byoc := os.Getenv("CLUSTER_BYOC"); byoc != "" {
-		config.Byoc = byoc == "true"
 	}
 	return
 }

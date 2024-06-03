@@ -39,7 +39,7 @@ type ClusterToken struct {
 	ExpireAt time.Time
 }
 
-func (cr *Cluster) GetAuthToken(ctx context.Context) (token string, err error) {
+func (cr *SubCluster) GetAuthToken(ctx context.Context) (token string, err error) {
 	cr.authTokenMux.RLock()
 	expired := cr.authToken == nil || cr.authToken.ExpireAt.Before(time.Now())
 	if !expired {

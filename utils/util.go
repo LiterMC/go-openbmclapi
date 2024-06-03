@@ -20,6 +20,8 @@
 package utils
 
 import (
+	"math/rand"
+	"time"
 	"errors"
 	"os"
 	"path/filepath"
@@ -105,4 +107,68 @@ func WalkCacheDir(cacheDir string, walker func(hash string, size int64) (err err
 		}
 	}
 	return nil
+}
+
+var rd = func() chan int32 {
+	ch := make(chan int32, 64)
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	go func() {
+		for {
+			ch <- r.Int31()
+		}
+	}()
+	return ch
+}()
+
+func RandIntn(n int) int {
+	rn := <-rd
+	return (int)(rn) % n
+}
+
+func ForEachFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {
+	if leng <= 0 {
+		return false
+	}
+	start := RandIntn(leng)
+	for i := start; i < leng; i++ {
+		if cb(i) {
+			return true
+		}
+	}
+	for i := 0; i < start; i++ {
+		if cb(i) {
+			return true
+		}
+	}
+	return false
+}
+
+func ForEachFromRandomIndexWithPossibility(poss []uint, total uint, cb func(i int) (done bool)) (done bool) {
+	leng := len(poss)
+	if leng == 0 {
+		return false
+	}
+	if total == 0 {
+		return ForEachFromRandomIndex(leng, cb)
+	}
+	n := (uint)(RandIntn((int)(total)))
+	start := 0
+	for i, p := range poss {
+		if n < p {
+			start = i
+			break
+		}
+		n -= p
+	}
+	for i := start; i < leng; i++ {
+		if cb(i) {
+			return true
+		}
+	}
+	for i := 0; i < start; i++ {
+		if cb(i) {
+			return true
+		}
+	}
+	return false
 }

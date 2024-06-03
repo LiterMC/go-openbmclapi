@@ -38,7 +38,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/log"
 )
 
-var closedCh = func() <-chan struct{} {
+var closedCh = func() chan struct{} {
 	ch := make(chan struct{}, 0)
 	close(ch)
 	return ch
@@ -83,70 +83,6 @@ func parseCertCommonName(body []byte) (string, error) {
 		return "", err
 	}
 	return cert.Subject.CommonName, nil
-}
-
-var rd = func() chan int32 {
-	ch := make(chan int32, 64)
-	r := rand.New(rand.NewSource(time.Now().Unix()))
-	go func() {
-		for {
-			ch <- r.Int31()
-		}
-	}()
-	return ch
-}()
-
-func randIntn(n int) int {
-	rn := <-rd
-	return (int)(rn) % n
-}
-
-func forEachFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {
-	if leng <= 0 {
-		return false
-	}
-	start := randIntn(leng)
-	for i := start; i < leng; i++ {
-		if cb(i) {
-			return true
-		}
-	}
-	for i := 0; i < start; i++ {
-		if cb(i) {
-			return true
-		}
-	}
-	return false
-}
-
-func forEachFromRandomIndexWithPossibility(poss []uint, total uint, cb func(i int) (done bool)) (done bool) {
-	leng := len(poss)
-	if leng == 0 {
-		return false
-	}
-	if total == 0 {
-		return forEachFromRandomIndex(leng, cb)
-	}
-	n := (uint)(randIntn((int)(total)))
-	start := 0
-	for i, p := range poss {
-		if n < p {
-			start = i
-			break
-		}
-		n -= p
-	}
-	for i := start; i < leng; i++ {
-		if cb(i) {
-			return true
-		}
-	}
-	for i := 0; i < start; i++ {
-		if cb(i) {
-			return true
-		}
-	}
-	return false
 }
 
 func copyFile(src, dst string, mode os.FileMode) (err error) {

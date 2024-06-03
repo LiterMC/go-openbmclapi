@@ -53,7 +53,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
-func (cr *Cluster) CloneFileset() map[string]int64 {
+func (cr *SubCluster) CloneFileset() map[string]int64 {
 	cr.filesetMux.RLock()
 	defer cr.filesetMux.RUnlock()
 	fileset := make(map[string]int64, len(cr.fileset))
@@ -63,7 +63,7 @@ func (cr *Cluster) CloneFileset() map[string]int64 {
 	return fileset
 }
 
-func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
+func (cr *SubCluster) CachedFileSize(hash string) (size int64, ok bool) {
 	cr.filesetMux.RLock()
 	defer cr.filesetMux.RUnlock()
 	if size, ok = cr.fileset[hash]; !ok {
@@ -75,11 +75,11 @@ func (cr *Cluster) CachedFileSize(hash string) (size int64, ok bool) {
 	return
 }
 
-func (cr *Cluster) makeReq(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
+func (cr *SubCluster) makeReq(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
 	return cr.makeReqWithBody(ctx, method, relpath, query, nil)
 }
 
-func (cr *Cluster) makeReqWithBody(
+func (cr *SubCluster) makeReqWithBody(
 	ctx context.Context,
 	method string, relpath string,
 	query url.Values, body io.Reader,
@@ -102,7 +102,7 @@ func (cr *Cluster) makeReqWithBody(
 	return
 }
 
-func (cr *Cluster) makeReqWithAuth(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
+func (cr *SubCluster) makeReqWithAuth(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
 	req, err = cr.makeReq(ctx, method, relpath, query)
 	if err != nil {
 		return
@@ -137,11 +137,11 @@ var fileListSchema = avro.MustParse(`{
 	}
 }`)
 
-func (cr *Cluster) GetFileList(ctx context.Context, lastMod int64) (files []FileInfo, err error) {
+func (cr *SubCluster) getFileList(ctx context.Context) (files []FileInfo, err error) {
 	var query url.Values
-	if lastMod > 0 {
+	if cr.lastListMod > 0 {
 		query = url.Values{
-			"lastModified": {strconv.FormatInt(lastMod, 10)},
+			"lastModified": {strconv.FormatInt(cr.lastListMod, 10)},
 		}
 	}
 	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/files", query)
@@ -173,6 +173,10 @@ func (cr *Cluster) GetFileList(ctx context.Context, lastMod int64) (files []File
 	}
 	log.Debugf("Filelist parsed, length = %d", len(files))
 	return
+}
+
+func (cr *Cluster) GetTotalFileList(ctx context.Context) (files []FileInfo, err error) {
+
 }
 
 type syncStats struct {

@@ -24,10 +24,12 @@ import (
 	"context"
 	"crypto"
 	_ "embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/textproto"
@@ -177,11 +179,11 @@ func (cr *Cluster) GetHandler() http.Handler {
 		})
 	}
 
-	handler.Use(cr.getRecordMiddleWare())
+	handler.Use(cr.createRecordMiddleWare())
 	return handler
 }
 
-func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
+func (cr *Cluster) createRecordMiddleWare() utils.MiddleWareFunc {
 	type record struct {
 		used   float64
 		bytes  float64
@@ -192,9 +194,6 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 
 	go func() {
 		defer log.RecoverPanic(nil)
-
-		<-cr.WaitForEnable()
-		disabled := cr.Disabled()
 
 		updateTicker := time.NewTicker(time.Minute)
 		defer updateTicker.Stop()
@@ -231,18 +230,6 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 				totalBytes += rec.bytes
 				if !rec.skipUA {
 					uas[rec.ua]++
-				}
-			case <-disabled:
-				total = 0
-				totalUsed = 0
-				totalBytes = 0
-				clear(uas)
-
-				select {
-				case <-cr.WaitForEnable():
-					disabled = cr.Disabled()
-				case <-time.After(time.Hour):
-					return
 				}
 			}
 		}
@@ -315,11 +302,11 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 	}
 }
 
-func (cr *Cluster) checkQuerySign(req *http.Request, hash string, secret string) bool {
+func (cr *SubCluster) checkQuerySign(req *http.Request, hash string) bool {
 	if config.Advanced.SkipSignatureCheck {
 		return true
 	}
-	query := req.Query()
+	query := req.URL.Query()
 	sign, e := query.Get("s"), query.Get("e")
 	if len(sign) == 0 || len(e) == 0 {
 		return false
@@ -332,7 +319,7 @@ func (cr *Cluster) checkQuerySign(req *http.Request, hash string, secret string)
 		return false
 	}
 	hs := crypto.SHA1.New()
-	io.WriteString(hs, secret)
+	io.WriteString(hs, cr.clusterSecret)
 	io.WriteString(hs, hash)
 	io.WriteString(hs, e)
 	var (
@@ -369,9 +356,18 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	rw.Header().Set("X-Powered-By", HeaderXPoweredBy)
 
+	var subCluster *SubCluster = nil
+	clusterName, hasCluster := cr.clusterHosts[u.Host]
+	if hasCluster {
+		subCluster = cr.clusters[clusterName]
+	}
 	rawpath := u.EscapedPath()
 	switch {
 	case strings.HasPrefix(rawpath, "/download/"):
+		if !hasCluster {
+			http.Error(rw, "Unexpected hostname", http.StatusForbidden)
+			return
+		}
 		if method != http.MethodGet && method != http.MethodHead {
 			rw.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
 			http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
@@ -384,30 +380,32 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		query := req.URL.Query()
-		if !cr.checkQuerySign(req, hash, cr.clusterSecret) {
+		if !subCluster.checkQuerySign(req, hash) {
 			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
 			return
 		}
 
-		if !cr.shouldEnable.Load() {
+		if !subCluster.shouldEnable.Load() {
 			// do not serve file if cluster is not enabled yet
 			http.Error(rw, "Cluster is not enabled yet", http.StatusServiceUnavailable)
 			return
 		}
 
 		log.Debugf("Handling download %s", hash)
-		cr.handleDownload(rw, req, hash)
+		subCluster.handleDownload(rw, req, hash)
 		return
 	case strings.HasPrefix(rawpath, "/measure/"):
+		if !hasCluster {
+			http.Error(rw, "Unexpected hostname", http.StatusForbidden)
+			return
+		}
 		if method != http.MethodGet && method != http.MethodHead {
 			rw.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
 			http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		query := req.URL.Query()
-		if !cr.checkQuerySign(req, u.Path, cr.clusterSecret) {
+		if !subCluster.checkQuerySign(req, u.Path) {
 			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
 			return
 		}
@@ -421,10 +419,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, fmt.Sprintf("measure size %d out of range (0, 200]", n), http.StatusBadRequest)
 			return
 		}
-		if err := cr.storages[0].ServeMeasure(rw, req, n); err != nil {
-			log.Errorf("Could not serve measure %d: %v", n, err)
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-		}
+		subCluster.storages.HandleMeasure(rw, req, n)
 		return
 	case strings.HasPrefix(rawpath, "/api/"):
 		version, _, _ := strings.Cut(rawpath[len("/api/"):], "/")
@@ -454,7 +449,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	http.NotFound(rw, req)
 }
 
-func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, hash string) {
+func (cr *SubCluster) handleDownload(rw http.ResponseWriter, req *http.Request, hash string) {
 	keepaliveRec := req.Context().Value("go-openbmclapi.handler.no.record.for.keepalive") != true
 	rw.Header().Set("X-Bmclapi-Hash", hash)
 
@@ -468,9 +463,9 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 		}
 		rw.WriteHeader(http.StatusOK)
-		cr.stats.AddHits(1, 0, "")
-		if !keepaliveRec {
-			cr.statOnlyHits.Add(1)
+		cr.root.stats.AddHits(1, 0, "")
+		if keepaliveRec {
+			cr.hits.Add(1)
 		}
 		return
 	}
@@ -481,81 +476,87 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		}
 	}
 
-	var err error
 	// check if file was indexed in the fileset
 	size, ok := cr.CachedFileSize(hash)
 	if !ok {
-		if err := cr.DownloadFile(req.Context(), hash); err != nil {
+		if err := cr.root.DownloadFile(req.Context(), hash); err != nil {
 			// TODO: check if the file exists
 			http.Error(rw, "Cannot download file from center server: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
-	var sto storage.Storage
-	if forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
-		sto = cr.storages[i]
-		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.String())
-
-		sz, er := sto.ServeDownload(rw, req, hash, size)
-		if er != nil {
-			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.String(), er)
-			err = er
-			return false
+	hits, hbts, name := cr.storages.HandleDownload(rw, req, hash, size)
+	if hits > 0 {
+		if keepaliveRec {
+			cr.hits.Add(hits)
+			cr.hbts.Add(hbts)
 		}
-		if sz >= 0 {
-			opts := cr.storageOpts[i]
-			cr.stats.AddHits(1, sz, opts.Id)
-			if !keepaliveRec {
-				cr.statOnlyHits.Add(1)
-				cr.statOnlyHbts.Add(sz)
-			}
-		}
-		return true
-	}) {
-		err = nil
 	}
-	if sto != nil {
-		SetAccessInfo(req, "storage", sto.String())
-	}
-	if err != nil {
-		log.Debugf("[handler]: failed to serve download: %v", err)
-		if errors.Is(err, os.ErrNotExist) {
-			http.Error(rw, "404 Status Not Found", http.StatusNotFound)
-			return
-		}
-		if _, ok := err.(*utils.HTTPStatusError); ok {
-			http.Error(rw, err.Error(), http.StatusBadGateway)
-		} else {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-		}
-		if err == storage.ErrNotWorking {
-			log.Errorf("All storages are down, exit.")
-			tctx, cancel := context.WithTimeout(context.TODO(), time.Second*10)
-			cr.Disable(tctx)
-			cancel()
-			osExit(CodeClientOrEnvionmentError)
-		}
-		return
+	if name != "" {
+		SetAccessInfo(req, "storage", name)
 	}
 	log.Debug("[handler]: download served successed")
 }
 
-// Note: this method is a fast parse, it does not deeply check if the range is valid or not
+func (cr *Cluster) handleHijackDownload(rw http.ResponseWriter, req *http.Request, hash string) {
+
+	if _, ok := emptyHashes[hash]; ok {
+		name := req.URL.Query().Get("name")
+		rw.Header().Set("X-Bmclapi-Hash", hash)
+		rw.Header().Set("ETag", `"`+hash+`"`)
+		rw.Header().Set("Cache-Control", "public, max-age=31536000, immutable") // cache for a year
+		rw.Header().Set("Content-Type", "application/octet-stream")
+		rw.Header().Set("Content-Length", "0")
+		if name != "" {
+			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		}
+		rw.WriteHeader(http.StatusOK)
+		cr.stats.AddHits(1, 0, "")
+		return
+	}
+
+	if r := req.Header.Get("Range"); r != "" {
+		if start, ok := parseRangeFirstStart(r); ok && start != 0 {
+			SetAccessInfo(req, "skip-ua-count", "range")
+		}
+	}
+
+	for _, subCluster := range cr.clusters {
+		if _, ok := subCluster.CachedFileSize(hash); ok {
+			subCluster.handleDownload(rw, req, hash)
+			return
+		}
+	}
+	http.Error(rw, "No sub cluster have the file", http.StatusNotFound)
+}
+
+// Note: this method is a fast parse, it does not deeply check if the Range is valid or not
 func parseRangeFirstStart(rg string) (start int64, ok bool) {
 	const b = "bytes="
 	if rg, ok = strings.CutPrefix(rg, b); !ok {
 		return
 	}
 	rg, _, _ = strings.Cut(rg, ",")
-	if rg, _, ok = strings.Cut(rg, "-"); !ok {
+	var leng string
+	if rg, leng, ok = strings.Cut(rg, "-"); !ok {
 		return
 	}
 	if rg = textproto.TrimString(rg); rg == "" {
 		return -1, true
 	}
+	if leng = textproto.TrimString(leng); leng == "" {
+		return -1, true
+	}
 	start, err := strconv.ParseInt(rg, 10, 64)
 	if err != nil {
 		return 0, false
+	}
+	size, err := strconv.ParseInt(leng, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	if size == 0 {
+		return -1, true
 	}
 	return start, true
 }

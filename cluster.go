@@ -57,31 +57,58 @@ var (
 )
 
 type Cluster struct {
+	publicHosts  []string
+	publicPort   uint16
+	clusters     map[string]*SubCluster
+	clusterHosts map[string]string
+	jwtIssuer    string
+
+	dataDir     string
+	maxConn     int
+	storageOpts []storage.StorageOption
+	storages    []storage.Storage
+	cache       gocache.Cache
+	apiHmacKey  []byte
+	hijackProxy *HjProxy
+
+	stats     notify.Stats
+	issync    atomic.Bool
+	syncProg  atomic.Int64
+	syncTotal atomic.Int64
+
+	downloadMux sync.RWMutex
+	downloading map[string]*downloadingItem
+
+	client         *http.Client
+	cachedCli      *http.Client
+	bufSlots       *limited.BufSlots
+	database       database.DB
+	notifyManager  *notify.Manager
+	webpushKeyB64  string
+	updateChecker  *time.Ticker
+	statsTicker    *time.Ticker
+	apiRateLimiter *limited.APIRateMiddleWare
+
+	wsUpgrader          *websocket.Upgrader
+	handlerAPIv0        http.Handler
+	handlerAPIv1        http.Handler
+	hijackHandler       http.Handler
+	getRecordMiddleWare func() utils.MiddleWareFunc
+}
+
+type SubCluster struct {
+	root *Cluster
+
 	host          string   // not the public access host, but maybe a public IP, or a host that will be resolved to the IP
 	publicHosts   []string // should not contains port, can be nil
-	publicPort    uint16
 	clusterId     string
 	clusterSecret string
-	prefix        string
+	storages      *storage.StorageManager
 	byoc          bool
-	jwtIssuer     string
+	prefix        string
 
-	dataDir            string
-	maxConn            int
-	storageOpts        []storage.StorageOption
-	storages           []storage.Storage
-	storageWeights     []uint
-	storageTotalWeight uint
-	cache              gocache.Cache
-	apiHmacKey         []byte
-	hijackProxy        *HjProxy
-
-	stats                  notify.Stats
-	lastHits, statOnlyHits atomic.Int32
-	lastHbts, statOnlyHbts atomic.Int64
-	issync                 atomic.Bool
-	syncProg               atomic.Int64
-	syncTotal              atomic.Int64
+	hits atomic.Int32
+	hbts atomic.Int64
 
 	mux             sync.RWMutex
 	enabled         atomic.Bool
@@ -91,34 +118,21 @@ type Cluster struct {
 	reconnectCount  int
 	socket          *socket.Socket
 	cancelKeepalive context.CancelFunc
-	downloadMux     sync.RWMutex
-	downloading     map[string]*downloadingItem
 	filesetMux      sync.RWMutex
 	fileset         map[string]int64
+	lastListMod     int64
 	authTokenMux    sync.RWMutex
 	authToken       *ClusterToken
-
-	client         *http.Client
-	cachedCli      *http.Client
-	bufSlots       *limited.BufSlots
-	database       database.DB
-	notifyManager  *notify.Manager
-	webpushKeyB64  string
-	updateChecker  *time.Ticker
-	apiRateLimiter *limited.APIRateMiddleWare
-
-	wsUpgrader    *websocket.Upgrader
-	handlerAPIv0  http.Handler
-	handlerAPIv1  http.Handler
-	hijackHandler http.Handler
 }
+
+const defaultClusterServerURL = "https://openbmclapi.bangbang93.com"
 
 func NewCluster(
 	ctx context.Context,
 	prefix string,
 	baseDir string,
-	host string, publicPort uint16,
-	clusterId string, clusterSecret string,
+	publicPort uint16,
+	clusters map[string]ClusterItem,
 	byoc bool, dialer *net.Dialer,
 	storageOpts []storage.StorageOption,
 	cache gocache.Cache,
@@ -138,22 +152,22 @@ func NewCluster(
 		}
 	}
 
+	storages := make([]storage.Storage, len(storageOpts))
+	for i, opt := range storageOpts {
+		storages[i] = storage.NewStorage(opt)
+	}
+
 	cr = &Cluster{
-		host:          host,
-		publicPort:    publicPort,
-		clusterId:     clusterId,
-		clusterSecret: clusterSecret,
-		prefix:        prefix,
-		byoc:          byoc,
-		jwtIssuer:     jwtIssuerPrefix + "#" + clusterId,
+		publicPort:   publicPort,
+		clusters:     make(map[string]*SubCluster, len(clusters)),
+		clusterHosts: make(map[string]string, len(clusters)),
+		jwtIssuer:    jwtIssuerPrefix + "#" + "todo",
 
 		dataDir:     filepath.Join(baseDir, "data"),
 		maxConn:     config.DownloadMaxConn,
 		storageOpts: storageOpts,
+		storages:    storages,
 		cache:       cache,
-
-		disabled: make(chan struct{}, 0),
-		fileset:  make(map[string]int64, 0),
 
 		downloading: make(map[string]*downloadingItem),
 
@@ -167,28 +181,36 @@ func NewCluster(
 		wsUpgrader: &websocket.Upgrader{
 			HandshakeTimeout: time.Minute,
 		},
+		getRecordMiddleWare: sync.OnceValue(cr.createRecordMiddleWare),
 	}
-	close(cr.disabled)
 
 	if cr.maxConn <= 0 {
-		panic("download-max-conn must be a positive integer")
+		log.Panic("download-max-conn must be a positive integer")
 	}
 	cr.bufSlots = limited.NewBufSlots(cr.maxConn)
 
-	{
-		var (
-			n   uint = 0
-			wgs      = make([]uint, len(storageOpts))
-			sts      = make([]storage.Storage, len(storageOpts))
-		)
-		for i, s := range storageOpts {
-			sts[i] = storage.NewStorage(s)
-			wgs[i] = s.Weight
-			n += s.Weight
+	for name, item := range clusters {
+		filteredOpts, storages := filterStorageOptions(storageOpts, storages, name, item.Id)
+		m := new(storage.StorageManager)
+		m.Init(filteredOpts, storages)
+		sc := &SubCluster{
+			root:          cr,
+			host:          item.Host,
+			publicHosts:   item.PublicHosts,
+			clusterId:     item.Id,
+			clusterSecret: item.Secret,
+			prefix:        item.Prefix,
+			storages:      m,
+			fileset:       make(map[string]int64, 0),
+			disabled:      closedCh,
 		}
-		cr.storages = sts
-		cr.storageWeights = wgs
-		cr.storageTotalWeight = n
+		if sc.prefix == "" {
+			sc.prefix = defaultClusterServerURL
+		}
+		cr.clusters[name] = sc
+		for _, h := range item.PublicHosts {
+			cr.clusterHosts[h] = name
+		}
 	}
 	return
 }
@@ -204,7 +226,7 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	}
 
 	if config.Hijack.Enable {
-		cr.hijackProxy = NewHjProxy(cr.client, cr.database, cr.handleDownload)
+		cr.hijackProxy = NewHjProxy(cr.client, cr.database, cr.handleHijackDownload)
 		if config.Hijack.EnableLocalCache {
 			os.MkdirAll(config.Hijack.LocalCachePath, 0755)
 		}
@@ -246,6 +268,7 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 	}
 
 	cr.updateChecker = time.NewTicker(time.Hour)
+	cr.statsTicker = time.NewTicker(time.Minute)
 
 	go func(ticker *time.Ticker) {
 		defer log.RecoverPanic(nil)
@@ -260,6 +283,16 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 			}
 		}
 	}(cr.updateChecker)
+	go func(ticker *time.Ticker) {
+		defer log.RecoverPanic(nil)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := cr.stats.Save(cr.dataDir); err != nil {
+				log.Errorf(Tr("error.cluster.stat.save.failed"), err)
+			}
+			cr.notifyManager.OnReportStatus(&cr.stats)
+		}
+	}(cr.statsTicker)
 	return
 }
 
@@ -277,7 +310,7 @@ func (cr *Cluster) allocBuf(ctx context.Context) (slotId int, buf []byte, free f
 	return cr.bufSlots.Alloc(ctx)
 }
 
-func (cr *Cluster) Connect(ctx context.Context) bool {
+func (cr *SubCluster) Connect(ctx context.Context) bool {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
@@ -302,7 +335,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		DialTimeout: time.Minute * 6,
 	})
 	if err != nil {
-		log.Errorf("Could not parse Engine.IO options: %v; exit.", err)
+		log.Errorf("Cannot parse Engine.IO options: %v; exit.", err)
 		osExit(CodeClientUnexpectedError)
 	}
 
@@ -406,7 +439,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	return true
 }
 
-func (cr *Cluster) WaitForEnable() <-chan struct{} {
+func (cr *SubCluster) WaitForEnable() <-chan struct{} {
 	if cr.enabled.Load() {
 		return closedCh
 	}
@@ -436,7 +469,7 @@ type ConfigFlavor struct {
 	Storage string `json:"storage"`
 }
 
-func (cr *Cluster) Enable(ctx context.Context) (err error) {
+func (cr *SubCluster) Enable(ctx context.Context) (err error) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
@@ -453,35 +486,17 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 
 	cr.shouldEnable.Store(true)
 
-	storagesCount := make(map[string]int, 2)
-	for _, s := range cr.storageOpts {
-		switch s.Type {
-		case storage.StorageLocal:
-			storagesCount["file"]++
-		case storage.StorageMount, storage.StorageWebdav:
-			storagesCount["alist"]++
-		default:
-			log.Errorf("Unknown storage type %q", s.Type)
-		}
-	}
-	storageStr := ""
-	for s, _ := range storagesCount {
-		if len(storageStr) > 0 {
-			storageStr += "+"
-		}
-		storageStr += s
-	}
-
+	storageFlavor := cr.storages.GetStorageFlavor()
 	log.Info(Tr("info.cluster.enable.sending"))
 	resCh, err := cr.socket.EmitWithAck("enable", EnableData{
 		Host:         cr.host,
-		Port:         cr.publicPort,
+		Port:         cr.root.publicPort,
 		Version:      build.ClusterVersion,
 		Byoc:         cr.byoc,
 		NoFastEnable: config.Advanced.NoFastEnable,
 		Flavor: ConfigFlavor{
 			Runtime: "golang/" + runtime.GOOS + "-" + runtime.GOARCH,
-			Storage: storageStr,
+			Storage: storageFlavor,
 		},
 	})
 	if err != nil {
@@ -503,7 +518,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 				if hashMismatch := reFileHashMismatchError.FindStringSubmatch(msg); hashMismatch != nil {
 					hash := hashMismatch[1]
 					log.Warnf("Detected hash mismatch error, removing bad file %s", hash)
-					for _, s := range cr.storages {
+					for _, s := range cr.storages.Storages {
 						s.Remove(hash)
 					}
 				}
@@ -523,7 +538,7 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 		close(ch)
 	}
 	cr.waitEnable = cr.waitEnable[:0]
-	go cr.notifyManager.OnEnabled()
+	go cr.root.notifyManager.OnEnabled()
 
 	const maxFailCount = 3
 	var (
@@ -575,21 +590,13 @@ func (cr *Cluster) Enable(ctx context.Context) (err error) {
 }
 
 // KeepAlive will fresh hits & hit bytes data and send the keep-alive packet
-func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
-	hits, hbts := cr.stats.GetTmpHits()
-	lhits, lhbts := cr.lastHits.Load(), cr.lastHbts.Load()
-	hits2, hbts2 := cr.statOnlyHits.Load(), cr.statOnlyHbts.Load()
-	ahits, ahbts := hits-lhits-hits2, hbts-lhbts-hbts2
+func (cr *SubCluster) KeepAlive(ctx context.Context) (status int) {
+	hits, hbts := cr.hits.Load(), cr.hbts.Load()
 	resCh, err := cr.socket.EmitWithAck("keep-alive", Map{
 		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		"hits":  ahits,
-		"bytes": ahbts,
+		"hits":  hits,
+		"bytes": hbts,
 	})
-	go cr.notifyManager.OnReportStatus(&cr.stats)
-
-	if e := cr.stats.Save(cr.dataDir); e != nil {
-		log.Errorf(Tr("error.cluster.stat.save.failed"), e)
-	}
 	if err != nil {
 		log.Errorf(Tr("error.cluster.keepalive.send.failed"), err)
 		return 1
@@ -607,7 +614,7 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
 				if hashMismatch := reFileHashMismatchError.FindStringSubmatch(msg); hashMismatch != nil {
 					hash := hashMismatch[1]
 					log.Warnf("Detected hash mismatch error, removing bad file %s", hash)
-					for _, s := range cr.storages {
+					for _, s := range cr.storages.Storages {
 						s.Remove(hash)
 					}
 				}
@@ -618,18 +625,16 @@ func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
 		log.Errorf(Tr("error.cluster.keepalive.failed"), ero)
 		return 1
 	}
-	log.Infof(Tr("info.cluster.keepalive.success"), ahits, utils.BytesToUnit((float64)(ahbts)), data[1])
-	cr.lastHits.Store(hits)
-	cr.lastHbts.Store(hbts)
-	cr.statOnlyHits.Add(-hits2)
-	cr.statOnlyHbts.Add(-hbts2)
+	log.Infof(Tr("info.cluster.keepalive.success"), hits, utils.BytesToUnit((float64)(hbts)), data[1])
+	cr.hits.Add(-hits)
+	cr.hbts.Add(-hbts)
 	if data[1] == false {
 		return -1
 	}
 	return 0
 }
 
-func (cr *Cluster) disconnected() bool {
+func (cr *SubCluster) disconnected() bool {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
@@ -640,16 +645,16 @@ func (cr *Cluster) disconnected() bool {
 		cr.cancelKeepalive()
 		cr.cancelKeepalive = nil
 	}
-	cr.notifyManager.OnDisabled()
+	cr.root.notifyManager.OnDisabled()
 	return true
 }
 
-func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
+func (cr *SubCluster) Disable(ctx context.Context) (ok bool) {
 	cr.shouldEnable.Store(false)
 	return cr.disable(ctx)
 }
 
-func (cr *Cluster) disable(ctx context.Context) (ok bool) {
+func (cr *SubCluster) disable(ctx context.Context) (ok bool) {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 
@@ -658,7 +663,7 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 		return false
 	}
 
-	defer cr.notifyManager.OnDisabled()
+	defer cr.root.notifyManager.OnDisabled()
 
 	if cr.cancelKeepalive != nil {
 		cr.cancelKeepalive()
@@ -699,11 +704,11 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 	return
 }
 
-func (cr *Cluster) Enabled() bool {
+func (cr *SubCluster) Enabled() bool {
 	return cr.enabled.Load()
 }
 
-func (cr *Cluster) Disabled() <-chan struct{} {
+func (cr *SubCluster) Disabled() <-chan struct{} {
 	cr.mux.RLock()
 	defer cr.mux.RUnlock()
 	return cr.disabled
@@ -714,7 +719,7 @@ type CertKeyPair struct {
 	Key  string `json:"key"`
 }
 
-func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
+func (cr *SubCluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
 	resCh, err := cr.socket.EmitWithAck("request-cert")
 	if err != nil {
 		return
@@ -737,12 +742,12 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 	return
 }
 
-func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
+func (cr *SubCluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
 	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
 	if err != nil {
 		return
 	}
-	res, err := cr.cachedCli.Do(req)
+	res, err := cr.root.cachedCli.Do(req)
 	if err != nil {
 		return
 	}
@@ -757,4 +762,16 @@ func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, 
 		return
 	}
 	return
+}
+
+func filterStorageOptions(opts []storage.StorageOption, storages []storage.Storage, name string, id string) ([]storage.StorageOption, []storage.Storage) {
+	filteredOpt := make([]storage.StorageOption, 0, 1)
+	filteredSto := make([]storage.Storage, 0, 1)
+	for i, opt := range opts {
+		if opt.Cluster == "" || opt.Cluster == "-" || opt.Cluster == name || opt.Cluster == id {
+			filteredOpt = append(filteredOpt, opt)
+			filteredSto = append(filteredSto, storages[i])
+		}
+	}
+	return filteredOpt, filteredSto
 }

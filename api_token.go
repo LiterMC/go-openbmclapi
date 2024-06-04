@@ -76,7 +76,7 @@ func (cr *Cluster) getJWTKey(t *jwt.Token) (any, error) {
 }
 
 const (
-	challengeTokenSubject = "GOBA-chanllenge"
+	challengeTokenSubject = "GOBA-challenge"
 	authTokenSubject      = "GOBA-auth"
 	apiTokenSubject       = "GOBA-API"
 )

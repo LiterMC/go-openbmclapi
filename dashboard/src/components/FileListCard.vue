@@ -9,9 +9,8 @@ defineProps<{
 }>()
 
 defineEmits<{
-	(e: 'click', file: FileInfo, index: number): void,
+	(e: 'click', file: FileInfo, index: number): void
 }>()
-
 </script>
 <template>
 	<Card>
@@ -27,11 +26,11 @@ defineEmits<{
 			<template v-else>
 				<div class="file-list-box">
 					<div v-for="(file, i) in files" v-key="file.name" class="file-elem">
-						<div class="file-name" @click="$emit('click', file, i)">
-							{{file.name}}
+						<div class="file-name flex-row-center" @click="$emit('click', file, i)">
+							{{ file.name }}
 						</div>
 						<div class="flex-row-center">
-							<div class="file-size">{{formatBytes(file.size)}}</div>
+							<div class="file-size">{{ formatBytes(file.size) }}</div>
 							<slot :index="i" :file="file" />
 						</div>
 					</div>
@@ -75,5 +74,4 @@ defineEmits<{
 	font-weight: 200;
 	user-select: none;
 }
-
 </style>

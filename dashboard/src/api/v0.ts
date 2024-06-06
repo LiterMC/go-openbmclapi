@@ -135,7 +135,7 @@ export async function getChallenge(action: string): Promise<string> {
 }
 
 export function signChallenge(challenge: string, secret: string): string {
-	const signed = sha256.hmac(sha256(secret), challenge);
+	const signed = sha256.hmac(sha256(secret), challenge)
 	return signed
 }
 
@@ -412,7 +412,11 @@ export async function getLogFiles(token: string): Promise<FileInfo[]> {
 	return res.data.files
 }
 
-export async function getLogFile(token: string, name: string, noEncrypt?: boolean): Promise<ArrayBuffer> {
+export async function getLogFile(
+	token: string,
+	name: string,
+	noEncrypt?: boolean,
+): Promise<ArrayBuffer> {
 	const LOGFILE_URL = `${window.location.origin}/api/v0/log_file/`
 	const u = new URL(name.startsWith('/') ? name.substr(1) : name, LOGFILE_URL)
 	if (noEncrypt) {
@@ -427,7 +431,11 @@ export async function getLogFile(token: string, name: string, noEncrypt?: boolea
 	return res.data
 }
 
-export async function getLogFileURL(token: string, name: string, noEncrypt?: boolean): Promise<string> {
+export async function getLogFileURL(
+	token: string,
+	name: string,
+	noEncrypt?: boolean,
+): Promise<string> {
 	const LOGFILE_URL = `${window.location.origin}/api/v0/log_file/`
 	const u = new URL(name.startsWith('/') ? name.substr(1) : name, LOGFILE_URL)
 	if (noEncrypt) {

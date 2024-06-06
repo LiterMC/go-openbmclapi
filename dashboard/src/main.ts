@@ -10,7 +10,7 @@ import { useCookies, bindRefToCookie } from './cookies'
 import './utils/chart'
 import { ping } from '@/api/v0'
 
-import 'primevue/resources/themes/lara-light-green/theme.css'
+import './assets/theme.css'
 import 'primeicons/primeicons.css'
 import './assets/main.css'
 

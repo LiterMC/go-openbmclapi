@@ -21,6 +21,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"embed"
 	"encoding/json"
 	"io"
@@ -29,6 +30,8 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 //go:generate npm -C dashboard ci
@@ -63,6 +66,7 @@ func (cr *Cluster) serveDashboard(rw http.ResponseWriter, req *http.Request, pth
 		http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	acceptEncoding := utils.SplitCSV(req.Header.Get("Accept-Encoding"))
 	switch pth {
 	case "":
 		break
@@ -84,11 +88,13 @@ func (cr *Cluster) serveDashboard(rw http.ResponseWriter, req *http.Request, pth
 		fd, err := dsbDist.Open(pth)
 		if err == nil {
 			defer fd.Close()
-			if stat, err := fd.Stat(); err != nil || stat.IsDir() {
+			stat, err := fd.Stat()
+			if err != nil || stat.IsDir() {
 				http.NotFound(rw, req)
 				return
 			}
 			name := path.Base(pth)
+			size := stat.Size()
 			typ := mime.TypeByExtension(path.Ext(name))
 			if typ == "" {
 				typ = "application/octet-stream"
@@ -97,6 +103,17 @@ func (cr *Cluster) serveDashboard(rw http.ResponseWriter, req *http.Request, pth
 			if rw.Header().Get("Cache-Control") == "" {
 				if strings.HasPrefix(pth, "assets/") {
 					rw.Header().Set("Cache-Control", "public, max-age=2592000")
+				}
+			}
+			if acceptEncoding["gzip"] != 0 && size > 1024 {
+				buf := bytes.NewBuffer(nil)
+				gw := gzip.NewWriter(buf)
+				if _, err := io.Copy(gw, fd); err == nil {
+					if err = gw.Close(); err == nil {
+						rw.Header().Set("Content-Encoding", "gzip")
+						http.ServeContent(rw, req, name, startTime, bytes.NewReader(buf.Bytes()))
+						return
+					}
 				}
 			}
 			http.ServeContent(rw, req, name, startTime, fd.(io.ReadSeeker))

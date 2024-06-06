@@ -1,0 +1,2 @@
+@import 'primevue/resources/themes/lara-light-green/theme.css' not (prefers-color-scheme: dark);
+@import 'primevue/resources/themes/lara-dark-green/theme.css' (prefers-color-scheme: dark);

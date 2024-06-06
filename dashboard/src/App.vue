@@ -115,7 +115,7 @@ const selectedLang = computed({
 	height: 4rem;
 	padding-left: 2rem;
 	padding-right: 1rem;
-	background-color: color-mix(in srgb, var(--primary-50), transparent);
+	background-color: color-mix(in srgb, var(--primary-50) 30%, transparent);
 	box-shadow: #0008 0 0 1rem -0.5rem;
 	backdrop-filter: blur(0.4rem);
 }
@@ -212,6 +212,12 @@ const selectedLang = computed({
 	color: var(--highlight-text-color);
 	background-color: var(--highlight-bg);
 	text-decoration: underline;
+}
+
+@media (prefers-color-scheme: dark) {
+	#header {
+		background-color: color-mix(in srgb, var(--primary-50) 10%, transparent);
+	}
 }
 
 @media (max-width: 60rem) {

@@ -76,7 +76,7 @@ export interface StatusRes {
 async function requestToken(
 	token: string,
 	path: string,
-	query?: { [key: string]: string },
+	query?: { [key: string]: string | undefined },
 ): Promise<string> {
 	const res = await axios.post<TokenRes>(
 		`/api/v0/requestToken`,
@@ -122,7 +122,7 @@ export async function getStat(name: string, token?: string | null): Promise<Stat
 }
 
 export async function getChallenge(action: string): Promise<string> {
-	const u = new URL(window.location.toString())
+	const u = new URL(window.location.origin)
 	u.pathname = `/api/v0/challenge`
 	u.searchParams.set('action', action)
 	const res = await axios.get<ChallengeRes>(u.toString())
@@ -173,7 +173,7 @@ export async function getPprofURL(token: string, opts: PprofOptions): Promise<st
 	const tk = await requestToken(token, PPROF_URL, {
 		lookup: opts.lookup,
 	})
-	const u = new URL(window.location.toString())
+	const u = new URL(window.location.origin)
 	u.pathname = PPROF_URL
 	u.searchParams.set('lookup', opts.lookup)
 	u.searchParams.set('_t', tk)
@@ -392,4 +392,53 @@ export async function removeWebhook(token: string, id: number): Promise<void> {
 			Authorization: `Bearer ${token}`,
 		},
 	})
+}
+
+export interface FileInfo {
+	name: string
+	size: number
+}
+
+interface LogFilesRes {
+	files: FileInfo[]
+}
+
+export async function getLogFiles(token: string): Promise<FileInfo[]> {
+	const res = await axios.get<LogFilesRes>(`/api/v0/log_files`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+	return res.data.files
+}
+
+export async function getLogFile(token: string, name: string, noEncrypt?: boolean): Promise<ArrayBuffer> {
+	const LOGFILE_URL = `${window.location.origin}/api/v0/log_file`
+	const u = new URL(name, LOGFILE_URL)
+	if (noEncrypt) {
+		u.searchParams.set('no_encrypt', '1')
+	}
+	const res = await axios.get<ArrayBuffer>(u.toString(), {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+		responseType: 'arraybuffer',
+	})
+	return res.data
+}
+
+export async function getLogFileURL(token: string, name: string, noEncrypt?: boolean): Promise<string> {
+	const LOGFILE_URL = `${window.location.origin}/api/v0/log_file/`
+	if (name.startsWith('/')) {
+		name = name.substr(1)
+	}
+	const u = new URL(name, LOGFILE_URL)
+	if (noEncrypt) {
+		u.searchParams.set('no_encrypt', '1')
+	}
+	const tk = await requestToken(token, u.pathname, {
+		no_encrypt: u.searchParams.get('no_encrypt') || '',
+	})
+	u.searchParams.set('_t', tk)
+	return u.toString()
 }

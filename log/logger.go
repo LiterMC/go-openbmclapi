@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,14 +37,14 @@ import (
 )
 
 var (
-	logdir    string = "logs"
+	logDir    string = "logs"
 	logSlots  int    = 7
 	logfile   atomic.Pointer[os.File]
 	logStdout atomic.Pointer[io.Writer]
 
 	logTimeFormat string = "15:04:05"
 
-	accessLogFileName = filepath.Join(logdir, "access.log")
+	accessLogFileName = filepath.Join(logDir, "access.log")
 	accessLogFile     atomic.Pointer[os.File]
 
 	maxAccessLogFileSize int64 = 1024 * 1024 * 10 // 10MB
@@ -292,11 +293,36 @@ func RecoverPanic(then func(err any)) {
 	}
 }
 
-func flushLogfile() {
-	if _, err := os.Stat(logdir); errors.Is(err, os.ErrNotExist) {
-		os.MkdirAll(logdir, 0755)
+func BaseDir() string {
+	return logDir
+}
+
+func ListLogs() (files []string) {
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		return
 	}
-	lfile, err := os.OpenFile(filepath.Join(logdir, time.Now().Format("20060102-15.log")),
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		base, _, ok := strings.Cut(entry.Name(), ".log")
+		if !ok {
+			continue
+		}
+		_ = base
+		// if _, err := time.Parse("20060102-15", base); err == nil
+		files = append(files, entry.Name())
+	}
+	sort.Strings(files)
+	return
+}
+
+func flushLogfile() {
+	if _, err := os.Stat(logDir); errors.Is(err, os.ErrNotExist) {
+		os.MkdirAll(logDir, 0755)
+	}
+	lfile, err := os.OpenFile(filepath.Join(logDir, time.Now().Format("20060102-15.log")),
 		os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
 		Error("Cannot create new log file:", err)
@@ -310,11 +336,11 @@ func flushLogfile() {
 }
 
 func removeExpiredLogFiles(before string) {
-	if files, err := os.ReadDir(logdir); err == nil {
+	if files, err := os.ReadDir(logDir); err == nil {
 		for _, f := range files {
 			n := f.Name()
 			if strings.HasSuffix(n, ".log") && n < before {
-				p := filepath.Join(logdir, n)
+				p := filepath.Join(logDir, n)
 				Debugf("Remove expired log %q", p)
 				os.Remove(p)
 			}

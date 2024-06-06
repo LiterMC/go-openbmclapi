@@ -19,7 +19,7 @@
 docker pull craftmine/go-openbmclapi:latest || {
  echo "[ERROR] Failed to pull docker image 'craftmine/go-openbmclapi:latest'"
  if ! docker images craftmine/go-openbmclapi | grep latest; then
- 	echo "Can not found docker image 'craftmine/go-openbmclapi:latest'"
+ 	echo "Cannot find docker image 'craftmine/go-openbmclapi:latest'"
  	exit 1
  fi
 }

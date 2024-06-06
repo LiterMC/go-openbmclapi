@@ -20,13 +20,17 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -143,21 +147,24 @@ func (cr *Cluster) initAPIv0() http.Handler {
 		})
 	})
 
-	mux.HandleFunc("/ping", cr.apiV0Ping)
+	mux.HandleFunc("/ping", cr.apiV1Ping)
 	mux.HandleFunc("/status", cr.apiV0Status)
 	mux.Handle("/stat/", http.StripPrefix("/stat/", (http.HandlerFunc)(cr.apiV0Stat)))
 
-	mux.HandleFunc("/challenge", cr.apiV0Challenge)
+	mux.HandleFunc("/challenge", cr.apiV1Challenge)
 	mux.HandleFunc("/login", cr.apiV0Login)
 	mux.Handle("/requestToken", cr.apiAuthHandleFunc(cr.apiV0RequestToken))
-	mux.Handle("/logout", cr.apiAuthHandleFunc(cr.apiV0Logout))
+	mux.Handle("/logout", cr.apiAuthHandleFunc(cr.apiV1Logout))
 
-	mux.HandleFunc("/log.io", cr.apiV0LogIO)
-	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV0Pprof))
+	mux.HandleFunc("/log.io", cr.apiV1LogIO)
+	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV1Pprof))
 	mux.HandleFunc("/subscribeKey", cr.apiV0SubscribeKey)
 	mux.Handle("/subscribe", cr.apiAuthHandleFunc(cr.apiV0Subscribe))
 	mux.Handle("/subscribe_email", cr.apiAuthHandleFunc(cr.apiV0SubscribeEmail))
 	mux.Handle("/webhook", cr.apiAuthHandleFunc(cr.apiV0Webhook))
+
+	mux.Handle("/log_files", cr.apiAuthHandleFunc(cr.apiV0LogFiles))
+	mux.Handle("/log_file/", cr.apiAuthHandle(http.StripPrefix("/log_file/", (http.HandlerFunc)(cr.apiV0LogFile))))
 
 	next := cr.apiRateLimiter.WrapHandler(mux)
 	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
@@ -165,7 +172,30 @@ func (cr *Cluster) initAPIv0() http.Handler {
 	})
 }
 
-func (cr *Cluster) apiV0Ping(rw http.ResponseWriter, req *http.Request) {
+func (cr *Cluster) initAPIv1() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+		writeJson(rw, http.StatusNotFound, Map{
+			"error": "404 not found",
+			"path":  req.URL.Path,
+		})
+	})
+
+	mux.HandleFunc("/ping", cr.apiV1Ping)
+
+	mux.HandleFunc("/challenge", cr.apiV1Challenge)
+	mux.Handle("/logout", cr.apiAuthHandleFunc(cr.apiV1Logout))
+
+	mux.HandleFunc("/log.io", cr.apiV1LogIO)
+	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV1Pprof))
+
+	next := cr.apiRateLimiter.WrapHandler(mux)
+	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+		cr.authMiddleware(rw, req, next)
+	})
+}
+
+func (cr *Cluster) apiV1Ping(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
@@ -173,7 +203,7 @@ func (cr *Cluster) apiV0Ping(rw http.ResponseWriter, req *http.Request) {
 	authed := getRequestTokenType(req) == tokenTypeAuth
 	writeJson(rw, http.StatusOK, Map{
 		"version": build.BuildVersion,
-		"time":    time.Now(),
+		"time":    time.Now().UnixMilli(),
 		"authed":  authed,
 	})
 }
@@ -235,7 +265,7 @@ func (cr *Cluster) apiV0Stat(rw http.ResponseWriter, req *http.Request) {
 	writeJson(rw, http.StatusOK, (json.RawMessage)(data))
 }
 
-func (cr *Cluster) apiV0Challenge(rw http.ResponseWriter, req *http.Request) {
+func (cr *Cluster) apiV1Challenge(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
@@ -368,7 +398,7 @@ func (cr *Cluster) apiV0RequestToken(rw http.ResponseWriter, req *http.Request) 
 	})
 }
 
-func (cr *Cluster) apiV0Logout(rw http.ResponseWriter, req *http.Request) {
+func (cr *Cluster) apiV1Logout(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodPost) {
 		return
 	}
@@ -378,7 +408,7 @@ func (cr *Cluster) apiV0Logout(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusNoContent)
 }
 
-func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
+func (cr *Cluster) apiV1LogIO(rw http.ResponseWriter, req *http.Request) {
 	addr, _ := req.Context().Value(RealAddrCtxKey).(string)
 
 	conn, err := cr.wsUpgrader.Upgrade(rw, req, nil)
@@ -594,7 +624,7 @@ func (cr *Cluster) apiV0LogIO(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (cr *Cluster) apiV0Pprof(rw http.ResponseWriter, req *http.Request) {
+func (cr *Cluster) apiV1Pprof(rw http.ResponseWriter, req *http.Request) {
 	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
 		return
 	}
@@ -980,6 +1010,100 @@ func (cr *Cluster) apiV0WebhookDELETE(rw http.ResponseWriter, req *http.Request,
 		return
 	}
 	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (cr *Cluster) apiV0LogFiles(rw http.ResponseWriter, req *http.Request) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+		return
+	}
+	files := log.ListLogs()
+	type FileInfo struct {
+		Name string `json:"name"`
+		Size int64  `json:"size"`
+	}
+	data := make([]FileInfo, 0, len(files))
+	for _, file := range files {
+		if s, err := os.Stat(filepath.Join(log.BaseDir(), file)); err == nil {
+			data = append(data, FileInfo{
+				Name: file,
+				Size: s.Size(),
+			})
+		}
+	}
+	writeJson(rw, http.StatusOK, Map{
+		"files": data,
+	})
+}
+
+func (cr *Cluster) apiV0LogFile(rw http.ResponseWriter, req *http.Request) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+		return
+	}
+	query := req.URL.Query()
+	fd, err := os.Open(filepath.Join(log.BaseDir(), req.URL.Path))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error":   "file not exists",
+				"message": "Cannot find log file",
+				"path":    req.URL.Path,
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "cannot open file",
+			"message": err.Error(),
+		})
+		return
+	}
+	defer fd.Close()
+	name := filepath.Base(req.URL.Path)
+	isGzip := filepath.Ext(name) == ".gz"
+	if query.Get("no_encrypt") == "1" {
+		var modTime time.Time
+		if stat, err := fd.Stat(); err == nil {
+			modTime = stat.ModTime()
+		}
+		rw.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=600")
+		if isGzip {
+			rw.Header().Set("Content-Type", "application/octet-stream")
+		} else {
+			rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		}
+		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+		http.ServeContent(rw, req, name, modTime, fd)
+	} else {
+		if !isGzip {
+			name += ".gz"
+		}
+		rw.Header().Set("Content-Type", "application/octet-stream")
+		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name+".encrypted"))
+		cr.apiV0LogFileEncrypted(rw, req, fd, !isGzip)
+	}
+}
+
+func (cr *Cluster) apiV0LogFileEncrypted(rw http.ResponseWriter, req *http.Request, r io.Reader, useGzip bool) {
+	rw.WriteHeader(http.StatusOK)
+	if useGzip {
+		pr, pw := io.Pipe()
+		defer pr.Close()
+		go func(r io.Reader) {
+			gw := gzip.NewWriter(pw)
+			if _, err := io.Copy(gw, r); err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+			if err := gw.Close(); err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+			pw.Close()
+		}(r)
+		r = pr
+	}
+	if err := utils.EncryptStream(rw, r, utils.DeveloporPublicKey); err != nil {
+		log.Errorf("Cannot write encrypted log stream: %v", err)
+	}
 }
 
 type Map = map[string]any

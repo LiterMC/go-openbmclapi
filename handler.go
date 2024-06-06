@@ -120,6 +120,7 @@ func (cr *Cluster) GetHandler() http.Handler {
 	cr.apiRateLimiter.SetAnonymousRateLimit(config.RateLimit.Anonymous)
 	cr.apiRateLimiter.SetLoggedRateLimit(config.RateLimit.Logged)
 	cr.handlerAPIv0 = http.StripPrefix("/api/v0", cr.cliIdHandle(cr.initAPIv0()))
+	cr.handlerAPIv1 = http.StripPrefix("/api/v1", cr.cliIdHandle(cr.initAPIv1()))
 	cr.hijackHandler = http.StripPrefix("/bmclapi", cr.hijackProxy)
 
 	handler := utils.NewHttpMiddleWareHandler(cr)
@@ -430,6 +431,9 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		switch version {
 		case "v0":
 			cr.handlerAPIv0.ServeHTTP(rw, req)
+			return
+		case "v1":
+			cr.handlerAPIv1.ServeHTTP(rw, req)
 			return
 		}
 	case rawpath == "/robots.txt":

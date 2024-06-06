@@ -225,7 +225,7 @@ func readECPrivateKey(path string) (key *ecdsa.PrivateKey, err error) {
 			return x509.ParseECPrivateKey(blk.Bytes)
 		}
 	}
-	return nil, errors.New(`Cannot found "EC PRIVATE KEY" in pem blocks`)
+	return nil, errors.New(`Cannot find "EC PRIVATE KEY" in pem blocks`)
 }
 
 func (p *Plugin) GetPublicKey() []byte {

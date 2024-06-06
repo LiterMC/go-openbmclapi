@@ -31,6 +31,9 @@
 		"i18n": "国际化",
 		"language": "语言",
 
+		"debugs_and_logs": "调试 & 日志",
+		"logs": "日志",
+
 		"notification": "推送",
 		"notify": {
 			"when.disabled": "下线时发送通知",

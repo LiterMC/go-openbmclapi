@@ -31,6 +31,9 @@
 		"i18n": "Internationalization",
 		"language": "Language",
 
+		"debugs_and_logs": "Debugs & Logs",
+		"logs": "Logs",
+
 		"notification": "Notification",
 		"notify": {
 			"when.disabled": "Notify when disabled",

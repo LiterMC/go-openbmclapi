@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, ref, computed, watch, inject, type Ref } from 'vue'
-import { computedAsync } from '@vueuse/core'
 import { RouterLink } from 'vue-router'
 import { useRequest } from 'vue-request'
 import Button from 'primevue/button'

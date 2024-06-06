@@ -146,10 +146,11 @@ func main() {
 func createNewFile(name string) (fd *os.File, err error) {
 	basename, _, _ := strings.Cut(name, ".")
 	fd, err = os.OpenFile(basename+".log", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return
-		}
+	if err == nil {
+		return
+	}
+	if !errors.Is(err, os.ErrExist) {
+		return
 	}
 	for i := 2; i < 100; i++ {
 		fd, err = os.OpenFile(fmt.Sprintf("%s.%d.log", basename, i), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)

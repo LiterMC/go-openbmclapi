@@ -413,8 +413,8 @@ export async function getLogFiles(token: string): Promise<FileInfo[]> {
 }
 
 export async function getLogFile(token: string, name: string, noEncrypt?: boolean): Promise<ArrayBuffer> {
-	const LOGFILE_URL = `${window.location.origin}/api/v0/log_file`
-	const u = new URL(name, LOGFILE_URL)
+	const LOGFILE_URL = `${window.location.origin}/api/v0/log_file/`
+	const u = new URL(name.startsWith('/') ? name.substr(1) : name, LOGFILE_URL)
 	if (noEncrypt) {
 		u.searchParams.set('no_encrypt', '1')
 	}
@@ -429,10 +429,7 @@ export async function getLogFile(token: string, name: string, noEncrypt?: boolea
 
 export async function getLogFileURL(token: string, name: string, noEncrypt?: boolean): Promise<string> {
 	const LOGFILE_URL = `${window.location.origin}/api/v0/log_file/`
-	if (name.startsWith('/')) {
-		name = name.substr(1)
-	}
-	const u = new URL(name, LOGFILE_URL)
+	const u = new URL(name.startsWith('/') ? name.substr(1) : name, LOGFILE_URL)
 	if (noEncrypt) {
 		u.searchParams.set('no_encrypt', '1')
 	}

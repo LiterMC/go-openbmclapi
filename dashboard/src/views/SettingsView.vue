@@ -234,6 +234,20 @@ onMounted(() => {
 		<Card class="settings-group">
 			<template #title>
 				<div class="flex-row-center settings-group-title">
+					<lable>{{ tr('title.debugs_and_logs') }}</lable>
+				</div>
+			</template>
+			<template #content>
+				<div class="flex-row-center settings-elem">
+					<RouterLink to="/loglist" style="color: inherit">
+						{{ tr('title.logs') }}
+					</RouterLink>
+				</div>
+			</template>
+		</Card>
+		<Card class="settings-group">
+			<template #title>
+				<div class="flex-row-center settings-group-title">
 					<lable>{{ tr('title.notification') }}</lable>
 					<InputSwitch
 						v-model="enableNotify"

@@ -83,12 +83,12 @@ A: 请确认中间所有的反向代理都支持 WebSocket
    国内对 Github 的支持较差, 可以使用 ghproxy 等镜像站运行脚本, 本例中使用了 [crashmc.com](https://crashmc.com) 提供的 CDN:
    ```sh
    MIRROR_PREFIX=https://cdn.crashmc.com/
-   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s --mirror "${MIRROR_PREFIX}"
+   curl -fsSL ${MIRROR_PREFIX}https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s -- --mirror "${MIRROR_PREFIX}"
    ```
 
    如果需要下载指定版本, 只需设置 `-t|--tag` 标志即可
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s --tag v1.9.7-8
+   curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s -- --tag v1.9.7-8
    ```
 3. 配置`/opt/openbmclapi/config.yaml`配置文件
 4. 使用`systemctl start go-openbmclapi.service`启动服务

@@ -84,7 +84,8 @@
 		},
 		"settings": {
 			"login": {
-				"first": "启用此功能前请先登录"
+				"auth": "需要授权",
+				"first": "使用此功能前请先登录"
 			},
 			"notify": {
 				"cant.enable": "无法启用通知",
@@ -93,6 +94,9 @@
 			"webpush": {
 				"cant.enable": "无法启用推送",
 				"denied": "推送已被浏览器拒绝"
+			},
+			"filelist": {
+				"cant.fetch": "无法获取文件列表"
 			}
 		}
 	},

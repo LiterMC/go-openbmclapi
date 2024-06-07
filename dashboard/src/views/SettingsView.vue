@@ -119,7 +119,8 @@ async function onEnableNotify(): Promise<void> {
 	if (!token.value) {
 		toast.add({
 			severity: 'error',
-			summary: tr('message.settings.login.first'),
+			summary: tr('message.settings.login.auth'),
+			detail: tr('message.settings.login.first'),
 			life: 5000,
 		})
 		return

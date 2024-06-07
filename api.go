@@ -1036,7 +1036,7 @@ func (cr *Cluster) apiV0LogFiles(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (cr *Cluster) apiV0LogFile(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodHead) {
 		return
 	}
 	query := req.URL.Query()
@@ -1084,6 +1084,9 @@ func (cr *Cluster) apiV0LogFile(rw http.ResponseWriter, req *http.Request) {
 
 func (cr *Cluster) apiV0LogFileEncrypted(rw http.ResponseWriter, req *http.Request, r io.Reader, useGzip bool) {
 	rw.WriteHeader(http.StatusOK)
+	if req.Method == http.MethodHead {
+		return
+	}
 	if useGzip {
 		pr, pw := io.Pipe()
 		defer pr.Close()

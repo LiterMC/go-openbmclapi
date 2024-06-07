@@ -14,9 +14,22 @@ const token = inject('token') as Ref<string | null>
 const logList = ref<FileInfo[] | null>(null)
 async function refreshFileList(): Promise<void> {
 	if (!token.value) {
+		toast.add({
+			severity: 'warn',
+			summary: tr('message.settings.login.auth'),
+			detail: tr('message.settings.login.first'),
+		})
 		return
 	}
-	logList.value = await getLogFiles(token.value)
+	try {
+		logList.value = await getLogFiles(token.value)
+	} catch (e) {
+		toast.add({
+			severity: 'error',
+			summary: tr('message.settings.filelist.cant.fetch'),
+			detail: String(e),
+		})
+	}
 }
 
 const showInfo = ref<FileInfo | null>(null)
@@ -24,10 +37,38 @@ const fileContent = ref<string | null>(null)
 
 async function openFile(file: FileInfo): Promise<void> {
 	if (!token.value) {
+		toast.add({
+			severity: 'error',
+			summary: tr('message.settings.login.auth'),
+			detail: tr('message.settings.login.first'),
+			life: 10000,
+		})
 		return
 	}
-	const buf = await getLogFile(token.value, file.name, true)
+	if (showInfo.value) {
+		toast.add({
+			severity: 'error',
+			summary: 'Another file is opening',
+			life: 5000,
+		})
+		return
+	}
 	showInfo.value = file
+	fileContent.value = null
+	var buf: ArrayBuffer
+	try {
+		buf = await getLogFile(token.value, file.name, true)
+	} catch (e) {
+		toast.add({
+			severity: 'error',
+			summary: tr('message.settings.filelist.cant.fetch'),
+			detail: String(e),
+		})
+		return
+	}
+	if (showInfo.value.name !== file.name) {
+		return
+	}
 	fileContent.value = new TextDecoder().decode(new Uint8Array(buf))
 }
 
@@ -59,17 +100,12 @@ onMounted(() => {
 		</FileListCard>
 		<Dialog
 			:visible="!!showInfo"
-			@update:visible="(show) => !show && (showInfo = null)"
+			@update:visible="(show) => !show && ((showInfo = null), (fileContent = null))"
 			modal
 			:header="(showInfo && showInfo.name) || undefined"
 			:style="{ width: 'var(--dialog-width)' }"
 		>
-			<FileContentCard
-				v-if="showInfo && fileContent"
-				:info="showInfo"
-				:content="fileContent"
-				v-slot="{ info }"
-			>
+			<FileContentCard v-if="showInfo" :info="showInfo" :content="fileContent" v-slot="{ info }">
 				<div class="flex-row-center tool-box">
 					<Button
 						icon="pi pi-download"

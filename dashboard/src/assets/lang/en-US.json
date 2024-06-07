@@ -84,7 +84,8 @@
 		},
 		"settings": {
 			"login": {
-				"first": "Please login first before enable this feature"
+				"auth": "Require authuation",
+				"first": "You have to login before use this feature"
 			},
 			"notify": {
 				"cant.enable": "Cannot enable notification",
@@ -93,6 +94,9 @@
 			"webpush": {
 				"cant.enable": "Cannot enable Web Push",
 				"denied": "Web Push is denied by the browser"
+			},
+			"filelist": {
+				"cant.fetch": "Cannot fetch filelist"
 			}
 		}
 	},

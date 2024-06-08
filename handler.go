@@ -212,7 +212,7 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 			case <-updateTicker.C:
 				cr.stats.Lock()
 
-				log.Infof("Served %d requests, total responsed body = %s, total used CPU time = %.2fs",
+				log.Infof("Served %d requests, total responsed body = %s, total IO waiting time = %.2fs",
 					total, utils.BytesToUnit(totalBytes), totalUsed)
 				for ua, v := range uas {
 					if ua == "" {

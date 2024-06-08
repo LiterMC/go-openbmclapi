@@ -267,7 +267,7 @@ func (cr *Cluster) checkFileFor(
 		mpb.AppendDecorators(
 			decor.CountersNoUnit("%d / %d", decor.WCSyncSpaceR),
 			decor.NewPercentage("%d", decor.WCSyncSpaceR),
-			decor.EwmaETA(decor.ET_STYLE_GO, 30),
+			decor.EwmaETA(decor.ET_STYLE_GO, 60),
 		),
 		mpb.BarExtender((mpb.BarFillerFunc)(func(w io.Writer, _ decor.Statistics) (err error) {
 			if checkingHashMux.TryLock() {
@@ -489,7 +489,7 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 	var stats syncStats
 	stats.pg = pg
 	stats.noOpen = syncCfg.Source == "center"
-	stats.slots = limited.NewBufSlots(syncCfg.Concurrency)
+	stats.slots = limited.NewBufSlots(syncCfg.Concurrency + 1)
 	stats.totalFiles = totalFiles
 	for _, f := range missing {
 		stats.totalSize += f.Size
@@ -669,15 +669,15 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 		defer close(pathRes)
 
 		var barUnit decor.SizeB1024
-		var trycount atomic.Int32
-		trycount.Store(1)
+		var tried atomic.Int32
+		tried.Store(1)
 		bar := stats.pg.AddBar(f.Size,
 			mpb.BarRemoveOnComplete(),
 			mpb.BarPriority(slotId),
 			mpb.PrependDecorators(
 				decor.Name(Tr("hint.sync.downloading")),
 				decor.Any(func(decor.Statistics) string {
-					tc := trycount.Load()
+					tc := tried.Load()
 					if tc <= 1 {
 						return ""
 					}
@@ -688,22 +688,23 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 			mpb.AppendDecorators(
 				decor.NewPercentage("%d", decor.WCSyncSpace),
 				decor.Counters(barUnit, "[%.1f / %.1f]", decor.WCSyncSpace),
-				decor.EwmaSpeed(barUnit, "%.1f", 10, decor.WCSyncSpace),
+				decor.EwmaSpeed(barUnit, "%.1f", 30, decor.WCSyncSpace),
 				decor.OnComplete(
-					decor.EwmaETA(decor.ET_STYLE_GO, 10, decor.WCSyncSpace), "done",
+					decor.EwmaETA(decor.ET_STYLE_GO, 30, decor.WCSyncSpace), "done",
 				),
 			),
 		)
 		defer bar.Abort(true)
 
 		noOpen := stats.noOpen
+		badOpen := false
 		interval := time.Second
 		for {
 			bar.SetCurrent(0)
 			hashMethod, err := getHashMethod(len(f.Hash))
 			if err == nil {
 				var path string
-				if path, err = cr.fetchFileWithBuf(ctx, f, hashMethod, buf, noOpen, func(r io.Reader) io.Reader {
+				if path, err = cr.fetchFileWithBuf(ctx, f, hashMethod, buf, noOpen, badOpen, func(r io.Reader) io.Reader {
 					return ProxyReader(r, bar, stats.totalBar, &stats.lastInc)
 				}); err == nil {
 					pathRes <- path
@@ -716,14 +717,15 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 			}
 			bar.SetRefill(bar.Current())
 
-			log.Errorf(Tr("error.sync.download.failed"), f.Path, err)
-			c := trycount.Add(1)
+			c := tried.Add(1)
 			if c > maxRetryCount {
+				log.Errorf(Tr("error.sync.download.failed"), f.Path, err)
 				break
 			}
 			if c > maxTryWithOpen {
-				noOpen = true
+				badOpen = true
 			}
+			log.Errorf(Tr("error.sync.download.failed.retry"), f.Path, interval, err)
 			select {
 			case <-time.After(interval):
 				interval *= 2
@@ -739,20 +741,25 @@ func (cr *Cluster) fetchFile(ctx context.Context, stats *syncStats, f FileInfo) 
 func (cr *Cluster) fetchFileWithBuf(
 	ctx context.Context, f FileInfo,
 	hashMethod crypto.Hash, buf []byte,
-	noOpen bool,
+	noOpen bool, badOpen bool,
 	wrapper func(io.Reader) io.Reader,
 ) (path string, err error) {
 	var (
 		reqPath = f.Path
+		query   url.Values
 		req     *http.Request
 		res     *http.Response
 		fd      *os.File
 		r       io.Reader
 	)
-	if noOpen {
+	if badOpen {
 		reqPath = "/openbmclapi/download/" + f.Hash
+	} else if noOpen {
+		query = url.Values{
+			"noopen": {"1"},
+		}
 	}
-	if req, err = cr.makeReqWithAuth(ctx, http.MethodGet, reqPath, nil); err != nil {
+	if req, err = cr.makeReqWithAuth(ctx, http.MethodGet, reqPath, query); err != nil {
 		return
 	}
 	req.Header.Set("Accept-Encoding", "gzip, deflate")
@@ -904,7 +911,7 @@ func (cr *Cluster) DownloadFile(ctx context.Context, hash string) (err error) {
 			}
 			defer free()
 
-			path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, true, nil)
+			path, err := cr.fetchFileWithBuf(ctx, f, hashMethod, buf, true, true, nil)
 			if err != nil {
 				return
 			}

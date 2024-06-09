@@ -552,6 +552,10 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 			case path := <-pathRes:
 				cr.syncProg.Add(1)
 				if path == "" {
+					select {
+					case done <- nil: // TODO: or all storage?
+					case <-ctx.Done():
+					}
 					return
 				}
 				defer os.Remove(path)

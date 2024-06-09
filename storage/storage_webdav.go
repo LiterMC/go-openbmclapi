@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -278,25 +279,44 @@ func (s *WebDavStorage) Remove(hash string) error {
 }
 
 func (s *WebDavStorage) WalkDir(walker func(hash string, size int64) error) error {
-	s.limitedDialer.Acquire()
-	defer s.limitedDialer.Release()
-
+	done := make(chan struct{}, len(utils.Hex256))
+	fileCh := make(chan fs.FileInfo, 0)
 	for _, dir := range utils.Hex256 {
-		files, err := s.cli.ReadDir(path.Join("download", dir))
-		if err != nil {
-			continue
-		}
-		for _, f := range files {
-			if !f.IsDir() {
-				if hash := f.Name(); len(hash) >= 2 && hash[:2] == dir {
-					if err := walker(hash, f.Size()); err != nil {
-						return err
+		done <- struct{}{}
+		go func(dir string) {
+			s.limitedDialer.Acquire()
+			defer s.limitedDialer.Release()
+			defer func() {
+				<-done
+			}()
+
+			files, err := s.cli.ReadDir(path.Join("download", dir))
+			if err != nil {
+				return
+			}
+			for _, f := range files {
+				if !f.IsDir() {
+					if hash := f.Name(); len(hash) >= 2 && hash[:2] == dir {
+						fileCh <- f
 					}
 				}
 			}
+		}(dir)
+	}
+	count := len(utils.Hex256)
+	for {
+		select {
+		case done <- struct{}{}:
+			count--
+			if count <= 0 {
+				return nil
+			}
+		case f := <-fileCh:
+			if err := walker(f.Name(), f.Size()); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
 }
 
 func copyHeader(key string, dst, src http.Header) {

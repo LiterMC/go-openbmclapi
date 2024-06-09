@@ -580,6 +580,8 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 					}
 				}
 				free()
+				srcFd.Close()
+				os.Remove(path)
 				select {
 				case done <- failed:
 				case <-ctx.Done():

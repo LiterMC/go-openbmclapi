@@ -21,15 +21,41 @@ async function refreshFileList(): Promise<void> {
 		})
 		return
 	}
+	var files: FileInfo[]
 	try {
-		logList.value = await getLogFiles(token.value)
+		files = await getLogFiles(token.value)
 	} catch (e) {
 		toast.add({
 			severity: 'error',
 			summary: tr('message.settings.filelist.cant.fetch'),
 			detail: String(e),
 		})
+		return
 	}
+	const appLogs: FileInfo[] = []
+	const accessLogs: { n: number; f: FileInfo }[] = []
+	const otherLogs: FileInfo[] = []
+	for (const f of files) {
+		if (/^\d{8}-\d{2}\.log(?:\.gz)?$/.test(f.name)) {
+			appLogs.push(f)
+			continue
+		}
+		const data = /^access\.(\d+)\.log(?:\.gz)?$/.exec(f.name)
+		if (data) {
+			accessLogs.push({ n: Number.parseInt(data[1]), f: f })
+			continue
+		}
+		otherLogs.push(f)
+	}
+	appLogs.sort((a, b) => (a < b ? 1 : -1))
+	accessLogs.sort(({ n: a }, { n: b }) => a - b)
+	const logs: FileInfo[] = []
+	logs.push(...appLogs)
+	for (const f of accessLogs) {
+		logs.push(f.f)
+	}
+	logs.push(...otherLogs)
+	logList.value = logs
 }
 
 const showInfo = ref<FileInfo | null>(null)

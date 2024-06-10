@@ -65,6 +65,7 @@ var areaUS = map[string]string{
 	"info.sync.none":                   "All files were synchronized",
 	"warn.sync.interrupted":            "File sync interrupted",
 	"info.sync.config":                 "Sync config: %#v",
+	"error.sync.part.working":          "Only %d out of %d storages are working! Sync will begin in a minute",
 	"hint.sync.total":                  "Total: ",
 	"hint.sync.downloading":            "> Downloading ",
 	"hint.sync.downloading.handler":    "Downloading %s from handler",

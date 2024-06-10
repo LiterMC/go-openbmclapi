@@ -40,9 +40,9 @@ async function refreshFileList(): Promise<void> {
 			appLogs.push(f)
 			continue
 		}
-		const data = /^access\.(\d+)\.log(?:\.gz)?$/.exec(f.name)
+		const data = /^access(?:\.(\d+))?\.log(?:\.gz)?$/.exec(f.name)
 		if (data) {
-			accessLogs.push({ n: Number.parseInt(data[1]), f: f })
+			accessLogs.push({ n: data[1] ? Number.parseInt(data[1]) : 0, f: f })
 			continue
 		}
 		otherLogs.push(f)

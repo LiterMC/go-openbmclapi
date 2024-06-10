@@ -529,6 +529,9 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		err := s.CheckUpload(tctx)
 		cancel()
 		if err != nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			aliveStorages--
 			log.Errorf("Storage %s does not work: %v", s.String(), err)
 		}
@@ -537,6 +540,14 @@ func (cr *Cluster) syncFiles(ctx context.Context, files []FileInfo, heavyCheck b
 		err := errors.New("All storages are broken")
 		log.Errorf(Tr("error.sync.failed"), err)
 		return err
+	}
+	if aliveStorages < len(cr.storages) {
+		log.Errorf(Tr("error.sync.part.working"), aliveStorages < len(cr.storages))
+		select {
+		case <-time.After(time.Minute):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	for _, f := range missing {

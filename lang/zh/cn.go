@@ -65,6 +65,7 @@ var areaCN = map[string]string{
 	"info.sync.none":                   "所有文件已同步",
 	"warn.sync.interrupted":            "同步已中断",
 	"info.sync.config":                 "同步配置: %#v",
+	"error.sync.part.working":          "仅有 %d / %d 个存储工作正常! 同步将在1分钟内开始",
 	"hint.sync.total":                  "总计: ",
 	"hint.sync.downloading":            "> 下载中 ",
 	"hint.sync.downloading.handler":    "Downloading %s from handler",

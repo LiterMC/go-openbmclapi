@@ -129,7 +129,7 @@ type WebDavStorage struct {
 	httpCli       *http.Client
 	noRedCli      *http.Client // no redirect client
 
-	measures  utils.SyncMap[int, struct{}]
+	measures  *utils.SyncMap[int, struct{}]
 	working   atomic.Int32
 	checkMux  sync.RWMutex
 	lastCheck time.Time
@@ -196,6 +196,7 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		return
 	}
 
+	s.measures = utils.NewSyncMap[int, struct{}]()
 	if err := s.cli.Mkdir("measure", 0755); err != nil {
 		if !webdavIsHTTPError(err, http.StatusConflict) {
 			log.Warnf("Cannot create measure folder for %s: %v", s.String(), err)

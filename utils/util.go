@@ -66,17 +66,17 @@ func (m *SyncMap[K, V]) Has(k K) bool {
 	return ok
 }
 
-func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, has bool) {
+func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, had bool) {
 	m.l.RLock()
-	v, has = m.m[k]
+	v, had = m.m[k]
 	m.l.RUnlock()
-	if has {
+	if had {
 		return
 	}
 	m.l.Lock()
 	defer m.l.Unlock()
-	v, has = m.m[k]
-	if !has {
+	v, had = m.m[k]
+	if !had {
 		v = setter()
 		m.m[k] = v
 	}

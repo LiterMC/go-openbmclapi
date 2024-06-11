@@ -1,6 +1,6 @@
 /**
  * OpenBmclAPI (Golang Edition)
- * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
+ * Copyright (C) 2024 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,16 +17,29 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package build
+package cluster
 
 import (
-	"fmt"
+	"context"
 )
 
-const ClusterVersion = "1.10.9"
+type KeepAliveRes int
 
-var BuildVersion string = "dev"
+// Succeed returns true when KeepAlive actions is succeed as well as the cluster is not kicked by the controller
+func (r KeepAliveRes) Succeed() bool {
+	return r == 0
+}
 
-var ClusterUserAgent string = fmt.Sprintf("openbmclapi-cluster/%s", ClusterVersion)
-var ClusterUserAgentFull string = fmt.Sprintf("%s go-openbmclapi-cluster/%s", ClusterUserAgent, BuildVersion)
-var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", BuildVersion)
+// Failed returns true when KeepAlive action is succeed but the cluster is forced kick by the controller
+func (r KeepAliveRes) Kicked() bool {
+	return r == 1
+}
+
+// Failed returns true when KeepAlive is interrupted by unexpected reason
+func (r KeepAliveRes) Failed() bool {
+	return r == 2
+}
+
+func (cr *Cluster) KeepAlive(ctx context.Context) KeepAliveRes {
+	//
+}

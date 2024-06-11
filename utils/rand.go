@@ -17,19 +17,23 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
-
-const (
-	CodeClientError      = 0x01
-	CodeServerError      = 0x02
-	CodeEnvironmentError = 0x04
-	CodeUnexpectedError  = 0x08
+import (
+	"math/rand"
+	"time"
 )
 
-const (
-	CodeClientOrServerError     = CodeClientError | CodeServerError
-	CodeClientOrEnvionmentError = CodeClientError | CodeEnvironmentError
-	CodeClientUnexpectedError   = CodeUnexpectedError | CodeClientError
-	CodeServerOrEnvionmentError = CodeServerError | CodeEnvironmentError
-	CodeServerUnexpectedError   = CodeUnexpectedError | CodeServerError
-)
+var randInt32Ch = func() chan int32 {
+	ch := make(chan int32, 64)
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	go func() {
+		for {
+			ch <- r.Int31()
+		}
+	}()
+	return ch
+}()
+
+func RandIntn(n int) int {
+	rn := <-randInt32Ch
+	return (int)(rn) % n
+}

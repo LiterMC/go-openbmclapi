@@ -83,22 +83,6 @@ func parseCertCommonName(body []byte) (string, error) {
 	return cert.Subject.CommonName, nil
 }
 
-var rd = func() chan int32 {
-	ch := make(chan int32, 64)
-	r := rand.New(rand.NewSource(time.Now().Unix()))
-	go func() {
-		for {
-			ch <- r.Int31()
-		}
-	}()
-	return ch
-}()
-
-func randIntn(n int) int {
-	rn := <-rd
-	return (int)(rn) % n
-}
-
 func forEachFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {
 	if leng <= 0 {
 		return false

@@ -360,8 +360,6 @@ var emptyHashes = func() (hashes map[string]struct{}) {
 	return
 }()
 
-var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", build.BuildVersion)
-
 //go:embed robots.txt
 var robotTxtContent string
 

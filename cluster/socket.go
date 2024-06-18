@@ -20,30 +20,14 @@
 package cluster
 
 import (
-	"net/http"
+	"context"
+
+	"github.com/LiterMC/socket.io"
+	"github.com/LiterMC/socket.io/engine.io"
 )
 
-func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash string) {
-	if cr.storageManager.ForEachFromRandom(cr.storages, func(s storage.Storage) bool {
-		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.String())
-
-		sz, er := sto.ServeDownload(rw, req, hash, size)
-		if er != nil {
-			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.String(), er)
-			err = er
-			return false
-		}
-		if sz >= 0 {
-			opts := cr.storageOpts[i]
-			cr.AddHits(1, sz, s.Options().Id)
-			if !keepaliveRec {
-				cr.statOnlyHits.Add(1)
-				cr.statOnlyHbts.Add(sz)
-			}
-		}
-		return true
-	}) {
-		return
-	}
-	http.Error(http.StatusInternation)
+// Connect connects to the central server
+// The context passed in only affect the logical of Connect method
+func (cr *Cluster) Connect(ctx context.Context) error {
+	return
 }

@@ -20,41 +20,73 @@
 package storage
 
 import (
+	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 // Manager manages a list of storages
 type Manager struct {
-	Options     []StorageOption
-	Storages    []Storage
-	weights     []uint
-	totalWeight uint
-	totalWeightsCache utils.SyncMap[[]string, *weightCache]
+	Storages          []Storage
+	weights           []uint
+	totalWeight       uint
+	totalWeightsCache *utils.SyncMap[int, *weightCache]
 }
 
-func NewManager(opts []StorageOption, storages []Storage) (m *Manager) {
+func NewManager(storages []Storage) (m *Manager) {
 	m = new(Manager)
-	m.Options = opts
 	m.Storages = storages
-	m.weights = make([]uint, len(opts))
+	m.weights = make([]uint, len(storages))
 	m.totalWeight = 0
-	m.totalWeightsCache = utils.NewSyncMap[[]string, *weightCache]()
-	for i, s := range opts {
-		m.weights[i] = s.Weight
-		m.totalWeight += s.Weight
+	m.totalWeightsCache = utils.NewSyncMap[int, *weightCache]()
+	for i, s := range storages {
+		w := s.Options().Weight
+		m.weights[i] = w
+		m.totalWeight += w
 	}
 	return
 }
 
-type weightCache struct{
+func (m *Manager) GetFlavorString(storages []int) string {
+	typeCount := make(map[string]int, 2)
+	for _, i := range storages {
+		t := m.Storages[i].Options().Type
+		switch t {
+		case StorageLocal:
+			typeCount["file"]++
+		case StorageMount, StorageWebdav:
+			typeCount["alist"]++
+		default:
+			log.Errorf("Unknown storage type %q", t)
+		}
+	}
+	flavor := ""
+	for s, _ := range typeCount {
+		if len(flavor) > 0 {
+			flavor += "+"
+		}
+		flavor += s
+	}
+	return flavor
+}
+
+type weightCache struct {
 	weights []uint
-	total uint
+	total   uint
+}
+
+func calcStoragesCacheKey(storages []int) int {
+	key := len(storages)
+	for _, v := range storages {
+		key = key*31 + v
+	}
+	return key
 }
 
 func (m *Manager) ForEachFromRandom(storages []int, cb func(s Storage) (done bool)) (done bool) {
-	data, _ := m.totalWeightsCache.GetOrSet(storages, func() (c *weightCache) {
+	cacheKey := calcStoragesCacheKey(storages)
+	data, _ := m.totalWeightsCache.GetOrSet(cacheKey, func() (c *weightCache) {
 		c = new(weightCache)
-		c.weights = make([]int, len(storages))
+		c.weights = make([]uint, len(storages))
 		for i, j := range storages {
 			w := m.weights[j]
 			c.weights[i] = w
@@ -62,7 +94,9 @@ func (m *Manager) ForEachFromRandom(storages []int, cb func(s Storage) (done boo
 		}
 		return
 	})
-	return forEachFromRandomIndexWithPossibility(data.weights, data.total, cb)
+	return forEachFromRandomIndexWithPossibility(data.weights, data.total, func(i int) bool {
+		return cb(m.Storages[i])
+	})
 }
 
 func forEachFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {

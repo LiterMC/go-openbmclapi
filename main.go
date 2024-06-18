@@ -131,10 +131,10 @@ func main() {
 			}
 		}
 		if code != 0 {
-			log.Errorf(Tr("program.exited"), code)
-			log.Error(Tr("error.exit.please.read.faq"))
+			log.TrErrorf("program.exited", code)
+			log.TrErrorf("error.exit.please.read.faq")
 			if runtime.GOOS == "windows" && !config.Advanced.DoNotOpenFAQOnWindows {
-				log.Warn(Tr("warn.exit.detected.windows.open.browser"))
+				log.TrWarnf("warn.exit.detected.windows.open.browser")
 				cmd := exec.Command("cmd", "/C", "start", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq")
 				cmd.Start()
 				time.Sleep(time.Hour)
@@ -164,10 +164,10 @@ START:
 
 	config.applyWebManifest(dsbManifest)
 
-	log.Infof(Tr("program.starting"), build.ClusterVersion, build.BuildVersion)
+	log.TrInfof("program.starting", build.ClusterVersion, build.BuildVersion)
 
 	if config.ClusterId == defaultConfig.ClusterId || config.ClusterSecret == defaultConfig.ClusterSecret {
-		log.Error(Tr("error.set.cluster.id"))
+		log.TrErrorf("error.set.cluster.id")
 		osExit(CodeClientError)
 	}
 
@@ -204,16 +204,16 @@ START:
 		}
 		if !config.Tunneler.Enable {
 			strPort := strconv.Itoa((int)(r.getPublicPort()))
-			log.Infof(Tr("info.server.public.at"), net.JoinHostPort(publicHost, strPort), r.clusterSvr.Addr, r.getCertCount())
+			log.TrInfof("info.server.public.at", net.JoinHostPort(publicHost, strPort), r.clusterSvr.Addr, r.getCertCount())
 			if len(r.publicHosts) > 1 {
-				log.Info(Tr("info.server.alternative.hosts"))
+				log.TrInfof("info.server.alternative.hosts")
 				for _, h := range r.publicHosts[1:] {
 					log.Infof("\t- https://%s", net.JoinHostPort(h, strPort))
 				}
 			}
 		}
 
-		log.Info(Tr("info.wait.first.sync"))
+		log.TrInfof("info.wait.first.sync")
 		select {
 		case <-firstSyncDone:
 		case <-ctx.Done():
@@ -308,13 +308,13 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 
 			cancel()
 			shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Second*15)
-			log.Warn(Tr("warn.server.closing"))
+			log.TrWarnf("warn.server.closing")
 			shutExit := make(chan struct{}, 0)
 			go func() {
 				defer close(shutExit)
 				defer cancelShut()
 				r.cluster.Disable(shutCtx)
-				log.Warn(Tr("warn.httpserver.closing"))
+				log.TrWarnf("warn.httpserver.closing")
 				r.clusterSvr.Shutdown(shutCtx)
 			}()
 			select {
@@ -324,7 +324,7 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 				log.Error("Second close signal received, exit")
 				return CodeClientError
 			}
-			log.Warn(Tr("warn.server.closed"))
+			log.TrWarnf("warn.server.closed")
 			if s == syscall.SIGHUP {
 				log.Info("Restarting server ...")
 				r.restartFlag = true

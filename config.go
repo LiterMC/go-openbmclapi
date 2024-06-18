@@ -478,12 +478,3 @@ func readConfig() (config Config) {
 	}
 	return
 }
-
-type OpenbmclapiAgentSyncConfig struct {
-	Source      string `json:"source"`
-	Concurrency int    `json:"concurrency"`
-}
-
-type OpenbmclapiAgentConfig struct {
-	Sync OpenbmclapiAgentSyncConfig `json:"sync"`
-}

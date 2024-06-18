@@ -121,7 +121,8 @@ func (o *WebDavStorageOption) GetPassword() string {
 }
 
 type WebDavStorage struct {
-	opt WebDavStorageOption
+	basicOpt StorageOption
+	opt      WebDavStorageOption
 
 	cache         gocache.Cache
 	cli           *gowebdav.Client
@@ -139,7 +140,12 @@ var _ Storage = (*WebDavStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageWebdav, StorageFactory{
-		New:       func() Storage { return new(WebDavStorage) },
+		New: func(opt StorageOption) Storage {
+			return &WebDavStorage{
+				basicOpt: opt,
+				opt:      *(opt.Data.(*WebDavStorageOption)),
+			}
+		},
 		NewConfig: func() any { return new(WebDavStorageOption) },
 	})
 }
@@ -148,12 +154,8 @@ func (s *WebDavStorage) String() string {
 	return fmt.Sprintf("<WebDavStorage endpoint=%q user=%s>", s.opt.GetEndPoint(), s.opt.GetUsername())
 }
 
-func (s *WebDavStorage) Options() any {
-	return &s.opt
-}
-
-func (s *WebDavStorage) SetOptions(newOpts any) {
-	s.opt = *(newOpts.(*WebDavStorageOption))
+func (s *WebDavStorage) Options() *StorageOption {
+	return &s.basicOpt
 }
 
 func webdavIsHTTPError(err error, code int) bool {

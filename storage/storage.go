@@ -35,11 +35,8 @@ import (
 type Storage interface {
 	fmt.Stringer
 
-	// Options should return the pointer of the storage options
-	//  which should be able to marshal/unmarshal with yaml format
-	Options() any
-	// SetOptions will be called with the same type of the Options() result
-	SetOptions(any)
+	// Options should return the pointer of the StorageOption that should not be modified.
+	Options() *StorageOption
 	// Init will be called before start to use a storage
 	Init(context.Context) error
 	CheckUpload(context.Context) error
@@ -61,7 +58,7 @@ const (
 )
 
 type StorageFactory struct {
-	New       func() Storage
+	New       func(StorageOption) Storage
 	NewConfig func() any
 }
 
@@ -78,8 +75,7 @@ func RegisterStorageFactory(typ string, inst StorageFactory) {
 }
 
 func NewStorage(opt StorageOption) Storage {
-	s := storageFactories[opt.Type].New()
-	s.SetOptions(opt.Data)
+	s := storageFactories[opt.Type].New(opt)
 	return s
 }
 

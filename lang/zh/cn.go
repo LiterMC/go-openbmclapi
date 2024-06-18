@@ -8,6 +8,7 @@ var areaCN = map[string]string{
 	"program.exited":                          "节点正在退出, 代码 %d",
 	"error.exit.please.read.faq":              "请在提交问题前阅读 https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq",
 	"warn.exit.detected.windows.open.browser": "检测到您是新手 Windows 用户. 我们正在帮助您打开浏览器 ...",
+	"warn.cluster.detected.hash.mismatch":     "检测到文件哈希值不匹配, 正在删除 %s",
 
 	"info.filelist.fetching":      "获取文件列表中",
 	"error.filelist.fetch.failed": "文件列表获取失败: %v",

@@ -8,6 +8,7 @@ var areaUS = map[string]string{
 	"program.exited":                          "Program exiting with code %d",
 	"error.exit.please.read.faq":              "Please read https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq before report your issue",
 	"warn.exit.detected.windows.open.browser": "Detected that you are in windows environment, we are helping you to open the browser",
+	"warn.cluster.detected.hash.mismatch":     "Detected hash mismatch error, removing bad file %s",
 
 	"info.filelist.fetching":      "Fetching file list",
 	"error.filelist.fetch.failed": "Cannot fetch cluster file list: %v",

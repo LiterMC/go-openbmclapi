@@ -29,7 +29,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -50,10 +49,6 @@ import (
 	"github.com/LiterMC/go-openbmclapi/notify/webpush"
 	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
-)
-
-var (
-	reFileHashMismatchError = regexp.MustCompile(` hash mismatch, expected ([0-9a-f]+), got ([0-9a-f]+)`)
 )
 
 type Cluster struct {
@@ -252,11 +247,11 @@ func (cr *Cluster) Init(ctx context.Context) (err error) {
 		defer ticker.Stop()
 
 		if err := cr.checkUpdate(); err != nil {
-			log.Errorf(Tr("error.update.check.failed"), err)
+			log.TrErrorf("error.update.check.failed", err)
 		}
 		for range ticker.C {
 			if err := cr.checkUpdate(); err != nil {
-				log.Errorf(Tr("error.update.check.failed"), err)
+				log.TrErrorf("error.update.check.failed", err)
 			}
 		}
 	}(cr.updateChecker)
@@ -288,7 +283,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 
 	_, err := cr.GetAuthToken(ctx)
 	if err != nil {
-		log.Errorf(Tr("error.cluster.auth.failed"), err)
+		log.TrErrorf("error.cluster.auth.failed", err)
 		osExit(CodeClientOrServerError)
 	}
 
@@ -338,7 +333,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 			cr.reconnectCount++
 			if config.MaxReconnectCount > 0 && cr.reconnectCount >= config.MaxReconnectCount {
 				if cr.shouldEnable.Load() {
-					log.Error(Tr("error.cluster.connect.failed.toomuch"))
+					log.TrErrorf("error.cluster.connect.failed.toomuch")
 					osExit(CodeServerOrEnvionmentError)
 				}
 			}
@@ -348,10 +343,10 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	})
 	engio.OnDialError(func(_ *engine.Socket, err error) {
 		cr.reconnectCount++
-		log.Errorf(Tr("error.cluster.connect.failed"), cr.reconnectCount, config.MaxReconnectCount, err)
+		log.TrErrorf("error.cluster.connect.failed", cr.reconnectCount, config.MaxReconnectCount, err)
 		if config.MaxReconnectCount >= 0 && cr.reconnectCount >= config.MaxReconnectCount {
 			if cr.shouldEnable.Load() {
-				log.Error(Tr("error.cluster.connect.failed.toomuch"))
+				log.TrErrorf("error.cluster.connect.failed.toomuch")
 				osExit(CodeServerOrEnvionmentError)
 			}
 		}
@@ -360,7 +355,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	cr.socket = socket.NewSocket(engio, socket.WithAuthTokenFn(func() string {
 		token, err := cr.GetAuthToken(ctx)
 		if err != nil {
-			log.Errorf(Tr("error.cluster.auth.failed"), err)
+			log.TrErrorf("error.cluster.auth.failed", err)
 			osExit(CodeServerOrEnvionmentError)
 		}
 		return token
@@ -373,7 +368,7 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 		log.Debugf("shouldEnable is %v", cr.shouldEnable.Load())
 		if cr.shouldEnable.Load() {
 			if err := cr.Enable(ctx); err != nil {
-				log.Errorf(Tr("error.cluster.enable.failed"), err)
+				log.TrErrorf("error.cluster.enable.failed", err)
 				osExit(CodeClientOrEnvionmentError)
 			}
 		}
@@ -406,229 +401,6 @@ func (cr *Cluster) Connect(ctx context.Context) bool {
 	return true
 }
 
-func (cr *Cluster) WaitForEnable() <-chan struct{} {
-	if cr.enabled.Load() {
-		return closedCh
-	}
-
-	cr.mux.Lock()
-	defer cr.mux.Unlock()
-
-	if cr.enabled.Load() {
-		return closedCh
-	}
-	ch := make(chan struct{}, 0)
-	cr.waitEnable = append(cr.waitEnable, ch)
-	return ch
-}
-
-type EnableData struct {
-	Host         string       `json:"host"`
-	Port         uint16       `json:"port"`
-	Version      string       `json:"version"`
-	Byoc         bool         `json:"byoc"`
-	NoFastEnable bool         `json:"noFastEnable"`
-	Flavor       ConfigFlavor `json:"flavor"`
-}
-
-type ConfigFlavor struct {
-	Runtime string `json:"runtime"`
-	Storage string `json:"storage"`
-}
-
-func (cr *Cluster) Enable(ctx context.Context) (err error) {
-	cr.mux.Lock()
-	defer cr.mux.Unlock()
-
-	if cr.enabled.Load() {
-		log.Debug("Extra enable")
-		return
-	}
-
-	if cr.socket != nil && !cr.socket.IO().Connected() && config.MaxReconnectCount == 0 {
-		log.Error(Tr("error.cluster.disconnected"))
-		osExit(CodeServerOrEnvionmentError)
-		return
-	}
-
-	cr.shouldEnable.Store(true)
-
-	storagesCount := make(map[string]int, 2)
-	for _, s := range cr.storageOpts {
-		switch s.Type {
-		case storage.StorageLocal:
-			storagesCount["file"]++
-		case storage.StorageMount, storage.StorageWebdav:
-			storagesCount["alist"]++
-		default:
-			log.Errorf("Unknown storage type %q", s.Type)
-		}
-	}
-	storageStr := ""
-	for s, _ := range storagesCount {
-		if len(storageStr) > 0 {
-			storageStr += "+"
-		}
-		storageStr += s
-	}
-
-	log.Info(Tr("info.cluster.enable.sending"))
-	resCh, err := cr.socket.EmitWithAck("enable", EnableData{
-		Host:         cr.host,
-		Port:         cr.publicPort,
-		Version:      build.ClusterVersion,
-		Byoc:         cr.byoc,
-		NoFastEnable: config.Advanced.NoFastEnable,
-		Flavor: ConfigFlavor{
-			Runtime: "golang/" + runtime.GOOS + "-" + runtime.GOARCH,
-			Storage: storageStr,
-		},
-	})
-	if err != nil {
-		return
-	}
-	var data []any
-	tctx, cancel := context.WithTimeout(ctx, time.Minute*6)
-	select {
-	case <-tctx.Done():
-		cancel()
-		return tctx.Err()
-	case data = <-resCh:
-		cancel()
-	}
-	log.Debug("got enable ack:", data)
-	if ero := data[0]; ero != nil {
-		if ero, ok := ero.(map[string]any); ok {
-			if msg, ok := ero["message"].(string); ok {
-				if hashMismatch := reFileHashMismatchError.FindStringSubmatch(msg); hashMismatch != nil {
-					hash := hashMismatch[1]
-					log.Warnf("Detected hash mismatch error, removing bad file %s", hash)
-					for _, s := range cr.storages {
-						s.Remove(hash)
-					}
-				}
-				return fmt.Errorf("Enable failed: %v", msg)
-			}
-		}
-		return fmt.Errorf("Enable failed: %v", ero)
-	}
-	if !data[1].(bool) {
-		return errors.New("Enable ack non true value")
-	}
-	log.Info(Tr("info.cluster.enabled"))
-	cr.reconnectCount = 0
-	cr.disabled = make(chan struct{}, 0)
-	cr.enabled.Store(true)
-	for _, ch := range cr.waitEnable {
-		close(ch)
-	}
-	cr.waitEnable = cr.waitEnable[:0]
-	go cr.notifyManager.OnEnabled()
-
-	const maxFailCount = 3
-	var (
-		keepaliveCtx context.Context
-		failedCount  = 0
-	)
-	keepaliveCtx, cr.cancelKeepalive = context.WithCancel(ctx)
-	createInterval(keepaliveCtx, func() {
-		tctx, cancel := context.WithTimeout(keepaliveCtx, KeepAliveInterval/2)
-		status := cr.KeepAlive(tctx)
-		cancel()
-		if status == 0 {
-			failedCount = 0
-			return
-		}
-		if status == -1 {
-			log.Errorf("Kicked by remote server!!!")
-			osExit(CodeEnvironmentError)
-			return
-		}
-		if keepaliveCtx.Err() == nil {
-			if tctx.Err() != nil {
-				failedCount++
-				log.Warnf("keep-alive failed (%d/%d)", failedCount, maxFailCount)
-				if failedCount < maxFailCount {
-					return
-				}
-			}
-			log.Info(Tr("info.cluster.reconnect.keepalive"))
-			cr.disable(ctx)
-			log.Info(Tr("info.cluster.reconnecting"))
-			if !cr.Connect(ctx) {
-				log.Error(Tr("error.cluster.reconnect.failed"))
-				if ctx.Err() != nil {
-					return
-				}
-				osExit(CodeServerOrEnvionmentError)
-			}
-			if err := cr.Enable(ctx); err != nil {
-				log.Errorf(Tr("error.cluster.enable.failed"), err)
-				if ctx.Err() != nil {
-					return
-				}
-				osExit(CodeClientOrEnvionmentError)
-			}
-		}
-	}, KeepAliveInterval)
-	return
-}
-
-// KeepAlive will fresh hits & hit bytes data and send the keep-alive packet
-func (cr *Cluster) KeepAlive(ctx context.Context) (status int) {
-	hits, hbts := cr.stats.GetTmpHits()
-	lhits, lhbts := cr.lastHits.Load(), cr.lastHbts.Load()
-	hits2, hbts2 := cr.statOnlyHits.Load(), cr.statOnlyHbts.Load()
-	ahits, ahbts := hits-lhits-hits2, hbts-lhbts-hbts2
-	resCh, err := cr.socket.EmitWithAck("keep-alive", Map{
-		"time":  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		"hits":  ahits,
-		"bytes": ahbts,
-	})
-	go cr.notifyManager.OnReportStatus(&cr.stats)
-
-	if e := cr.stats.Save(cr.dataDir); e != nil {
-		log.Errorf(Tr("error.cluster.stat.save.failed"), e)
-	}
-	if err != nil {
-		log.Errorf(Tr("error.cluster.keepalive.send.failed"), err)
-		return 1
-	}
-	var data []any
-	select {
-	case <-ctx.Done():
-		return 1
-	case data = <-resCh:
-	}
-	log.Debugf("Keep-alive response: %v", data)
-	if ero := data[0]; len(data) <= 1 || ero != nil {
-		if ero, ok := ero.(map[string]any); ok {
-			if msg, ok := ero["message"].(string); ok {
-				if hashMismatch := reFileHashMismatchError.FindStringSubmatch(msg); hashMismatch != nil {
-					hash := hashMismatch[1]
-					log.Warnf("Detected hash mismatch error, removing bad file %s", hash)
-					for _, s := range cr.storages {
-						s.Remove(hash)
-					}
-				}
-				log.Errorf(Tr("error.cluster.keepalive.failed"), msg)
-				return 1
-			}
-		}
-		log.Errorf(Tr("error.cluster.keepalive.failed"), ero)
-		return 1
-	}
-	log.Infof(Tr("info.cluster.keepalive.success"), ahits, utils.BytesToUnit((float64)(ahbts)), data[1])
-	cr.lastHits.Store(hits)
-	cr.lastHbts.Store(hbts)
-	cr.statOnlyHits.Add(-hits2)
-	cr.statOnlyHbts.Add(-hbts2)
-	if data[1] == false {
-		return -1
-	}
-	return 0
-}
-
 func (cr *Cluster) disconnected() bool {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
@@ -642,11 +414,6 @@ func (cr *Cluster) disconnected() bool {
 	}
 	cr.notifyManager.OnDisabled()
 	return true
-}
-
-func (cr *Cluster) Disable(ctx context.Context) (ok bool) {
-	cr.shouldEnable.Store(false)
-	return cr.disable(ctx)
 }
 
 func (cr *Cluster) disable(ctx context.Context) (ok bool) {
@@ -696,65 +463,5 @@ func (cr *Cluster) disable(ctx context.Context) (ok bool) {
 	cr.socket = nil
 	close(cr.disabled)
 	log.Warn(Tr("warn.cluster.disabled"))
-	return
-}
-
-func (cr *Cluster) Enabled() bool {
-	return cr.enabled.Load()
-}
-
-func (cr *Cluster) Disabled() <-chan struct{} {
-	cr.mux.RLock()
-	defer cr.mux.RUnlock()
-	return cr.disabled
-}
-
-type CertKeyPair struct {
-	Cert string `json:"cert"`
-	Key  string `json:"key"`
-}
-
-func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
-	resCh, err := cr.socket.EmitWithAck("request-cert")
-	if err != nil {
-		return
-	}
-	var data []any
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case data = <-resCh:
-	}
-	if ero := data[0]; ero != nil {
-		err = fmt.Errorf("socket.io remote error: %v", ero)
-		return
-	}
-	pair := data[1].(map[string]any)
-	ckp = &CertKeyPair{
-		Cert: pair["cert"].(string),
-		Key:  pair["key"].(string),
-	}
-	return
-}
-
-func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
-	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
-	if err != nil {
-		return
-	}
-	res, err := cr.cachedCli.Do(req)
-	if err != nil {
-		return
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		err = utils.NewHTTPStatusErrorFromResponse(res)
-		return
-	}
-	cfg = new(OpenbmclapiAgentConfig)
-	if err = json.NewDecoder(res.Body).Decode(cfg); err != nil {
-		cfg = nil
-		return
-	}
 	return
 }

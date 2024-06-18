@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package cluster
 
 import (
 	"bytes"
@@ -26,6 +26,7 @@ import (
 	"crypto/hmac"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -192,4 +193,69 @@ func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *Cl
 		Token:    res.Token,
 		ExpireAt: time.Now().Add((time.Duration)(res.TTL)*time.Millisecond - 10*time.Second),
 	}, nil
+}
+
+type OpenbmclapiAgentConfig struct {
+	Sync OpenbmclapiAgentSyncConfig `json:"sync"`
+}
+
+type OpenbmclapiAgentSyncConfig struct {
+	Source      string `json:"source"`
+	Concurrency int    `json:"concurrency"`
+}
+
+func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
+	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
+	if err != nil {
+		return
+	}
+	res, err := cr.cachedCli.Do(req)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		err = utils.NewHTTPStatusErrorFromResponse(res)
+		return
+	}
+	cfg = new(OpenbmclapiAgentConfig)
+	if err = json.NewDecoder(res.Body).Decode(cfg); err != nil {
+		cfg = nil
+		return
+	}
+	return
+}
+
+type CertKeyPair struct {
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
+
+func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
+	resCh, err := cr.socket.EmitWithAck("request-cert")
+	if err != nil {
+		return
+	}
+	var data []any
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case data = <-resCh:
+	}
+	if ero := data[0]; ero != nil {
+		err = fmt.Errorf("socket.io remote error: %v", ero)
+		return
+	}
+	pair := data[1].(map[string]any)
+	ckp = new(CertKeyPair)
+	var ok bool
+	if ckp.Cert, ok = pair["cert"].(string); !ok {
+		err = fmt.Errorf(`"cert" is not a string, got %T`, pair["cert"])
+		return
+	}
+	if ckp.Key, ok = pair["key"].(string); !ok {
+		err = fmt.Errorf(`"key" is not a string, got %T`, pair["key"])
+		return
+	}
+	return
 }

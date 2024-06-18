@@ -24,6 +24,7 @@ const (
 	clusterEnabled  = 1
 	clusterEnabling = 2
 	clusterKicked   = 4
+	clusterError    = 5
 )
 
 // Enabled returns true if the cluster is enabled or enabling
@@ -47,10 +48,17 @@ func (cr *Cluster) IsKicked() bool {
 	return cr.status.Load() == clusterKicked
 }
 
+// IsError returns true if the cluster is disabled since connection error
+func (cr *Cluster) IsError() bool {
+	return cr.status.Load() == clusterError
+}
+
 // WaitForEnable returns a channel which receives true when cluster enabled succeed, or receives false when it failed to enable
 // If the cluster is already enable, the channel always returns true
 // The channel should not be used multiple times
 func (cr *Cluster) WaitForEnable() <-chan bool {
+	cr.mux.Lock()
+	defer cr.mux.Unlock()
 	ch := make(chan bool, 1)
 	if cr.Running() {
 		ch <- true

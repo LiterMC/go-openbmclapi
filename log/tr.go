@@ -17,33 +17,28 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package cluster
+package log
 
 import (
-	"net/http"
+	"github.com/LiterMC/go-openbmclapi/lang"
 )
 
-func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash string) {
-	if cr.storageManager.ForEachFromRandom(cr.storages, func(s storage.Storage) bool {
-		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.String())
+func TrDebugf(key string, vals ...any) {
+	Debugf(lang.Tr(key), vals...)
+}
 
-		sz, er := sto.ServeDownload(rw, req, hash, size)
-		if er != nil {
-			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.String(), er)
-			err = er
-			return false
-		}
-		if sz >= 0 {
-			opts := cr.storageOpts[i]
-			cr.AddHits(1, sz, s.Options().Id)
-			if !keepaliveRec {
-				cr.statOnlyHits.Add(1)
-				cr.statOnlyHbts.Add(sz)
-			}
-		}
-		return true
-	}) {
-		return
-	}
-	http.Error(http.StatusInternation)
+func TrInfof(key string, vals ...any) {
+	Infof(lang.Tr(key), vals...)
+}
+
+func TrWarnf(key string, vals ...any) {
+	Warnf(lang.Tr(key), vals...)
+}
+
+func TrErrorf(key string, vals ...any) {
+	Errorf(lang.Tr(key), vals...)
+}
+
+func TrPanicf(key string, vals ...any) {
+	Panicf(lang.Tr(key), vals...)
 }

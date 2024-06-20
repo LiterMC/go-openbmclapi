@@ -20,12 +20,27 @@
 package cluster
 
 const (
+	socketDisconnected = 0
+	socketConnected    = 1
+	socketConnecting   = 2
+)
+
+const (
 	clusterDisabled = 0
 	clusterEnabled  = 1
 	clusterEnabling = 2
 	clusterKicked   = 4
-	clusterError    = 5
 )
+
+// Disconnected returns true if the cluster is disconnected from the central server
+func (cr *Cluster) Disconnected() bool {
+	return cr.socketStatus.Load() == socketDisconnected
+}
+
+// Connected returns true if the cluster is connected to the central server
+func (cr *Cluster) Connected() bool {
+	return cr.socketStatus.Load() == socketConnected
+}
 
 // Enabled returns true if the cluster is enabled or enabling
 func (cr *Cluster) Enabled() bool {
@@ -46,11 +61,6 @@ func (cr *Cluster) Disabled() bool {
 // IsKicked returns true if the cluster is kicked by the central server
 func (cr *Cluster) IsKicked() bool {
 	return cr.status.Load() == clusterKicked
-}
-
-// IsError returns true if the cluster is disabled since connection error
-func (cr *Cluster) IsError() bool {
-	return cr.status.Load() == clusterError
 }
 
 // WaitForEnable returns a channel which receives true when cluster enabled succeed, or receives false when it failed to enable

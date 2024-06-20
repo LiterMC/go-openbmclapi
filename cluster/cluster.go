@@ -143,7 +143,10 @@ func (cr *Cluster) Enable(ctx context.Context) error {
 	}()
 	oldStatus := cr.status.Swap(clusterEnabling)
 	defer cr.status.CompareAndSwap(clusterEnabling, oldStatus)
+	return cr.enable(ctx)
+}
 
+func (cr *Cluster) enable(ctx context.Context) error {
 	storageStr := cr.storageManager.GetFlavorString(cr.storages)
 
 	log.TrInfof("info.cluster.enable.sending")
@@ -189,15 +192,64 @@ func (cr *Cluster) Enable(ctx context.Context) error {
 	if v := data[1]; !v.(bool) {
 		return fmt.Errorf("FATAL: Enable ack non true value, got (%T) %#v", v, v)
 	}
-	cr.disableSignal = make(chan struct{}, 0)
+	disableSignal := make(chan struct{}, 0)
+	cr.disableSignal = disableSignal
 	log.TrInfof("info.cluster.enabled")
 	cr.status.Store(clusterEnabled)
+	cr.socket.OnceConnect(func(_ *socket.Socket, ns string) {
+		if ns != "" {
+			return
+		}
+		if cr.status.Load() != clusterEnabled {
+			return
+		}
+		select {
+		case <-disableSignal:
+			return
+		default:
+		}
+		cr.status.Store(clusterEnabling)
+		go cr.reEnable(disableSignal)
+	})
 	return nil
+}
+
+func (cr *Cluster) reEnable(disableSignal <-chan struct{}) {
+	tctx, cancel := context.WithTimeout(context.Background(), time.Minute*7)
+	go func() {
+		select {
+		case <-tctx.Done():
+		case <-disableSignal:
+			cancel()
+		}
+	}()
+	err := cr.enable(tctx)
+	cancel()
+	if err != nil {
+		log.TrErrorf("error.cluster.enable.failed", err)
+		if cr.status.Load() == clusterEnabled {
+			ctx, cancel := context.WithCancel(context.Background())
+			timer := time.AfterFunc(time.Minute, func() {
+				cancel()
+				if cr.status.CompareAndSwap(clusterEnabled, clusterEnabling) {
+					cr.reEnable(disableSignal)
+				}
+			})
+			go func() {
+				select {
+				case <-ctx.Done():
+				case <-disableSignal:
+					cancel()
+				}
+			}()
+		}
+	}
 }
 
 // Disable send disable packet to central server
 // The context passed in only affect the logical of Disable method
 // Disable method is thread-safe, and it will wait until the first invoke exited
+// Connection will not be closed after disable
 func (cr *Cluster) Disable(ctx context.Context) error {
 	if cr.Enabled() {
 		cr.mux.Lock()
@@ -241,8 +293,8 @@ func (cr *Cluster) disable(ctx context.Context) error {
 	return nil
 }
 
-// markDisconnected marked the cluster as error or kicked
-func (cr *Cluster) markDisconnected(kicked bool) {
+// markKicked marks the cluster as kicked
+func (cr *Cluster) markKicked() {
 	if !cr.Enabled() {
 		return
 	}
@@ -252,12 +304,5 @@ func (cr *Cluster) markDisconnected(kicked bool) {
 		return
 	}
 	defer close(cr.disableSignal)
-
-	var nextStatus int32
-	if kicked {
-		nextStatus = clusterKicked
-	} else {
-		nextStatus = clusterError
-	}
-	cr.status.Store(nextStatus)
+	cr.status.Store(clusterKicked)
 }

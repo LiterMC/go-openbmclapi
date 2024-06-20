@@ -39,6 +39,7 @@ type keepAliveReq struct {
 }
 
 // KeepAlive will send the keep-alive packet and fresh hits & hit bytes data
+// If cluster is kicked by the central server, the cluster status will be mark as kicked
 func (cr *Cluster) KeepAlive(ctx context.Context) KeepAliveRes {
 	hits, hbts := cr.hits.Load(), cr.hbts.Load()
 	resCh, err := cr.socket.EmitWithAck("keep-alive", keepAliveReq{
@@ -82,6 +83,7 @@ func (cr *Cluster) KeepAlive(ctx context.Context) KeepAliveRes {
 	cr.hits.Add(-hits2)
 	cr.hbts.Add(-hbts2)
 	if data[1] == false {
+		cr.markKicked()
 		return KeepAliveKicked
 	}
 	return KeepAliveSucceed

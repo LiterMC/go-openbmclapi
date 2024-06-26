@@ -20,6 +20,8 @@
 package storage
 
 import (
+	"errors"
+
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
@@ -145,4 +147,18 @@ func forEachFromRandomIndexWithPossibility(poss []uint, total uint, cb func(i in
 		}
 	}
 	return false
+}
+
+func (m *Manager) RemoveForAll(hash string) error {
+	errCh := make(chan error, 0)
+	for _, s := range m.Storages {
+		go func(s Storage) {
+			errCh <- s.Remove(hash)
+		}(s)
+	}
+	errs := make([]error, len(m.Storages))
+	for i := range len(m.Storages) {
+		errs[i] = <-errCh
+	}
+	return errors.Join(errs...)
 }

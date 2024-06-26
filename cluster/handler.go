@@ -21,29 +21,30 @@ package cluster
 
 import (
 	"net/http"
+
+	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/storage"
 )
 
-func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash string) {
+func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash string, size int64) {
+	defer log.RecoverPanic(nil)
+	var err error
 	if cr.storageManager.ForEachFromRandom(cr.storages, func(s storage.Storage) bool {
-		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.String())
+		opts := s.Options()
+		log.Debugf("[handler]: Checking %s on storage %s ...", hash, opts.Id)
 
-		sz, er := sto.ServeDownload(rw, req, hash, size)
+		sz, er := s.ServeDownload(rw, req, hash, size)
 		if er != nil {
-			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.String(), er)
+			log.Debugf("[handler]: File %s failed on storage %s: %v", hash, opts.Id, er)
 			err = er
 			return false
 		}
 		if sz >= 0 {
-			opts := cr.storageOpts[i]
-			cr.AddHits(1, sz, s.Options().Id)
-			if !keepaliveRec {
-				cr.statOnlyHits.Add(1)
-				cr.statOnlyHbts.Add(sz)
-			}
+			cr.AddHits(1, sz, opts.Id)
 		}
 		return true
 	}) {
 		return
 	}
-	http.Error(http.StatusInternation)
+	http.Error(rw, err.Error(), http.StatusInternalServerError)
 }

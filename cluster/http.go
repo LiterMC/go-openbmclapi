@@ -17,24 +17,9 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package log
+package cluster
 
 import (
-	"github.com/LiterMC/go-openbmclapi/lang"
+	"net/http"
+	"net/url"
 )
-
-func TrDebugf(key string, vals ...any) {
-	Debugf(lang.Tr(key), vals...)
-}
-
-func TrInfof(key string, vals ...any) {
-	Infof(lang.Tr(key), vals...)
-}
-
-func TrWarnf(key string, vals ...any) {
-	Warnf(lang.Tr(key), vals...)
-}
-
-func TrErrorf(key string, vals ...any) {
-	Errorf(lang.Tr(key), vals...)
-}

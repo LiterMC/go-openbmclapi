@@ -21,7 +21,9 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"runtime"
 	"sync"
@@ -66,6 +68,10 @@ type Cluster struct {
 	mux    sync.RWMutex
 	status atomic.Int32
 	socket *socket.Socket
+	client *http.Client
+
+	authTokenMux sync.RWMutex
+	authToken    *ClusterToken
 }
 
 func NewCluster(
@@ -78,6 +84,8 @@ func NewCluster(
 
 		storageManager: storageManager,
 		storages:       storages,
+
+		client: &http.Client{},
 	}
 	return
 }
@@ -85,6 +93,11 @@ func NewCluster(
 // ID returns the cluster id
 func (cr *Cluster) ID() string {
 	return cr.opts.Id
+}
+
+// Secret returns the cluster secret
+func (cr *Cluster) Secret() string {
+	return cr.opts.Secret
 }
 
 // Host returns the cluster public host
@@ -181,7 +194,7 @@ func (cr *Cluster) enable(ctx context.Context) error {
 			if msg, ok := ero["message"].(string); ok {
 				if hashMismatch := reFileHashMismatchError.FindStringSubmatch(msg); hashMismatch != nil {
 					hash := hashMismatch[1]
-					log.Warnf(Tr("warn.cluster.detected.hash.mismatch"), hash)
+					log.TrWarnf("warn.cluster.detected.hash.mismatch", hash)
 					cr.storageManager.RemoveForAll(hash)
 				}
 				return fmt.Errorf("Enable failed: %v", msg)
@@ -239,6 +252,7 @@ func (cr *Cluster) reEnable(disableSignal <-chan struct{}) {
 				select {
 				case <-ctx.Done():
 				case <-disableSignal:
+					timer.Stop()
 					cancel()
 				}
 			}()

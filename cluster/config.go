@@ -86,7 +86,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		}
 	}()
 	req, err := cr.makeReq(ctx, http.MethodGet, "/openbmclapi-agent/challenge", url.Values{
-		"clusterId": {cr.clusterId},
+		"clusterId": {cr.ID()},
 	})
 	if err != nil {
 		return
@@ -110,7 +110,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 	}
 
 	var buf [32]byte
-	hs := hmac.New(crypto.SHA256.New, ([]byte)(cr.clusterSecret))
+	hs := hmac.New(crypto.SHA256.New, ([]byte)(cr.Secret()))
 	hs.Write(([]byte)(res1.Challenge))
 	signature := hex.EncodeToString(hs.Sum(buf[:0]))
 
@@ -119,7 +119,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		Challenge string `json:"challenge"`
 		Signature string `json:"signature"`
 	}{
-		ClusterId: cr.clusterId,
+		ClusterId: cr.ID(),
 		Challenge: res1.Challenge,
 		Signature: signature,
 	})
@@ -159,7 +159,7 @@ func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *Cl
 		ClusterId string `json:"clusterId"`
 		Token     string `json:"token"`
 	}{
-		ClusterId: cr.clusterId,
+		ClusterId: cr.ID(),
 		Token:     oldToken,
 	})
 	if err != nil {

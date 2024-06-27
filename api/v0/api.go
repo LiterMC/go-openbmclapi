@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package v0
 
 import (
 	"compress/gzip"
@@ -36,10 +36,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"runtime/pprof"
-	// "github.com/gorilla/websocket"
 	"github.com/google/uuid"
+	"github.com/gorilla/schema"
+	"runtime/pprof"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/limited"
@@ -58,32 +59,108 @@ func apiGetClientId(req *http.Request) (id string) {
 	return req.Context().Value(clientIdKey).(string)
 }
 
-func (cr *Cluster) cliIdHandle(next http.Handler) http.Handler {
-	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-		var id string
-		if cid, _ := req.Cookie(clientIdCookieName); cid != nil {
-			id = cid.Value
-		} else {
-			var err error
-			id, err = utils.GenRandB64(16)
-			if err != nil {
-				http.Error(rw, "cannot generate random number", http.StatusInternalServerError)
-				return
-			}
-			http.SetCookie(rw, &http.Cookie{
-				Name:     clientIdCookieName,
-				Value:    id,
-				Expires:  time.Now().Add(time.Hour * 24 * 365 * 16),
-				Secure:   true,
-				HttpOnly: true,
-			})
-		}
-		req = req.WithContext(context.WithValue(req.Context(), clientIdKey, utils.AsSha256(id)))
-		next.ServeHTTP(rw, req)
-	})
+type Handler struct {
+	handler      *utils.HttpMiddleWareHandler
+	router       *http.ServeMux
+	userManager  api.UserManager
+	tokenManager api.TokenManager
+	subManager   api.SubscriptionManager
 }
 
-func (cr *Cluster) authMiddleware(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+var _ http.Handler = (*Handler)(nil)
+
+func NewHandler(verifier TokenVerifier, subManager api.SubscriptionManager) *Handler {
+	mux := http.NewServeMux()
+	h := &Handler{
+		router:     mux,
+		handler:    utils.NewHttpMiddleWareHandler(mux),
+		verifier:   verifier,
+		subManager: subManager,
+	}
+	h.buildRoute()
+	h.handler.Use(cliIdMiddleWare)
+	h.handler.Use(h.authMiddleWare)
+	return h
+}
+
+func (h *Handler) Handler() *utils.HttpMiddleWareHandler {
+	return h.handler
+}
+
+func (h *Handler) buildRoute() {
+	mux := h.router
+
+	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+		writeJson(rw, http.StatusNotFound, Map{
+			"error": "404 not found",
+			"path":  req.URL.Path,
+		})
+	})
+
+	mux.HandleFunc("/ping", h.routePing)
+	mux.HandleFunc("/status", h.routeStatus)
+	mux.Handle("/stat/", http.StripPrefix("/stat/", (http.HandlerFunc)(h.routeStat)))
+
+	mux.HandleFunc("/challenge", h.routeChallenge)
+	mux.HandleFunc("/login", h.routeLogin)
+	mux.Handle("/requestToken", authHandleFunc(h.routeRequestToken))
+	mux.Handle("/logout", authHandleFunc(h.routeLogout))
+
+	mux.HandleFunc("/log.io", h.routeLogIO)
+	mux.Handle("/pprof", authHandleFunc(h.routePprof))
+	mux.HandleFunc("/subscribeKey", h.routeSubscribeKey)
+	mux.Handle("/subscribe", authHandle(&utils.HttpMethodHandler{
+		Get:    h.routeSubscribeGET,
+		Post:   h.routeSubscribePOST,
+		Delete: h.routeSubscribeDELETE,
+	}))
+	mux.Handle("/subscribe_email", authHandle(&utils.HttpMethodHandler{
+		Get:    h.routeSubscribeEmailGET,
+		Post:   h.routeSubscribeEmailPOST,
+		Patch:  h.routeSubscribeEmailPATCH,
+		Delete: h.routeSubscribeEmailDELETE,
+	}))
+	mux.Handle("/webhook", authHandle(&utils.HttpMethodHandler{
+		Get:    h.routeWebhookGET,
+		Post:   h.routeWebhookPOST,
+		Patch:  h.routeWebhookPATCH,
+		Delete: h.routeWebhookDELETE,
+	}))
+
+	mux.Handle("/log_files", authHandleFunc(h.routeLogFiles))
+	mux.Handle("/log_file/", authHandle(http.StripPrefix("/log_file/", (http.HandlerFunc)(h.routeLogFile))))
+
+	mux.Handle("/configure/cluster", authHandleFunc(h.routeConfigureCluster))
+}
+
+func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	h.handler.ServeHTTP(rw, req)
+}
+
+func cliIdMiddleWare(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+	var id string
+	if cid, _ := req.Cookie(clientIdCookieName); cid != nil {
+		id = cid.Value
+	} else {
+		var err error
+		id, err = utils.GenRandB64(16)
+		if err != nil {
+			http.Error(rw, "cannot generate random number", http.StatusInternalServerError)
+			return
+		}
+		http.SetCookie(rw, &http.Cookie{
+			Name:     clientIdCookieName,
+			Value:    id,
+			Expires:  time.Now().Add(time.Hour * 24 * 365 * 16),
+			Secure:   true,
+			HttpOnly: true,
+		})
+	}
+	req = req.WithContext(context.WithValue(req.Context(), clientIdKey, utils.AsSha256(id)))
+	next.ServeHTTP(rw, req)
+}
+
+func (h *Handler) authMiddleWare(rw http.ResponseWriter, req *http.Request, next http.Handler) {
 	cli := apiGetClientId(req)
 
 	ctx := req.Context()
@@ -96,7 +173,7 @@ func (cr *Cluster) authMiddleware(rw http.ResponseWriter, req *http.Request, nex
 	if req.Method == http.MethodGet {
 		if tk := req.URL.Query().Get("_t"); tk != "" {
 			path := GetRequestRealPath(req)
-			if id, uid, err = cr.verifyAPIToken(cli, tk, path, req.URL.Query()); err == nil {
+			if id, uid, err = h.verifier.verifyAPIToken(cli, tk, path, req.URL.Query()); err == nil {
 				ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAPI)
 			}
 		}
@@ -108,7 +185,7 @@ func (cr *Cluster) authMiddleware(rw http.ResponseWriter, req *http.Request, nex
 			if err == nil {
 				err = ErrUnsupportAuthType
 			}
-		} else if id, uid, err = cr.verifyAuthToken(cli, tk); err != nil {
+		} else if id, uid, err = h.verifier.VerifyAuthToken(cli, tk); err != nil {
 			id = ""
 		} else {
 			ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAuth)
@@ -122,7 +199,7 @@ func (cr *Cluster) authMiddleware(rw http.ResponseWriter, req *http.Request, nex
 	next.ServeHTTP(rw, req)
 }
 
-func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
+func authHandle(next http.Handler) http.Handler {
 	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
 		if req.Context().Value(tokenTypeKey) == nil {
 			writeJson(rw, http.StatusUnauthorized, Map{
@@ -134,69 +211,13 @@ func (cr *Cluster) apiAuthHandle(next http.Handler) http.Handler {
 	})
 }
 
-func (cr *Cluster) apiAuthHandleFunc(next http.HandlerFunc) http.Handler {
-	return cr.apiAuthHandle(next)
+func authHandleFunc(next http.HandlerFunc) http.Handler {
+	return authHandle(next)
 }
 
-func (cr *Cluster) initAPIv0() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
-		writeJson(rw, http.StatusNotFound, Map{
-			"error": "404 not found",
-			"path":  req.URL.Path,
-		})
-	})
-
-	mux.HandleFunc("/ping", cr.apiV1Ping)
-	mux.HandleFunc("/status", cr.apiV0Status)
-	mux.Handle("/stat/", http.StripPrefix("/stat/", (http.HandlerFunc)(cr.apiV0Stat)))
-
-	mux.HandleFunc("/challenge", cr.apiV1Challenge)
-	mux.HandleFunc("/login", cr.apiV0Login)
-	mux.Handle("/requestToken", cr.apiAuthHandleFunc(cr.apiV0RequestToken))
-	mux.Handle("/logout", cr.apiAuthHandleFunc(cr.apiV1Logout))
-
-	mux.HandleFunc("/log.io", cr.apiV1LogIO)
-	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV1Pprof))
-	mux.HandleFunc("/subscribeKey", cr.apiV0SubscribeKey)
-	mux.Handle("/subscribe", cr.apiAuthHandleFunc(cr.apiV0Subscribe))
-	mux.Handle("/subscribe_email", cr.apiAuthHandleFunc(cr.apiV0SubscribeEmail))
-	mux.Handle("/webhook", cr.apiAuthHandleFunc(cr.apiV0Webhook))
-
-	mux.Handle("/log_files", cr.apiAuthHandleFunc(cr.apiV0LogFiles))
-	mux.Handle("/log_file/", cr.apiAuthHandle(http.StripPrefix("/log_file/", (http.HandlerFunc)(cr.apiV0LogFile))))
-
-	next := cr.apiRateLimiter.WrapHandler(mux)
-	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-		cr.authMiddleware(rw, req, next)
-	})
-}
-
-func (cr *Cluster) initAPIv1() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
-		writeJson(rw, http.StatusNotFound, Map{
-			"error": "404 not found",
-			"path":  req.URL.Path,
-		})
-	})
-
-	mux.HandleFunc("/ping", cr.apiV1Ping)
-
-	mux.HandleFunc("/challenge", cr.apiV1Challenge)
-	mux.Handle("/logout", cr.apiAuthHandleFunc(cr.apiV1Logout))
-
-	mux.HandleFunc("/log.io", cr.apiV1LogIO)
-	mux.Handle("/pprof", cr.apiAuthHandleFunc(cr.apiV1Pprof))
-
-	next := cr.apiRateLimiter.WrapHandler(mux)
-	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-		cr.authMiddleware(rw, req, next)
-	})
-}
-
-func (cr *Cluster) apiV1Ping(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+func (cr *Cluster) routePing(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		errorMethodNotAllowed(rw, req, http.MethodGet)
 		return
 	}
 	limited.SetSkipRateLimit(req)
@@ -208,8 +229,9 @@ func (cr *Cluster) apiV1Ping(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+func (cr *Cluster) routeStatus(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		errorMethodNotAllowed(rw, req, http.MethodGet)
 		return
 	}
 	limited.SetSkipRateLimit(req)
@@ -245,8 +267,9 @@ func (cr *Cluster) apiV0Status(rw http.ResponseWriter, req *http.Request) {
 	writeJson(rw, http.StatusOK, &status)
 }
 
-func (cr *Cluster) apiV0Stat(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+func (cr *Cluster) routeStat(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		errorMethodNotAllowed(rw, req, http.MethodGet)
 		return
 	}
 	limited.SetSkipRateLimit(req)
@@ -265,14 +288,15 @@ func (cr *Cluster) apiV0Stat(rw http.ResponseWriter, req *http.Request) {
 	writeJson(rw, http.StatusOK, (json.RawMessage)(data))
 }
 
-func (cr *Cluster) apiV1Challenge(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+func (h *Handler) routeChallenge(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		errorMethodNotAllowed(rw, req, http.MethodGet)
 		return
 	}
 	cli := apiGetClientId(req)
 	query := req.URL.Query()
 	action := query.Get("action")
-	token, err := cr.generateChallengeToken(cli, action)
+	token, err := h.generateChallengeToken(cli, action)
 	if err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Cannot generate token",
@@ -285,8 +309,9 @@ func (cr *Cluster) apiV1Challenge(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodPost) {
+func (h *Handler) routeLogin(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		errorMethodNotAllowed(rw, req, http.MethodPost)
 		return
 	}
 	if !config.Dashboard.Enable {
@@ -297,44 +322,25 @@ func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 	}
 	cli := apiGetClientId(req)
 
-	type T = struct {
-		User      string `json:"username"`
-		Challenge string `json:"challenge"`
-		Signature string `json:"signature"`
+	var data struct {
+		User      string `json:"username" schema:"username"`
+		Challenge string `json:"challenge" schema:"challenge"`
+		Signature string `json:"signature" schema:"signature"`
 	}
-	data, ok := parseRequestBody(rw, req, func(rw http.ResponseWriter, req *http.Request, ct string, data *T) error {
-		switch ct {
-		case "application/x-www-form-urlencoded":
-			data.User = req.PostFormValue("username")
-			data.Challenge = req.PostFormValue("challenge")
-			data.Signature = req.PostFormValue("signature")
-			return nil
-		default:
-			return errUnknownContent
-		}
-	})
-	if !ok {
+	if !parseRequestBody(rw, req, &data) {
 		return
 	}
 
-	expectUsername, expectPassword := config.Dashboard.Username, config.Dashboard.Password
-	if expectUsername == "" || expectPassword == "" {
-		writeJson(rw, http.StatusUnauthorized, Map{
-			"error": "The username or password was not set on the server",
-		})
-		return
-	}
-
-	if err := cr.verifyChallengeToken(cli, "login", data.Challenge); err != nil {
+	if err := h.verifier.VerifyChallengeToken(cli, "login", data.Challenge); err != nil {
 		writeJson(rw, http.StatusUnauthorized, Map{
 			"error": "Invalid challenge",
 		})
 		return
 	}
-	expectPassword = utils.AsSha256Hex(expectPassword)
-	expectSignature := utils.HMACSha256Hex(expectPassword, data.Challenge)
-	if subtle.ConstantTimeCompare(([]byte)(expectUsername), ([]byte)(data.User)) == 0 ||
-		subtle.ConstantTimeCompare(([]byte)(expectSignature), ([]byte)(data.Signature)) == 0 {
+	if err := h.verifier.VerifyUserPassword(data.User, func(password string) bool {
+		expectSignature := utils.HMACSha256HexBytes(password, data.Challenge)
+		return subtle.ConstantTimeCompare(expectSignature, ([]byte)(data.Signature)) == 0
+	}); err != nil {
 		writeJson(rw, http.StatusUnauthorized, Map{
 			"error": "The username or password is incorrect",
 		})
@@ -353,8 +359,9 @@ func (cr *Cluster) apiV0Login(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (cr *Cluster) apiV0RequestToken(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodPost) {
+func (cr *Cluster) routeRequestToken(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		errorMethodNotAllowed(rw, req, http.MethodPost)
 		return
 	}
 	defer req.Body.Close()
@@ -369,11 +376,8 @@ func (cr *Cluster) apiV0RequestToken(rw http.ResponseWriter, req *http.Request) 
 		Path  string            `json:"path"`
 		Query map[string]string `json:"query,omitempty"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":   "cannot decode payload in json format",
-			"message": err.Error(),
-		})
+	if !parseRequestBody(rw, req, &payload) {
+		return
 	}
 	log.Debugf("payload: %#v", payload)
 	if payload.Path == "" || payload.Path[0] != '/' {
@@ -398,8 +402,9 @@ func (cr *Cluster) apiV0RequestToken(rw http.ResponseWriter, req *http.Request) 
 	})
 }
 
-func (cr *Cluster) apiV1Logout(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodPost) {
+func (cr *Cluster) routeLogout(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		errorMethodNotAllowed(rw, req, http.MethodPost)
 		return
 	}
 	limited.SetSkipRateLimit(req)
@@ -408,7 +413,7 @@ func (cr *Cluster) apiV1Logout(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusNoContent)
 }
 
-func (cr *Cluster) apiV1LogIO(rw http.ResponseWriter, req *http.Request) {
+func (cr *Cluster) routeLogIO(rw http.ResponseWriter, req *http.Request) {
 	addr, _ := req.Context().Value(RealAddrCtxKey).(string)
 
 	conn, err := cr.wsUpgrader.Upgrade(rw, req, nil)
@@ -624,8 +629,9 @@ func (cr *Cluster) apiV1LogIO(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (cr *Cluster) apiV1Pprof(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+func (cr *Cluster) routePprof(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		errorMethodNotAllowed(rw, req, http.MethodGet)
 		return
 	}
 	query := req.URL.Query()
@@ -661,244 +667,8 @@ func (cr *Cluster) apiV1Pprof(rw http.ResponseWriter, req *http.Request) {
 	p.WriteTo(rw, debug)
 }
 
-func (cr *Cluster) apiV0SubscribeKey(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
-		return
-	}
-	key := cr.webpushKeyB64
-	etag := `"` + utils.AsSha256(key) + `"`
-	rw.Header().Set("ETag", etag)
-	if cachedTag := req.Header.Get("If-None-Match"); cachedTag == etag {
-		rw.WriteHeader(http.StatusNotModified)
-		return
-	}
-	writeJson(rw, http.StatusOK, Map{
-		"publicKey": key,
-	})
-}
-
-func (cr *Cluster) apiV0Subscribe(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost, http.MethodDelete) {
-		return
-	}
-	cliId := apiGetClientId(req)
+func (cr *Cluster) routeWebhookGET(rw http.ResponseWriter, req *http.Request) {
 	user := getLoggedUser(req)
-	if user == "" {
-		writeJson(rw, http.StatusForbidden, Map{
-			"error": "Unauthorized",
-		})
-		return
-	}
-	switch req.Method {
-	case http.MethodGet:
-		cr.apiV0SubscribeGET(rw, req, user, cliId)
-	case http.MethodPost:
-		cr.apiV0SubscribePOST(rw, req, user, cliId)
-	case http.MethodDelete:
-		cr.apiV0SubscribeDELETE(rw, req, user, cliId)
-	default:
-		panic("unreachable")
-	}
-}
-
-func (cr *Cluster) apiV0SubscribeGET(rw http.ResponseWriter, req *http.Request, user string, client string) {
-	record, err := cr.database.GetSubscribe(user, client)
-	if err != nil {
-		if err == database.ErrNotFound {
-			writeJson(rw, http.StatusNotFound, Map{
-				"error": "no subscription was found",
-			})
-			return
-		}
-		writeJson(rw, http.StatusInternalServerError, Map{
-			"error":   "database error",
-			"message": err.Error(),
-		})
-		return
-	}
-	writeJson(rw, http.StatusOK, Map{
-		"scopes":   record.Scopes,
-		"reportAt": record.ReportAt,
-	})
-}
-
-func (cr *Cluster) apiV0SubscribePOST(rw http.ResponseWriter, req *http.Request, user string, client string) {
-	data, ok := parseRequestBody[database.SubscribeRecord](rw, req, nil)
-	if !ok {
-		return
-	}
-	data.User = user
-	data.Client = client
-	if err := cr.database.SetSubscribe(data); err != nil {
-		writeJson(rw, http.StatusInternalServerError, Map{
-			"error":   "Database update failed",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.WriteHeader(http.StatusNoContent)
-}
-
-func (cr *Cluster) apiV0SubscribeDELETE(rw http.ResponseWriter, req *http.Request, user string, client string) {
-	if err := cr.database.RemoveSubscribe(user, client); err != nil {
-		if err == database.ErrNotFound {
-			writeJson(rw, http.StatusNotFound, Map{
-				"error": "no subscription was found",
-			})
-			return
-		}
-		writeJson(rw, http.StatusInternalServerError, Map{
-			"error":   "database error",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.WriteHeader(http.StatusNoContent)
-}
-
-func (cr *Cluster) apiV0SubscribeEmail(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete) {
-		return
-	}
-	user := getLoggedUser(req)
-	if user == "" {
-		writeJson(rw, http.StatusForbidden, Map{
-			"error": "Unauthorized",
-		})
-		return
-	}
-	switch req.Method {
-	case http.MethodGet:
-		cr.apiV0SubscribeEmailGET(rw, req, user)
-	case http.MethodPost:
-		cr.apiV0SubscribeEmailPOST(rw, req, user)
-	case http.MethodPatch:
-		cr.apiV0SubscribeEmailPATCH(rw, req, user)
-	case http.MethodDelete:
-		cr.apiV0SubscribeEmailDELETE(rw, req, user)
-	default:
-		panic("unreachable")
-	}
-}
-
-func (cr *Cluster) apiV0SubscribeEmailGET(rw http.ResponseWriter, req *http.Request, user string) {
-	if addr := req.URL.Query().Get("addr"); addr != "" {
-		record, err := cr.database.GetEmailSubscription(user, addr)
-		if err != nil {
-			if err == database.ErrNotFound {
-				writeJson(rw, http.StatusNotFound, Map{
-					"error": "no email subscription was found",
-				})
-				return
-			}
-			writeJson(rw, http.StatusInternalServerError, Map{
-				"error":   "database error",
-				"message": err.Error(),
-			})
-			return
-		}
-		writeJson(rw, http.StatusOK, record)
-		return
-	}
-	records := make([]database.EmailSubscriptionRecord, 0, 4)
-	if err := cr.database.ForEachUsersEmailSubscription(user, func(rec *database.EmailSubscriptionRecord) error {
-		records = append(records, *rec)
-		return nil
-	}); err != nil {
-		writeJson(rw, http.StatusInternalServerError, Map{
-			"error":   "database error",
-			"message": err.Error(),
-		})
-		return
-	}
-	writeJson(rw, http.StatusOK, records)
-}
-
-func (cr *Cluster) apiV0SubscribeEmailPOST(rw http.ResponseWriter, req *http.Request, user string) {
-	data, ok := parseRequestBody[database.EmailSubscriptionRecord](rw, req, nil)
-	if !ok {
-		return
-	}
-
-	data.User = user
-	if err := cr.database.AddEmailSubscription(data); err != nil {
-		writeJson(rw, http.StatusInternalServerError, Map{
-			"error":   "Database update failed",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.WriteHeader(http.StatusCreated)
-}
-
-func (cr *Cluster) apiV0SubscribeEmailPATCH(rw http.ResponseWriter, req *http.Request, user string) {
-	addr := req.URL.Query().Get("addr")
-	data, ok := parseRequestBody[database.EmailSubscriptionRecord](rw, req, nil)
-	if !ok {
-		return
-	}
-	data.User = user
-	data.Addr = addr
-	if err := cr.database.UpdateEmailSubscription(data); err != nil {
-		if err == database.ErrNotFound {
-			writeJson(rw, http.StatusNotFound, Map{
-				"error": "no email subscription was found",
-			})
-			return
-		}
-		writeJson(rw, http.StatusInternalServerError, Map{
-			"error":   "database error",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.WriteHeader(http.StatusNoContent)
-}
-
-func (cr *Cluster) apiV0SubscribeEmailDELETE(rw http.ResponseWriter, req *http.Request, user string) {
-	addr := req.URL.Query().Get("addr")
-	if err := cr.database.RemoveEmailSubscription(user, addr); err != nil {
-		if err == database.ErrNotFound {
-			writeJson(rw, http.StatusNotFound, Map{
-				"error": "no email subscription was found",
-			})
-			return
-		}
-		writeJson(rw, http.StatusInternalServerError, Map{
-			"error":   "database error",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.WriteHeader(http.StatusNoContent)
-}
-
-func (cr *Cluster) apiV0Webhook(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete) {
-		return
-	}
-	user := getLoggedUser(req)
-	if user == "" {
-		writeJson(rw, http.StatusForbidden, Map{
-			"error": "Unauthorized",
-		})
-		return
-	}
-	switch req.Method {
-	case http.MethodGet:
-		cr.apiV0WebhookGET(rw, req, user)
-	case http.MethodPost:
-		cr.apiV0WebhookPOST(rw, req, user)
-	case http.MethodPatch:
-		cr.apiV0WebhookPATCH(rw, req, user)
-	case http.MethodDelete:
-		cr.apiV0WebhookDELETE(rw, req, user)
-	default:
-		panic("unreachable")
-	}
-}
-
-func (cr *Cluster) apiV0WebhookGET(rw http.ResponseWriter, req *http.Request, user string) {
 	if sid := req.URL.Query().Get("id"); sid != "" {
 		id, err := uuid.Parse(sid)
 		if err != nil {
@@ -939,9 +709,10 @@ func (cr *Cluster) apiV0WebhookGET(rw http.ResponseWriter, req *http.Request, us
 	writeJson(rw, http.StatusOK, records)
 }
 
-func (cr *Cluster) apiV0WebhookPOST(rw http.ResponseWriter, req *http.Request, user string) {
-	data, ok := parseRequestBody[database.WebhookRecord](rw, req, nil)
-	if !ok {
+func (cr *Cluster) routeWebhookPOST(rw http.ResponseWriter, req *http.Request) {
+	user := getLoggedUser(req)
+	var data database.WebhookRecord
+	if !parseRequestBody(rw, req, &data) {
 		return
 	}
 
@@ -956,10 +727,11 @@ func (cr *Cluster) apiV0WebhookPOST(rw http.ResponseWriter, req *http.Request, u
 	rw.WriteHeader(http.StatusCreated)
 }
 
-func (cr *Cluster) apiV0WebhookPATCH(rw http.ResponseWriter, req *http.Request, user string) {
+func (cr *Cluster) routeWebhookPATCH(rw http.ResponseWriter, req *http.Request) {
+	user := getLoggedUser(req)
 	id := req.URL.Query().Get("id")
-	data, ok := parseRequestBody[database.WebhookRecord](rw, req, nil)
-	if !ok {
+	var data database.WebhookRecord
+	if !parseRequestBody(rw, req, &data) {
 		return
 	}
 	data.User = user
@@ -987,7 +759,8 @@ func (cr *Cluster) apiV0WebhookPATCH(rw http.ResponseWriter, req *http.Request, 
 	rw.WriteHeader(http.StatusNoContent)
 }
 
-func (cr *Cluster) apiV0WebhookDELETE(rw http.ResponseWriter, req *http.Request, user string) {
+func (cr *Cluster) routeWebhookDELETE(rw http.ResponseWriter, req *http.Request) {
+	user := getLoggedUser(req)
 	id, err := uuid.Parse(req.URL.Query().Get("id"))
 	if err != nil {
 		writeJson(rw, http.StatusBadRequest, Map{
@@ -1012,8 +785,9 @@ func (cr *Cluster) apiV0WebhookDELETE(rw http.ResponseWriter, req *http.Request,
 	rw.WriteHeader(http.StatusNoContent)
 }
 
-func (cr *Cluster) apiV0LogFiles(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet) {
+func (cr *Cluster) routeLogFiles(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		errorMethodNotAllowed(rw, req, http.MethodGet)
 		return
 	}
 	files := log.ListLogs()
@@ -1035,8 +809,9 @@ func (cr *Cluster) apiV0LogFiles(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (cr *Cluster) apiV0LogFile(rw http.ResponseWriter, req *http.Request) {
-	if checkRequestMethodOrRejectWithJson(rw, req, http.MethodGet, http.MethodHead) {
+func (cr *Cluster) routeLogFile(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		errorMethodNotAllowed(rw, req, http.MethodGet+", "+http.MethodHead)
 		return
 	}
 	query := req.URL.Query()
@@ -1078,11 +853,11 @@ func (cr *Cluster) apiV0LogFile(rw http.ResponseWriter, req *http.Request) {
 		}
 		rw.Header().Set("Content-Type", "application/octet-stream")
 		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name+".encrypted"))
-		cr.apiV0LogFileEncrypted(rw, req, fd, !isGzip)
+		cr.routeLogFileEncrypted(rw, req, fd, !isGzip)
 	}
 }
 
-func (cr *Cluster) apiV0LogFileEncrypted(rw http.ResponseWriter, req *http.Request, r io.Reader, useGzip bool) {
+func (cr *Cluster) routeLogFileEncrypted(rw http.ResponseWriter, req *http.Request, r io.Reader, useGzip bool) {
 	rw.WriteHeader(http.StatusOK)
 	if req.Method == http.MethodHead {
 		return
@@ -1112,10 +887,9 @@ func (cr *Cluster) apiV0LogFileEncrypted(rw http.ResponseWriter, req *http.Reque
 type Map = map[string]any
 
 var errUnknownContent = errors.New("unknown content-type")
+var formDecoder = schema.NewDecoder()
 
-type requestBodyParser[T any] func(rw http.ResponseWriter, req *http.Request, contentType string, data *T) error
-
-func parseRequestBody[T any](rw http.ResponseWriter, req *http.Request, fallback requestBodyParser[T]) (data T, parsed bool) {
+func parseRequestBody(rw http.ResponseWriter, req *http.Request, ptr any) (parsed bool) {
 	contentType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
 	if err != nil {
 		writeJson(rw, http.StatusBadRequest, Map{
@@ -1127,26 +901,31 @@ func parseRequestBody[T any](rw http.ResponseWriter, req *http.Request, fallback
 	}
 	switch contentType {
 	case "application/json":
-		if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+		if err := json.NewDecoder(req.Body).Decode(ptr); err != nil {
 			writeJson(rw, http.StatusBadRequest, Map{
 				"error":   "Cannot decode request body",
 				"message": err.Error(),
 			})
 			return
 		}
-		return data, true
-	default:
-		if fallback != nil {
-			if err := fallback(rw, req, contentType, &data); err == nil {
-				return data, true
-			} else if err != errUnknownContent {
-				writeJson(rw, http.StatusBadRequest, Map{
-					"error":   "Cannot decode request body",
-					"message": err.Error(),
-				})
-				return
-			}
+		return true
+	case "application/x-www-form-urlencoded":
+		if err := req.ParseForm(); err != nil {
+			writeJson(rw, http.StatusBadRequest, Map{
+				"error":   "Cannot decode request body",
+				"message": err.Error(),
+			})
+			return
 		}
+		if err := formDecoder.Decode(ptr, req.PostForm); err != nil {
+			writeJson(rw, http.StatusBadRequest, Map{
+				"error":   "Cannot decode request body",
+				"message": err.Error(),
+			})
+			return
+		}
+		return true
+	default:
 		writeJson(rw, http.StatusBadRequest, Map{
 			"error":        "Unexpected Content-Type",
 			"content-type": contentType,
@@ -1168,18 +947,8 @@ func writeJson(rw http.ResponseWriter, code int, data any) (err error) {
 	return
 }
 
-func checkRequestMethodOrRejectWithJson(rw http.ResponseWriter, req *http.Request, allows ...string) (rejected bool) {
-	m := req.Method
-	for _, a := range allows {
-		if m == a {
-			return false
-		}
-	}
-	rw.Header().Set("Allow", strings.Join(allows, ", "))
-	writeJson(rw, http.StatusMethodNotAllowed, Map{
-		"error":  "405 method not allowed",
-		"method": m,
-		"allow":  allows,
-	})
+func errorMethodNotAllowed(rw http.ResponseWriter, req *http.Request, allow string) {
+	rw.Header().Set("Allow", allow)
+	rw.WriteHeader(http.StatusMethodNotAllowed)
 	return true
 }

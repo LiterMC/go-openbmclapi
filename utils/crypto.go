@@ -60,10 +60,16 @@ func AsSha256Hex(s string) string {
 }
 
 func HMACSha256Hex(key, data string) string {
+	return (string)(HMACSha256HexBytes(key, data))
+}
+
+func HMACSha256HexBytes(key, data string) []byte {
 	m := hmac.New(sha256.New, ([]byte)(key))
 	m.Write(([]byte)(data))
 	buf := m.Sum(nil)
-	return hex.EncodeToString(buf[:])
+	value := make([]byte, hex.EncodedLen(len(buf)))
+	hex.Encode(value, buf[:])
+	return value
 }
 
 func GenRandB64(n int) (s string, err error) {

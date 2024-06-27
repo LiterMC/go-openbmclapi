@@ -22,6 +22,9 @@ package cluster
 import (
 	"context"
 	"time"
+
+	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type KeepAliveRes int
@@ -49,10 +52,10 @@ func (cr *Cluster) KeepAlive(ctx context.Context) KeepAliveRes {
 	})
 
 	if e := cr.stats.Save(cr.dataDir); e != nil {
-		log.Errorf(Tr("error.cluster.stat.save.failed"), e)
+		log.TrErrorf("error.cluster.stat.save.failed", e)
 	}
 	if err != nil {
-		log.Errorf(Tr("error.cluster.keepalive.send.failed"), err)
+		log.TrErrorf("error.cluster.keepalive.send.failed", err)
 		return KeepAliveFailed
 	}
 	var data []any
@@ -65,21 +68,19 @@ func (cr *Cluster) KeepAlive(ctx context.Context) KeepAliveRes {
 	if ero := data[0]; len(data) <= 1 || ero != nil {
 		if ero, ok := ero.(map[string]any); ok {
 			if msg, ok := ero["message"].(string); ok {
-				log.Errorf(Tr("error.cluster.keepalive.failed"), msg)
+				log.TrErrorf("error.cluster.keepalive.failed", msg)
 				if hashMismatch := reFileHashMismatchError.FindStringSubmatch(msg); hashMismatch != nil {
 					hash := hashMismatch[1]
 					log.Warnf("Detected hash mismatch error, removing bad file %s", hash)
-					for _, s := range cr.storages {
-						go s.Remove(hash)
-					}
+					cr.storageManager.RemoveForAll(hash)
 				}
 				return KeepAliveFailed
 			}
 		}
-		log.Errorf(Tr("error.cluster.keepalive.failed"), ero)
+		log.TrErrorf("error.cluster.keepalive.failed", ero)
 		return KeepAliveFailed
 	}
-	log.Infof(Tr("info.cluster.keepalive.success"), ahits, utils.BytesToUnit((float64)(ahbts)), data[1])
+	log.TrInfof("info.cluster.keepalive.success", ahits, utils.BytesToUnit((float64)(ahbts)), data[1])
 	cr.hits.Add(-hits2)
 	cr.hbts.Add(-hbts2)
 	if data[1] == false {

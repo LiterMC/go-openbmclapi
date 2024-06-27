@@ -36,8 +36,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 type StatusResponseWriter struct {
@@ -125,12 +125,22 @@ type HttpMiddleWareHandler struct {
 	middles []MiddleWare
 }
 
-func NewHttpMiddleWareHandler(final http.Handler) *HttpMiddleWareHandler {
+var _ http.Handler = (*HttpMiddleWareHandler)(nil)
+
+func NewHttpMiddleWareHandler(final http.Handler, middles ...MiddleWare) *HttpMiddleWareHandler {
 	return &HttpMiddleWareHandler{
-		final: final,
+		final:   final,
+		middles: middles,
 	}
 }
 
+// Handler returns the final http.Handler
+func (m *HttpMiddleWareHandler) Handler() http.Handler {
+	return m.final
+}
+
+// ServeHTTP implements http.Handler
+// It will invoke the middlewares in order
 func (m *HttpMiddleWareHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	i := 0
 	var getNext func() http.Handler
@@ -158,14 +168,120 @@ func (m *HttpMiddleWareHandler) ServeHTTP(rw http.ResponseWriter, req *http.Requ
 	getNext().ServeHTTP(rw, req)
 }
 
+// Use append MiddleWares to the middleware chain
 func (m *HttpMiddleWareHandler) Use(mids ...MiddleWare) {
 	m.middles = append(m.middles, mids...)
 }
 
+// UseFunc append MiddleWareFuncs to the middleware chain
 func (m *HttpMiddleWareHandler) UseFunc(fns ...MiddleWareFunc) {
 	for _, fn := range fns {
 		m.middles = append(m.middles, fn)
 	}
+}
+
+// HttpMethodHandler pass down http requests to different handler based on the request methods
+// The HttpMethodHandler should not be modified after called ServeHTTP
+type HttpMethodHandler struct {
+	Get     http.Handler
+	Head    bool
+	Post    http.Handler
+	Put     http.Handler
+	Patch   http.Handler
+	Delete  http.Handler
+	Connect http.Handler
+	Options http.Handler
+	Trace   http.Handler
+
+	allows string
+	allowsOnce sync.Once
+}
+
+var _ http.Handler = (*HttpMethodHandler)(nil)
+
+// ServeHTTP implements http.Handler
+// Once ServeHTTP is called the HttpMethodHandler should not be modified
+func (m *HttpMethodHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case http.MethodHead:
+		if !m.Head {
+			break
+		}
+		fallthrough
+	case http.MethodGet:
+		if m.Get != nil {
+			m.Get.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodPost:
+		if m.Post != nil {
+			m.Post.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodPut:
+		if m.Put != nil {
+			m.Put.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodPatch:
+		if m.Patch != nil {
+			m.Patch.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodDelete:
+		if m.Delete != nil {
+			m.Delete.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodConnect:
+		if m.Connect != nil {
+			m.Connect.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodOptions:
+		if m.Options != nil {
+			m.Options.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodTrace:
+		if m.Trace != nil {
+			m.Trace.ServeHTTP(rw, req)
+			return
+		}
+	}
+	m.allowsOnce.Do(func() {
+		allows := make([]string, 0, 5)
+		if m.Get != nil {
+			allows = append(allows, http.MethodGet)
+			if m.Head {
+				allows = append(allows, http.MethodGet)
+			}
+		}
+		if m.Post != nil {
+			allows = append(allows, http.MethodPost)
+		}
+		if m.Put != nil {
+			allows = append(allows, http.MethodPut)
+		}
+		if m.Patch != nil {
+			allows = append(allows, http.MethodPatch)
+		}
+		if m.Delete != nil {
+			allows = append(allows, http.MethodDelete)
+		}
+		if m.Connect != nil {
+			allows = append(allows, http.MethodConnect)
+		}
+		if m.Options != nil {
+			allows = append(allows, http.MethodOptions)
+		}
+		if m.Trace != nil {
+			allows = append(allows, http.MethodTrace)
+		}
+		m.allows = strings.Join(allows, ", ")
+	})
+	rw.Header().Set("Allow", m.allows)
+	rw.WriteHeader(http.StatusMethodNotAllowed)
 }
 
 // HTTPTLSListener will serve a http or a tls connection

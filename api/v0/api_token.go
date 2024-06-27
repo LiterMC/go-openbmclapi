@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package v0
 
 import (
 	"errors"
@@ -232,7 +232,7 @@ func (cr *Cluster) generateAPIToken(cliId string, userId string, path string, qu
 	return tokenStr, nil
 }
 
-func (cr *Cluster) verifyAPIToken(cliId string, token string, path string, query url.Values) (id string, user string, err error) {
+func (h *Handler) verifyAPIToken(cliId string, token string, path string, query url.Values) (id string, user string, err error) {
 	var claims apiTokenClaims
 	_, err = jwt.ParseWithClaims(
 		token,

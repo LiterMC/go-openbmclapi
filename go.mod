@@ -27,6 +27,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-sql-driver/mysql v1.8.0 // indirect
 	github.com/google/uuid v1.5.0 // indirect
+	github.com/gorilla/schema v1.4.0 // indirect
 	github.com/ipfs/go-log/v2 v2.1.3 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/lib/pq v1.10.9 // indirect

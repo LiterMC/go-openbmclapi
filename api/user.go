@@ -56,7 +56,7 @@ const (
 )
 
 type User struct {
-	Username string
-	Password string // as sha256
+	Username    string
+	Password    string // as sha256
 	Permissions PermissionFlag
 }

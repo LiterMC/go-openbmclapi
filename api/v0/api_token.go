@@ -61,7 +61,7 @@ func getLoggedUser(req *http.Request) string {
 
 var (
 	ErrUnsupportAuthType = errors.New("unsupported authorization type")
-	ErrClientIdNotMatch  = errors.New("client id not match")
+	ErrScopeNotMatch     = errors.New("scope not match")
 	ErrJTINotExists      = errors.New("jti not exists")
 
 	ErrStrictPathNotMatch  = errors.New("strict path not match")
@@ -76,15 +76,15 @@ func (cr *Cluster) getJWTKey(t *jwt.Token) (any, error) {
 }
 
 const (
-	challengeTokenSubject = "GOBA-challenge"
-	authTokenSubject      = "GOBA-auth"
-	apiTokenSubject       = "GOBA-API"
+	challengeTokenScope = "GOBA-challenge"
+	authTokenScope      = "GOBA-auth"
+	apiTokenScope       = "GOBA-API"
 )
 
 type challengeTokenClaims struct {
 	jwt.RegisteredClaims
 
-	Client string `json:"cli"`
+	Scope  string `json:"scope"`
 	Action string `json:"act"`
 }
 
@@ -93,12 +93,12 @@ func (cr *Cluster) generateChallengeToken(cliId string, action string) (string, 
 	exp := now.Add(time.Minute * 1)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &challengeTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   challengeTokenSubject,
+			Subject:   cliId,
 			Issuer:    cr.jwtIssuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
-		Client: cliId,
+		Scope:  challengeTokenScope,
 		Action: action,
 	})
 	tokenStr, err := token.SignedString(cr.apiHmacKey)
@@ -114,14 +114,14 @@ func (cr *Cluster) verifyChallengeToken(cliId string, action string, token strin
 		token,
 		&claims,
 		cr.getJWTKey,
-		jwt.WithSubject(challengeTokenSubject),
+		jwt.WithSubject(cliId),
 		jwt.WithIssuedAt(),
 		jwt.WithIssuer(cr.jwtIssuer),
 	); err != nil {
 		return
 	}
-	if claims.Client != cliId {
-		return ErrClientIdNotMatch
+	if claims.Scope != challengeTokenScope {
+		return ErrScopeNotMatch
 	}
 	if claims.Action != action {
 		return ErrJTINotExists
@@ -132,8 +132,8 @@ func (cr *Cluster) verifyChallengeToken(cliId string, action string, token strin
 type authTokenClaims struct {
 	jwt.RegisteredClaims
 
-	Client string `json:"cli"`
-	User   string `json:"usr"`
+	Scope string `json:"scope"`
+	User  string `json:"usr"`
 }
 
 func (cr *Cluster) generateAuthToken(cliId string, userId string) (string, error) {
@@ -146,13 +146,13 @@ func (cr *Cluster) generateAuthToken(cliId string, userId string) (string, error
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &authTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
-			Subject:   authTokenSubject,
+			Subject:   cliId,
 			Issuer:    cr.jwtIssuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
-		Client: cliId,
-		User:   userId,
+		Scope: authTokenScope,
+		User:  userId,
 	})
 	tokenStr, err := token.SignedString(cr.apiHmacKey)
 	if err != nil {
@@ -170,14 +170,14 @@ func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string, user 
 		token,
 		&claims,
 		cr.getJWTKey,
-		jwt.WithSubject(authTokenSubject),
+		jwt.WithSubject(cliId),
 		jwt.WithIssuedAt(),
 		jwt.WithIssuer(cr.jwtIssuer),
 	); err != nil {
 		return
 	}
-	if claims.Client != cliId {
-		err = ErrClientIdNotMatch
+	if claims.Scope != authTokenScope {
+		err = ErrScopeNotMatch
 		return
 	}
 	if user = claims.User; user == "" {
@@ -196,7 +196,7 @@ func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string, user 
 type apiTokenClaims struct {
 	jwt.RegisteredClaims
 
-	Client      string            `json:"cli"`
+	Scope       string            `json:"scope"`
 	User        string            `json:"usr"`
 	StrictPath  string            `json:"str-p"`
 	StrictQuery map[string]string `json:"str-q,omitempty"`
@@ -212,12 +212,12 @@ func (cr *Cluster) generateAPIToken(cliId string, userId string, path string, qu
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &apiTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
-			Subject:   apiTokenSubject,
+			Subject:   cliId,
 			Issuer:    cr.jwtIssuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
-		Client:      cliId,
+		Scope:       apiTokenScope,
 		User:        userId,
 		StrictPath:  path,
 		StrictQuery: query,
@@ -238,15 +238,15 @@ func (h *Handler) verifyAPIToken(cliId string, token string, path string, query 
 		token,
 		&claims,
 		cr.getJWTKey,
-		jwt.WithSubject(apiTokenSubject),
+		jwt.WithSubject(cliId),
 		jwt.WithIssuedAt(),
 		jwt.WithIssuer(cr.jwtIssuer),
 	)
 	if err != nil {
 		return
 	}
-	if claims.Client != cliId {
-		err = ErrClientIdNotMatch
+	if claims.Scope != apiTokenScope {
+		err = ErrScopeNotMatch
 		return
 	}
 	if user = claims.User; user == "" {

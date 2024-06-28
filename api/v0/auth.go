@@ -52,11 +52,108 @@ func getRequestTokenType(req *http.Request) string {
 	return ""
 }
 
-func getLoggedUser(req *http.Request) string {
-	if user, ok := req.Context().Value(loggedUserKey).(string); ok {
+func getLoggedUser(req *http.Request) *api.User {
+	if user, ok := req.Context().Value(loggedUserKey).(*api.User); ok {
 		return user
 	}
-	return ""
+	return nil
+}
+
+func cliIdMiddleWare(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+	var id string
+	if cid, _ := req.Cookie(clientIdCookieName); cid != nil {
+		id = cid.Value
+	} else {
+		var err error
+		id, err = utils.GenRandB64(16)
+		if err != nil {
+			http.Error(rw, "cannot generate random number", http.StatusInternalServerError)
+			return
+		}
+		http.SetCookie(rw, &http.Cookie{
+			Name:     clientIdCookieName,
+			Value:    id,
+			Expires:  time.Now().Add(time.Hour * 24 * 365 * 16),
+			Secure:   true,
+			HttpOnly: true,
+		})
+	}
+	req = req.WithContext(context.WithValue(req.Context(), clientIdKey, utils.AsSha256(id)))
+	next.ServeHTTP(rw, req)
+}
+
+func (h *Handler) authMiddleWare(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+	cli := apiGetClientId(req)
+
+	ctx := req.Context()
+
+	var (
+		typ string
+		id  string
+		uid string
+		err error
+	)
+	if req.Method == http.MethodGet {
+		if tk := req.URL.Query().Get("_t"); tk != "" {
+			path := GetRequestRealPath(req)
+			if id, uid, err = h.tokens.VerifyAPIToken(cli, tk, path, req.URL.Query()); err == nil {
+				typ = tokenTypeAPI
+			}
+		}
+	}
+	if id == "" {
+		auth := req.Header.Get("Authorization")
+		tk, ok := strings.CutPrefix(auth, "Bearer ")
+		if !ok {
+			if err == nil {
+				err = ErrUnsupportAuthType
+			}
+		} else if id, uid, err = h.tokens.VerifyAuthToken(cli, tk); err == nil {
+			typ = tokenTypeAuth
+		}
+	}
+	if typ != "" {
+		user, err := h.users.GetUser(uid)
+		if err == nil {
+			ctx = context.WithValue(ctx, tokenTypeKey, typ)
+			ctx = context.WithValue(ctx, loggedUserKey, user)
+			ctx = context.WithValue(ctx, tokenIdKey, id)
+			req = req.WithContext(ctx)
+		}
+	}
+	next.ServeHTTP(rw, req)
+}
+
+func authHandle(next http.Handler) http.Handler {
+	return permHandle(api.BasicPerm, next)
+}
+
+func authHandleFunc(next http.HandlerFunc) http.Handler {
+	return authHandle(next)
+}
+
+func permHandle(perm api.PermissionFlag, next http.Handler) http.Handler {
+	perm |= api.BasicPerm
+	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+		user := getLoggedUser(req)
+		if user == nil {
+			writeJson(rw, http.StatusUnauthorized, Map{
+				"error": "403 Unauthorized",
+			})
+			return
+		}
+		if user.Permissions & perm != perm {
+			writeJson(rw, http.StatusForbidden, Map{
+				"error": "Permission denied",
+			})
+			return
+		}
+		next.ServeHTTP(rw, req)
+	})
+}
+
+func permHandleFunc(perm api.PermissionFlag, next http.HandlerFunc) http.Handler {
+	return permHandle(perm, next)
 }
 
 var (

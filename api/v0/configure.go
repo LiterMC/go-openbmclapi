@@ -19,6 +19,14 @@
 
 package v0
 
-func (h *Handler) apiConfigureCluster() {
+import (
+	"net/http"
+)
+
+func (h *Handler) apiConfigureCluster(rw http.ResponseWriter, req *http.Request) {
+	//
+}
+
+func (h *Handler) apiConfigureStorage(rw http.ResponseWriter, req *http.Request) {
 	//
 }

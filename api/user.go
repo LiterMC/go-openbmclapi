@@ -39,7 +39,7 @@ const (
 	SubscribePerm
 	// LogPerm allows the user to view non-debug logs & download access logs
 	LogPerm
-	// DebugPerm allows the user to access debug settings and download debug logs
+	// DebugPerm allows the user to access debug settings & download debug logs
 	DebugPerm
 	// FullConfigPerm allows the user to access all config values
 	FullConfigPerm

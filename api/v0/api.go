@@ -60,22 +60,27 @@ func apiGetClientId(req *http.Request) (id string) {
 }
 
 type Handler struct {
-	handler      *utils.HttpMiddleWareHandler
-	router       *http.ServeMux
-	userManager  api.UserManager
-	tokenManager api.TokenManager
-	subManager   api.SubscriptionManager
+	handler       *utils.HttpMiddleWareHandler
+	router        *http.ServeMux
+	users         api.UserManager
+	tokens        api.TokenManager
+	subscriptions api.SubscriptionManager
 }
 
 var _ http.Handler = (*Handler)(nil)
 
-func NewHandler(verifier TokenVerifier, subManager api.SubscriptionManager) *Handler {
+func NewHandler(
+	users api.UserManager,
+	tokenManager api.TokenManager,
+	subManager api.SubscriptionManager,
+) *Handler {
 	mux := http.NewServeMux()
 	h := &Handler{
-		router:     mux,
-		handler:    utils.NewHttpMiddleWareHandler(mux),
-		verifier:   verifier,
-		subManager: subManager,
+		router:        mux,
+		handler:       utils.NewHttpMiddleWareHandler(mux),
+		users:         users,
+		tokens:        tokenManager,
+		subscriptions: subManager,
 	}
 	h.buildRoute()
 	h.handler.Use(cliIdMiddleWare)
@@ -107,115 +112,37 @@ func (h *Handler) buildRoute() {
 	mux.Handle("/logout", authHandleFunc(h.routeLogout))
 
 	mux.HandleFunc("/log.io", h.routeLogIO)
-	mux.Handle("/pprof", authHandleFunc(h.routePprof))
+	mux.Handle("/pprof", permHandleFunc(api.DebugPerm, h.routePprof))
 	mux.HandleFunc("/subscribeKey", h.routeSubscribeKey)
-	mux.Handle("/subscribe", authHandle(&utils.HttpMethodHandler{
+	mux.Handle("/subscribe", permHandleFunc(api.SubscribePerm, &utils.HttpMethodHandler{
 		Get:    h.routeSubscribeGET,
 		Post:   h.routeSubscribePOST,
 		Delete: h.routeSubscribeDELETE,
 	}))
-	mux.Handle("/subscribe_email", authHandle(&utils.HttpMethodHandler{
+	mux.Handle("/subscribe_email", permHandleFunc(api.SubscribePerm, &utils.HttpMethodHandler{
 		Get:    h.routeSubscribeEmailGET,
 		Post:   h.routeSubscribeEmailPOST,
 		Patch:  h.routeSubscribeEmailPATCH,
 		Delete: h.routeSubscribeEmailDELETE,
 	}))
-	mux.Handle("/webhook", authHandle(&utils.HttpMethodHandler{
+	mux.Handle("/webhook", permHandleFunc(api.SubscribePerm, &utils.HttpMethodHandler{
 		Get:    h.routeWebhookGET,
 		Post:   h.routeWebhookPOST,
 		Patch:  h.routeWebhookPATCH,
 		Delete: h.routeWebhookDELETE,
 	}))
 
-	mux.Handle("/log_files", authHandleFunc(h.routeLogFiles))
-	mux.Handle("/log_file/", authHandle(http.StripPrefix("/log_file/", (http.HandlerFunc)(h.routeLogFile))))
+	mux.Handle("/log_files", permHandleFunc(api.LogPerm, h.routeLogFiles))
+	mux.Handle("/log_file/", permHandle(api.LogPerm, http.StripPrefix("/log_file/", (http.HandlerFunc)(h.routeLogFile))))
 
-	mux.Handle("/configure/cluster", authHandleFunc(h.routeConfigureCluster))
+	mux.Handle("/configure/cluster", permHandleFunc(api.ClusterPerm, h.routeConfigureCluster))
 }
 
 func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	h.handler.ServeHTTP(rw, req)
 }
 
-func cliIdMiddleWare(rw http.ResponseWriter, req *http.Request, next http.Handler) {
-	var id string
-	if cid, _ := req.Cookie(clientIdCookieName); cid != nil {
-		id = cid.Value
-	} else {
-		var err error
-		id, err = utils.GenRandB64(16)
-		if err != nil {
-			http.Error(rw, "cannot generate random number", http.StatusInternalServerError)
-			return
-		}
-		http.SetCookie(rw, &http.Cookie{
-			Name:     clientIdCookieName,
-			Value:    id,
-			Expires:  time.Now().Add(time.Hour * 24 * 365 * 16),
-			Secure:   true,
-			HttpOnly: true,
-		})
-	}
-	req = req.WithContext(context.WithValue(req.Context(), clientIdKey, utils.AsSha256(id)))
-	next.ServeHTTP(rw, req)
-}
-
-func (h *Handler) authMiddleWare(rw http.ResponseWriter, req *http.Request, next http.Handler) {
-	cli := apiGetClientId(req)
-
-	ctx := req.Context()
-
-	var (
-		id  string
-		uid string
-		err error
-	)
-	if req.Method == http.MethodGet {
-		if tk := req.URL.Query().Get("_t"); tk != "" {
-			path := GetRequestRealPath(req)
-			if id, uid, err = h.verifier.verifyAPIToken(cli, tk, path, req.URL.Query()); err == nil {
-				ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAPI)
-			}
-		}
-	}
-	if id == "" {
-		auth := req.Header.Get("Authorization")
-		tk, ok := strings.CutPrefix(auth, "Bearer ")
-		if !ok {
-			if err == nil {
-				err = ErrUnsupportAuthType
-			}
-		} else if id, uid, err = h.verifier.VerifyAuthToken(cli, tk); err != nil {
-			id = ""
-		} else {
-			ctx = context.WithValue(ctx, tokenTypeKey, tokenTypeAuth)
-		}
-	}
-	if id != "" {
-		ctx = context.WithValue(ctx, loggedUserKey, uid)
-		ctx = context.WithValue(ctx, tokenIdKey, id)
-		req = req.WithContext(ctx)
-	}
-	next.ServeHTTP(rw, req)
-}
-
-func authHandle(next http.Handler) http.Handler {
-	return (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
-		if req.Context().Value(tokenTypeKey) == nil {
-			writeJson(rw, http.StatusUnauthorized, Map{
-				"error": "403 Unauthorized",
-			})
-			return
-		}
-		next.ServeHTTP(rw, req)
-	})
-}
-
-func authHandleFunc(next http.HandlerFunc) http.Handler {
-	return authHandle(next)
-}
-
-func (cr *Cluster) routePing(rw http.ResponseWriter, req *http.Request) {
+func (h *Handler) routePing(rw http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		errorMethodNotAllowed(rw, req, http.MethodGet)
 		return
@@ -331,13 +258,13 @@ func (h *Handler) routeLogin(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := h.verifier.VerifyChallengeToken(cli, "login", data.Challenge); err != nil {
+	if err := h.tokens.VerifyChallengeToken(cli, "login", data.Challenge); err != nil {
 		writeJson(rw, http.StatusUnauthorized, Map{
 			"error": "Invalid challenge",
 		})
 		return
 	}
-	if err := h.verifier.VerifyUserPassword(data.User, func(password string) bool {
+	if err := h.tokens.VerifyUserPassword(data.User, func(password string) bool {
 		expectSignature := utils.HMACSha256HexBytes(password, data.Challenge)
 		return subtle.ConstantTimeCompare(expectSignature, ([]byte)(data.Signature)) == 0
 	}); err != nil {

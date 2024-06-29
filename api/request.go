@@ -20,19 +20,26 @@
 package api
 
 import (
-	"net/url"
+	"net/http"
 )
 
-type TokenVerifier interface {
-	VerifyChallengeToken(clientId string, token string, action string) (err error)
-	VerifyAuthToken(clientId string, token string) (tokenId string, userId string, err error)
-	VerifyAPIToken(clientId string, token string, path string, query url.Values) (userId string, err error)
+const (
+	RealAddrCtxKey       = "handle.real.addr"
+	RealPathCtxKey       = "handle.real.path"
+	AccessLogExtraCtxKey = "handle.access.extra"
+)
+
+func GetRequestRealAddr(req *http.Request) string {
+	addr, _ := req.Context().Value(RealAddrCtxKey).(string)
+	return addr
 }
 
-type TokenManager interface {
-	TokenVerifier
-	GenerateChallengeToken(clientId string, action string) (token string, err error)
-	GenerateAuthToken(clientId string, userId string) (token string, err error)
-	GenerateAPIToken(clientId string, userId string, path string, query map[string]string) (token string, err error)
-	InvalidToken(tokenId string) error
+func GetRequestRealPath(req *http.Request) string {
+	return req.Context().Value(RealPathCtxKey).(string)
+}
+
+func SetAccessInfo(req *http.Request, key string, value any) {
+	if info, ok := req.Context().Value(AccessLogExtraCtxKey).(map[string]any); ok {
+		info[key] = value
+	}
 }

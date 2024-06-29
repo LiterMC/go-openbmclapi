@@ -20,19 +20,16 @@
 package api
 
 import (
-	"net/url"
+	"encoding/json"
 )
 
-type TokenVerifier interface {
-	VerifyChallengeToken(clientId string, token string, action string) (err error)
-	VerifyAuthToken(clientId string, token string) (tokenId string, userId string, err error)
-	VerifyAPIToken(clientId string, token string, path string, query url.Values) (userId string, err error)
-}
+type ConfigHandler interface {
+	json.Marshaler
+	json.Unmarshaler
+	UnmarshalYAML(data []byte) error
+	MarshalJSONPath(path string) ([]byte, error)
+	UnmarshalJSONPath(path string, data []byte) error
 
-type TokenManager interface {
-	TokenVerifier
-	GenerateChallengeToken(clientId string, action string) (token string, err error)
-	GenerateAuthToken(clientId string, userId string) (token string, err error)
-	GenerateAPIToken(clientId string, userId string, path string, query map[string]string) (token string, err error)
-	InvalidToken(tokenId string) error
+	Fingerprint() string
+	DoLockedAction(fingerprint string, callback func(ConfigHandler) error) error
 }

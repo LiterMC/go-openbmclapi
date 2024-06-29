@@ -52,7 +52,6 @@ type AdvancedConfig struct {
 	NoGC               bool `yaml:"no-gc"`
 	HeavyCheckInterval int  `yaml:"heavy-check-interval"`
 	KeepaliveTimeout   int  `yaml:"keepalive-timeout"`
-	SkipFirstSync      bool `yaml:"skip-first-sync"`
 	SkipSignatureCheck bool `yaml:"skip-signature-check"`
 	NoFastEnable       bool `yaml:"no-fast-enable"`
 	WaitBeforeEnable   int  `yaml:"wait-before-enable"`
@@ -193,13 +192,12 @@ type Config struct {
 	PublicHost           string `yaml:"public-host"`
 	PublicPort           uint16 `yaml:"public-port"`
 	Port                 uint16 `yaml:"port"`
-	ClusterId            string `yaml:"cluster-id"`
-	ClusterSecret        string `yaml:"cluster-secret"`
 	SyncInterval         int    `yaml:"sync-interval"`
 	OnlyGcWhenStart      bool   `yaml:"only-gc-when-start"`
 	DownloadMaxConn      int    `yaml:"download-max-conn"`
 	MaxReconnectCount    int    `yaml:"max-reconnect-count"`
 
+	Clusters     map[string]ClusterItem         `yaml:"clusters"`
 	Certificates []CertificateConfig            `yaml:"certificates"`
 	Tunneler     TunnelConfig                   `yaml:"tunneler"`
 	Cache        CacheConfig                    `yaml:"cache"`
@@ -223,111 +221,107 @@ func (cfg *Config) applyWebManifest(manifest map[string]any) {
 	}
 }
 
-var defaultConfig = Config{
-	LogSlots:             7,
-	NoAccessLog:          false,
-	AccessLogSlots:       16,
-	Byoc:                 false,
-	TrustedXForwardedFor: false,
-	PublicHost:           "",
-	PublicPort:           0,
-	Port:                 4000,
-	ClusterId:            "${CLUSTER_ID}",
-	ClusterSecret:        "${CLUSTER_SECRET}",
-	SyncInterval:         10,
-	OnlyGcWhenStart:      false,
-	DownloadMaxConn:      16,
-	MaxReconnectCount:    10,
+func getDefaultConfig() *Config {
+	return &Config{
+		LogSlots:             7,
+		NoAccessLog:          false,
+		AccessLogSlots:       16,
+		Byoc:                 false,
+		TrustedXForwardedFor: false,
+		PublicHost:           "",
+		PublicPort:           0,
+		Port:                 4000,
+		SyncInterval:         10,
+		OnlyGcWhenStart:      false,
+		DownloadMaxConn:      16,
+		MaxReconnectCount:    10,
 
-	Certificates: []CertificateConfig{
-		{
-			Cert: "/path/to/cert.pem",
-			Key:  "/path/to/key.pem",
+		Clusters: map[string]ClusterItem{},
+
+		Certificates: []CertificateConfig{},
+
+		Tunneler: TunnelConfig{
+			Enable:        false,
+			TunnelProg:    "./path/to/tunnel/program",
+			OutputRegex:   `\bNATedAddr\s+(?P<host>[0-9.]+|\[[0-9a-f:]+\]):(?P<port>\d+)$`,
+			TunnelTimeout: 0,
 		},
-	},
 
-	Tunneler: TunnelConfig{
-		Enable:        false,
-		TunnelProg:    "./path/to/tunnel/program",
-		OutputRegex:   `\bNATedAddr\s+(?P<host>[0-9.]+|\[[0-9a-f:]+\]):(?P<port>\d+)$`,
-		TunnelTimeout: 0,
-	},
-
-	Cache: CacheConfig{
-		Type:     "inmem",
-		newCache: func() cache.Cache { return cache.NewInMemCache() },
-	},
-
-	ServeLimit: ServeLimitConfig{
-		Enable:     false,
-		MaxConn:    16384,
-		UploadRate: 1024 * 12, // 12MB
-	},
-
-	RateLimit: APIRateLimitConfig{
-		Anonymous: limited.RateLimit{
-			PerMin:  10,
-			PerHour: 120,
+		Cache: CacheConfig{
+			Type:     "inmem",
+			newCache: func() cache.Cache { return cache.NewInMemCache() },
 		},
-		Logged: limited.RateLimit{
-			PerMin:  120,
-			PerHour: 6000,
+
+		ServeLimit: ServeLimitConfig{
+			Enable:     false,
+			MaxConn:    16384,
+			UploadRate: 1024 * 12, // 12MB
 		},
-	},
 
-	Notification: NotificationConfig{
-		EnableEmail:         false,
-		EmailSMTP:           "smtp.example.com:25",
-		EmailSMTPEncryption: "tls",
-		EmailSender:         "noreply@example.com",
-		EmailSenderPassword: "example-password",
-		EnableWebhook:       true,
-	},
-
-	Dashboard: DashboardConfig{
-		Enable:        true,
-		PwaName:       "GoOpenBmclApi Dashboard",
-		PwaShortName:  "GOBA Dash",
-		PwaDesc:       "Go-Openbmclapi Internal Dashboard",
-		NotifySubject: "mailto:user@example.com",
-	},
-
-	GithubAPI: GithubAPIConfig{
-		UpdateCheckInterval: (utils.YAMLDuration)(time.Hour),
-	},
-
-	Database: DatabaseConfig{
-		Driver: "sqlite",
-		DSN:    filepath.Join("data", "files.db"),
-	},
-
-	Hijack: HijackConfig{
-		Enable:           false,
-		RequireAuth:      false,
-		EnableLocalCache: false,
-		LocalCachePath:   "hijack_cache",
-		AuthUsers: []UserItem{
-			{
-				Username: "example-username",
-				Password: "example-password",
+		RateLimit: APIRateLimitConfig{
+			Anonymous: limited.RateLimit{
+				PerMin:  10,
+				PerHour: 120,
+			},
+			Logged: limited.RateLimit{
+				PerMin:  120,
+				PerHour: 6000,
 			},
 		},
-	},
 
-	Storages: nil,
+		Notification: NotificationConfig{
+			EnableEmail:         false,
+			EmailSMTP:           "smtp.example.com:25",
+			EmailSMTPEncryption: "tls",
+			EmailSender:         "noreply@example.com",
+			EmailSenderPassword: "example-password",
+			EnableWebhook:       true,
+		},
 
-	WebdavUsers: map[string]*storage.WebDavUser{},
+		Dashboard: DashboardConfig{
+			Enable:        true,
+			PwaName:       "GoOpenBmclApi Dashboard",
+			PwaShortName:  "GOBA Dash",
+			PwaDesc:       "Go-Openbmclapi Internal Dashboard",
+			NotifySubject: "mailto:user@example.com",
+		},
 
-	Advanced: AdvancedConfig{
-		DebugLog:           false,
-		NoHeavyCheck:       false,
-		NoGC:               false,
-		HeavyCheckInterval: 120,
-		KeepaliveTimeout:   10,
-		SkipFirstSync:      false,
-		NoFastEnable:       false,
-		WaitBeforeEnable:   0,
-	},
+		GithubAPI: GithubAPIConfig{
+			UpdateCheckInterval: (utils.YAMLDuration)(time.Hour),
+		},
+
+		Database: DatabaseConfig{
+			Driver: "sqlite",
+			DSN:    filepath.Join("data", "files.db"),
+		},
+
+		Hijack: HijackConfig{
+			Enable:           false,
+			RequireAuth:      false,
+			EnableLocalCache: false,
+			LocalCachePath:   "hijack_cache",
+			AuthUsers: []UserItem{
+				{
+					Username: "example-username",
+					Password: "example-password",
+				},
+			},
+		},
+
+		Storages: nil,
+
+		WebdavUsers: map[string]*storage.WebDavUser{},
+
+		Advanced: AdvancedConfig{
+			DebugLog:           false,
+			NoHeavyCheck:       false,
+			NoGC:               false,
+			HeavyCheckInterval: 120,
+			KeepaliveTimeout:   10,
+			NoFastEnable:       false,
+			WaitBeforeEnable:   0,
+		},
+	}
 }
 
 func migrateConfig(data []byte, config *Config) {
@@ -345,12 +339,24 @@ func migrateConfig(data []byte, config *Config) {
 	if v, ok := oldConfig["keepalive-timeout"].(int); ok {
 		config.Advanced.KeepaliveTimeout = v
 	}
+	if oldConfig["clusters"].(map[string]any) == nil {
+		id, ok1 := oldConfig["cluster-id"].(string)
+		secret, ok2 := oldConfig["cluster-secret"].(string)
+		if ok1 && ok2 {
+			config.Clusters = map[string]ClusterItem{
+				"main": {
+					Id:     id,
+					Secret: secret,
+				},
+			}
+		}
+	}
 }
 
-func readConfig() (config Config) {
+func readConfig() (config Config, err error) {
 	const configPath = "config.yaml"
 
-	config = defaultConfig
+	config = getDefaultConfig()
 
 	data, err := os.ReadFile(configPath)
 	notexists := false
@@ -362,10 +368,26 @@ func readConfig() (config Config) {
 		log.Error(Tr("error.config.not.exists"))
 		notexists = true
 	} else {
-		migrateConfig(data, &config)
-		if err = yaml.Unmarshal(data, &config); err != nil {
+		migrateConfig(data, config)
+		if err = yaml.Unmarshal(data, config); err != nil {
 			log.Errorf(Tr("error.config.parse.failed"), err)
 			osExit(CodeClientError)
+		}
+		if len(config.Clusters) == 0 {
+			config.Clusters = map[string]ClusterItem{
+				"main": {
+					Id:     "${CLUSTER_ID}",
+					Secret: "${CLUSTER_SECRET}",
+				},
+			}
+		}
+		if len(config.Certificates) == 0 {
+			config.Certificates = []CertificateConfig{
+				{
+					Cert: "/path/to/cert.pem",
+					Key:  "/path/to/key.pem",
+				},
+			}
 		}
 		if len(config.Storages) == 0 {
 			config.Storages = []storage.StorageOption{
@@ -396,9 +418,15 @@ func readConfig() (config Config) {
 			}
 			if j, ok := ids[s.Id]; ok {
 				log.Errorf("Duplicated storage id %q at [%d] and [%d], please edit the config.", s.Id, i, j)
-				osExit(CodeClientError)
+				os.Exit(CodeClientError)
 			}
 			ids[s.Id] = i
+			if s.Cluster != "" && s.Cluster != "-" {
+				if _, ok := config.Clusters[s.Cluster]; !ok {
+					log.Errorf("Storage %q is trying to connect to a not exists cluster %q.", s.Id, s.Cluster)
+					os.Exit(CodeClientError)
+				}
+			}
 		}
 	}
 
@@ -409,7 +437,7 @@ func readConfig() (config Config) {
 				user, ok := config.WebdavUsers[alias]
 				if !ok {
 					log.Errorf(Tr("error.config.alias.user.not.exists"), alias)
-					osExit(CodeClientError)
+					os.Exit(CodeClientError)
 				}
 				opt.AliasUser = user
 				var end *url.URL
@@ -436,45 +464,14 @@ func readConfig() (config Config) {
 	encoder.SetIndent(2)
 	if err = encoder.Encode(config); err != nil {
 		log.Errorf(Tr("error.config.encode.failed"), err)
-		osExit(CodeClientError)
+		os.Exit(CodeClientError)
 	}
 	if err = os.WriteFile(configPath, buf.Bytes(), 0600); err != nil {
 		log.Errorf(Tr("error.config.write.failed"), err)
-		osExit(CodeClientError)
+		os.Exit(CodeClientError)
 	}
 	if notexists {
 		log.Error(Tr("error.config.created"))
-		osExit(0xff)
-	}
-
-	if os.Getenv("DEBUG") == "true" {
-		config.Advanced.DebugLog = true
-	}
-	if v := os.Getenv("CLUSTER_IP"); v != "" {
-		config.PublicHost = v
-	}
-	if v := os.Getenv("CLUSTER_PORT"); v != "" {
-		if n, err := strconv.Atoi(v); err != nil {
-			log.Errorf("Cannot parse CLUSTER_PORT %q: %v", v, err)
-		} else {
-			config.Port = (uint16)(n)
-		}
-	}
-	if v := os.Getenv("CLUSTER_PUBLIC_PORT"); v != "" {
-		if n, err := strconv.Atoi(v); err != nil {
-			log.Errorf("Cannot parse CLUSTER_PUBLIC_PORT %q: %v", v, err)
-		} else {
-			config.PublicPort = (uint16)(n)
-		}
-	}
-	if v := os.Getenv("CLUSTER_ID"); v != "" {
-		config.ClusterId = v
-	}
-	if v := os.Getenv("CLUSTER_SECRET"); v != "" {
-		config.ClusterSecret = v
-	}
-	if byoc := os.Getenv("CLUSTER_BYOC"); byoc != "" {
-		config.Byoc = byoc == "true"
 	}
 	return
 }

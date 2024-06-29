@@ -22,12 +22,18 @@ package api
 import (
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/LiterMC/go-openbmclapi/utils"
+)
+
+var (
+	ErrNotFound = errors.New("Item not found")
 )
 
 type SubscriptionManager interface {

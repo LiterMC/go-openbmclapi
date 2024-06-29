@@ -20,16 +20,28 @@
 package v0
 
 import (
+	"context"
+	"crypto/subtle"
 	"errors"
-	"fmt"
 	"net/http"
-	"net/url"
+	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-
+	"github.com/LiterMC/go-openbmclapi/api"
+	"github.com/LiterMC/go-openbmclapi/limited"
+	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
+
+const (
+	clientIdCookieName = "_id"
+
+	clientIdKey = "go-openbmclapi.cluster.client.id"
+)
+
+func apiGetClientId(req *http.Request) (id string) {
+	return req.Context().Value(clientIdKey).(string)
+}
 
 const jwtIssuerPrefix = "GOBA.dash.api"
 
@@ -95,26 +107,26 @@ func (h *Handler) authMiddleWare(rw http.ResponseWriter, req *http.Request, next
 	)
 	if req.Method == http.MethodGet {
 		if tk := req.URL.Query().Get("_t"); tk != "" {
-			path := GetRequestRealPath(req)
-			if id, uid, err = h.tokens.VerifyAPIToken(cli, tk, path, req.URL.Query()); err == nil {
+			path := api.GetRequestRealPath(req)
+			if uid, err = h.tokens.VerifyAPIToken(cli, tk, path, req.URL.Query()); err == nil {
 				typ = tokenTypeAPI
 			}
 		}
 	}
-	if id == "" {
+	if typ == "" {
 		auth := req.Header.Get("Authorization")
 		tk, ok := strings.CutPrefix(auth, "Bearer ")
 		if !ok {
 			if err == nil {
-				err = ErrUnsupportAuthType
+				err = errors.New("Unsupported authorization type")
 			}
 		} else if id, uid, err = h.tokens.VerifyAuthToken(cli, tk); err == nil {
 			typ = tokenTypeAuth
 		}
 	}
 	if typ != "" {
-		user, err := h.users.GetUser(uid)
-		if err == nil {
+		user := h.users.GetUser(uid)
+		if user != nil {
 			ctx = context.WithValue(ctx, tokenTypeKey, typ)
 			ctx = context.WithValue(ctx, loggedUserKey, user)
 			ctx = context.WithValue(ctx, tokenIdKey, id)
@@ -142,7 +154,7 @@ func permHandle(perm api.PermissionFlag, next http.Handler) http.Handler {
 			})
 			return
 		}
-		if user.Permissions & perm != perm {
+		if user.Permissions&perm != perm {
 			writeJson(rw, http.StatusForbidden, Map{
 				"error": "Permission denied",
 			})
@@ -156,214 +168,328 @@ func permHandleFunc(perm api.PermissionFlag, next http.HandlerFunc) http.Handler
 	return permHandle(perm, next)
 }
 
-var (
-	ErrUnsupportAuthType = errors.New("unsupported authorization type")
-	ErrScopeNotMatch     = errors.New("scope not match")
-	ErrJTINotExists      = errors.New("jti not exists")
+func (h *Handler) buildAuthRoute(mux *http.ServeMux) {
+	mux.HandleFunc("/challenge", h.routeChallenge)
+	mux.HandleFunc("POST /login", h.routeLogin)
+	mux.Handle("POST /requestToken", authHandleFunc(h.routeRequestToken))
+	mux.Handle("POST /logout", authHandleFunc(h.routeLogout))
+}
 
-	ErrStrictPathNotMatch  = errors.New("strict path not match")
-	ErrStrictQueryNotMatch = errors.New("strict query value not match")
-)
-
-func (cr *Cluster) getJWTKey(t *jwt.Token) (any, error) {
-	if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-		return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+func (h *Handler) routeChallenge(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		errorMethodNotAllowed(rw, req, http.MethodGet)
+		return
 	}
-	return cr.apiHmacKey, nil
-}
-
-const (
-	challengeTokenScope = "GOBA-challenge"
-	authTokenScope      = "GOBA-auth"
-	apiTokenScope       = "GOBA-API"
-)
-
-type challengeTokenClaims struct {
-	jwt.RegisteredClaims
-
-	Scope  string `json:"scope"`
-	Action string `json:"act"`
-}
-
-func (cr *Cluster) generateChallengeToken(cliId string, action string) (string, error) {
-	now := time.Now()
-	exp := now.Add(time.Minute * 1)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &challengeTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   cliId,
-			Issuer:    cr.jwtIssuer,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(exp),
-		},
-		Scope:  challengeTokenScope,
-		Action: action,
+	cli := apiGetClientId(req)
+	query := req.URL.Query()
+	action := query.Get("action")
+	token, err := h.tokens.GenerateChallengeToken(cli, action)
+	if err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "Cannot generate token",
+			"message": err.Error(),
+		})
+		return
+	}
+	writeJson(rw, http.StatusOK, Map{
+		"token": token,
 	})
-	tokenStr, err := token.SignedString(cr.apiHmacKey)
-	if err != nil {
-		return "", err
-	}
-	return tokenStr, nil
 }
 
-func (cr *Cluster) verifyChallengeToken(cliId string, action string, token string) (err error) {
-	var claims challengeTokenClaims
-	if _, err = jwt.ParseWithClaims(
-		token,
-		&claims,
-		cr.getJWTKey,
-		jwt.WithSubject(cliId),
-		jwt.WithIssuedAt(),
-		jwt.WithIssuer(cr.jwtIssuer),
-	); err != nil {
+func (h *Handler) routeLogin(rw http.ResponseWriter, req *http.Request) {
+	cli := apiGetClientId(req)
+
+	var data struct {
+		User      string `json:"username" schema:"username"`
+		Challenge string `json:"challenge" schema:"challenge"`
+		Signature string `json:"signature" schema:"signature"`
+	}
+	if !parseRequestBody(rw, req, &data) {
 		return
 	}
-	if claims.Scope != challengeTokenScope {
-		return ErrScopeNotMatch
+
+	if err := h.tokens.VerifyChallengeToken(cli, data.Challenge, "login"); err != nil {
+		writeJson(rw, http.StatusUnauthorized, Map{
+			"error": "Invalid challenge",
+		})
+		return
 	}
-	if claims.Action != action {
-		return ErrJTINotExists
+	if err := h.users.VerifyUserPassword(data.User, func(password string) bool {
+		expectSignature := utils.HMACSha256HexBytes(password, data.Challenge)
+		return subtle.ConstantTimeCompare(expectSignature, ([]byte)(data.Signature)) == 0
+	}); err != nil {
+		writeJson(rw, http.StatusUnauthorized, Map{
+			"error": "The username or password is incorrect",
+		})
+		return
 	}
-	return
-}
-
-type authTokenClaims struct {
-	jwt.RegisteredClaims
-
-	Scope string `json:"scope"`
-	User  string `json:"usr"`
-}
-
-func (cr *Cluster) generateAuthToken(cliId string, userId string) (string, error) {
-	jti, err := utils.GenRandB64(16)
+	token, err := h.tokens.GenerateAuthToken(cli, data.User)
 	if err != nil {
-		return "", err
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "Cannot generate token",
+			"message": err.Error(),
+		})
+		return
 	}
-	now := time.Now()
-	exp := now.Add(time.Hour * 24)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &authTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        jti,
-			Subject:   cliId,
-			Issuer:    cr.jwtIssuer,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(exp),
-		},
-		Scope: authTokenScope,
-		User:  userId,
+	writeJson(rw, http.StatusOK, Map{
+		"token": token,
 	})
-	tokenStr, err := token.SignedString(cr.apiHmacKey)
+}
+
+func (h *Handler) routeRequestToken(rw http.ResponseWriter, req *http.Request) {
+	defer req.Body.Close()
+	if getRequestTokenType(req) != tokenTypeAuth {
+		writeJson(rw, http.StatusUnauthorized, Map{
+			"error": "invalid authorization type",
+		})
+		return
+	}
+
+	var payload struct {
+		Path  string            `json:"path"`
+		Query map[string]string `json:"query,omitempty"`
+	}
+	if !parseRequestBody(rw, req, &payload) {
+		return
+	}
+	log.Debugf("payload: %#v", payload)
+	if payload.Path == "" || payload.Path[0] != '/' {
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":   "path is invalid",
+			"message": "'path' must be a non empty string which starts with '/'",
+		})
+		return
+	}
+	cli := apiGetClientId(req)
+	user := getLoggedUser(req)
+	token, err := h.tokens.GenerateAPIToken(cli, user.Username, payload.Path, payload.Query)
 	if err != nil {
-		return "", err
-	}
-	if err = cr.database.AddJTI(jti, exp); err != nil {
-		return "", err
-	}
-	return tokenStr, nil
-}
-
-func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string, user string, err error) {
-	var claims authTokenClaims
-	if _, err = jwt.ParseWithClaims(
-		token,
-		&claims,
-		cr.getJWTKey,
-		jwt.WithSubject(cliId),
-		jwt.WithIssuedAt(),
-		jwt.WithIssuer(cr.jwtIssuer),
-	); err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "cannot generate token",
+			"message": err.Error(),
+		})
 		return
 	}
-	if claims.Scope != authTokenScope {
-		err = ErrScopeNotMatch
-		return
-	}
-	if user = claims.User; user == "" {
-		// reject old token
-		err = ErrJTINotExists
-		return
-	}
-	id = claims.ID
-	if ok, _ := cr.database.ValidJTI(id); !ok {
-		err = ErrJTINotExists
-		return
-	}
-	return
-}
-
-type apiTokenClaims struct {
-	jwt.RegisteredClaims
-
-	Scope       string            `json:"scope"`
-	User        string            `json:"usr"`
-	StrictPath  string            `json:"str-p"`
-	StrictQuery map[string]string `json:"str-q,omitempty"`
-}
-
-func (cr *Cluster) generateAPIToken(cliId string, userId string, path string, query map[string]string) (string, error) {
-	jti, err := utils.GenRandB64(8)
-	if err != nil {
-		return "", err
-	}
-	now := time.Now()
-	exp := now.Add(time.Minute * 10)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &apiTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        jti,
-			Subject:   cliId,
-			Issuer:    cr.jwtIssuer,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(exp),
-		},
-		Scope:       apiTokenScope,
-		User:        userId,
-		StrictPath:  path,
-		StrictQuery: query,
+	writeJson(rw, http.StatusOK, Map{
+		"token": token,
 	})
-	tokenStr, err := token.SignedString(cr.apiHmacKey)
-	if err != nil {
-		return "", err
-	}
-	if err = cr.database.AddJTI(jti, exp); err != nil {
-		return "", err
-	}
-	return tokenStr, nil
 }
 
-func (h *Handler) verifyAPIToken(cliId string, token string, path string, query url.Values) (id string, user string, err error) {
-	var claims apiTokenClaims
-	_, err = jwt.ParseWithClaims(
-		token,
-		&claims,
-		cr.getJWTKey,
-		jwt.WithSubject(cliId),
-		jwt.WithIssuedAt(),
-		jwt.WithIssuer(cr.jwtIssuer),
-	)
-	if err != nil {
-		return
-	}
-	if claims.Scope != apiTokenScope {
-		err = ErrScopeNotMatch
-		return
-	}
-	if user = claims.User; user == "" {
-		err = ErrJTINotExists
-		return
-	}
-	id = claims.ID
-	if ok, _ := cr.database.ValidJTI(id); !ok {
-		err = ErrJTINotExists
-		return
-	}
-	if claims.StrictPath != path {
-		err = ErrStrictPathNotMatch
-		return
-	}
-	for k, v := range claims.StrictQuery {
-		if query.Get(k) != v {
-			err = ErrStrictQueryNotMatch
-			return
-		}
-	}
-	return
+func (h *Handler) routeLogout(rw http.ResponseWriter, req *http.Request) {
+	limited.SetSkipRateLimit(req)
+	tid := req.Context().Value(tokenIdKey).(string)
+	h.tokens.InvalidToken(tid)
+	rw.WriteHeader(http.StatusNoContent)
 }
+
+// var (
+// 	ErrUnsupportAuthType = errors.New("unsupported authorization type")
+// 	ErrScopeNotMatch     = errors.New("scope not match")
+// 	ErrJTINotExists      = errors.New("jti not exists")
+
+// 	ErrStrictPathNotMatch  = errors.New("strict path not match")
+// 	ErrStrictQueryNotMatch = errors.New("strict query value not match")
+// )
+
+// func (cr *Cluster) getJWTKey(t *jwt.Token) (any, error) {
+// 	if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+// 		return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+// 	}
+// 	return cr.apiHmacKey, nil
+// }
+
+// const (
+// 	challengeTokenScope = "GOBA-challenge"
+// 	authTokenScope      = "GOBA-auth"
+// 	apiTokenScope       = "GOBA-API"
+// )
+
+// type challengeTokenClaims struct {
+// 	jwt.RegisteredClaims
+
+// 	Scope  string `json:"scope"`
+// 	Action string `json:"act"`
+// }
+
+// func (cr *Cluster) generateChallengeToken(cliId string, action string) (string, error) {
+// 	now := time.Now()
+// 	exp := now.Add(time.Minute * 1)
+// 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &challengeTokenClaims{
+// 		RegisteredClaims: jwt.RegisteredClaims{
+// 			Subject:   cliId,
+// 			Issuer:    cr.jwtIssuer,
+// 			IssuedAt:  jwt.NewNumericDate(now),
+// 			ExpiresAt: jwt.NewNumericDate(exp),
+// 		},
+// 		Scope:  challengeTokenScope,
+// 		Action: action,
+// 	})
+// 	tokenStr, err := token.SignedString(cr.apiHmacKey)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return tokenStr, nil
+// }
+
+// func (cr *Cluster) verifyChallengeToken(cliId string, action string, token string) (err error) {
+// 	var claims challengeTokenClaims
+// 	if _, err = jwt.ParseWithClaims(
+// 		token,
+// 		&claims,
+// 		cr.getJWTKey,
+// 		jwt.WithSubject(cliId),
+// 		jwt.WithIssuedAt(),
+// 		jwt.WithIssuer(cr.jwtIssuer),
+// 	); err != nil {
+// 		return
+// 	}
+// 	if claims.Scope != challengeTokenScope {
+// 		return ErrScopeNotMatch
+// 	}
+// 	if claims.Action != action {
+// 		return ErrJTINotExists
+// 	}
+// 	return
+// }
+
+// type authTokenClaims struct {
+// 	jwt.RegisteredClaims
+
+// 	Scope string `json:"scope"`
+// 	User  string `json:"usr"`
+// }
+
+// func (cr *Cluster) generateAuthToken(cliId string, userId string) (string, error) {
+// 	jti, err := utils.GenRandB64(16)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	now := time.Now()
+// 	exp := now.Add(time.Hour * 24)
+// 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &authTokenClaims{
+// 		RegisteredClaims: jwt.RegisteredClaims{
+// 			ID:        jti,
+// 			Subject:   cliId,
+// 			Issuer:    cr.jwtIssuer,
+// 			IssuedAt:  jwt.NewNumericDate(now),
+// 			ExpiresAt: jwt.NewNumericDate(exp),
+// 		},
+// 		Scope: authTokenScope,
+// 		User:  userId,
+// 	})
+// 	tokenStr, err := token.SignedString(cr.apiHmacKey)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	if err = cr.database.AddJTI(jti, exp); err != nil {
+// 		return "", err
+// 	}
+// 	return tokenStr, nil
+// }
+
+// func (cr *Cluster) verifyAuthToken(cliId string, token string) (id string, user string, err error) {
+// 	var claims authTokenClaims
+// 	if _, err = jwt.ParseWithClaims(
+// 		token,
+// 		&claims,
+// 		cr.getJWTKey,
+// 		jwt.WithSubject(cliId),
+// 		jwt.WithIssuedAt(),
+// 		jwt.WithIssuer(cr.jwtIssuer),
+// 	); err != nil {
+// 		return
+// 	}
+// 	if claims.Scope != authTokenScope {
+// 		err = ErrScopeNotMatch
+// 		return
+// 	}
+// 	if user = claims.User; user == "" {
+// 		// reject old token
+// 		err = ErrJTINotExists
+// 		return
+// 	}
+// 	id = claims.ID
+// 	if ok, _ := cr.database.ValidJTI(id); !ok {
+// 		err = ErrJTINotExists
+// 		return
+// 	}
+// 	return
+// }
+
+// type apiTokenClaims struct {
+// 	jwt.RegisteredClaims
+
+// 	Scope       string            `json:"scope"`
+// 	User        string            `json:"usr"`
+// 	StrictPath  string            `json:"str-p"`
+// 	StrictQuery map[string]string `json:"str-q,omitempty"`
+// }
+
+// func (cr *Cluster) generateAPIToken(cliId string, userId string, path string, query map[string]string) (string, error) {
+// 	jti, err := utils.GenRandB64(8)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	now := time.Now()
+// 	exp := now.Add(time.Minute * 10)
+// 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &apiTokenClaims{
+// 		RegisteredClaims: jwt.RegisteredClaims{
+// 			ID:        jti,
+// 			Subject:   cliId,
+// 			Issuer:    cr.jwtIssuer,
+// 			IssuedAt:  jwt.NewNumericDate(now),
+// 			ExpiresAt: jwt.NewNumericDate(exp),
+// 		},
+// 		Scope:       apiTokenScope,
+// 		User:        userId,
+// 		StrictPath:  path,
+// 		StrictQuery: query,
+// 	})
+// 	tokenStr, err := token.SignedString(cr.apiHmacKey)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	if err = cr.database.AddJTI(jti, exp); err != nil {
+// 		return "", err
+// 	}
+// 	return tokenStr, nil
+// }
+
+// func (h *Handler) verifyAPIToken(cliId string, token string, path string, query url.Values) (id string, user string, err error) {
+// 	var claims apiTokenClaims
+// 	_, err = jwt.ParseWithClaims(
+// 		token,
+// 		&claims,
+// 		cr.getJWTKey,
+// 		jwt.WithSubject(cliId),
+// 		jwt.WithIssuedAt(),
+// 		jwt.WithIssuer(cr.jwtIssuer),
+// 	)
+// 	if err != nil {
+// 		return
+// 	}
+// 	if claims.Scope != apiTokenScope {
+// 		err = ErrScopeNotMatch
+// 		return
+// 	}
+// 	if user = claims.User; user == "" {
+// 		err = ErrJTINotExists
+// 		return
+// 	}
+// 	id = claims.ID
+// 	if ok, _ := cr.database.ValidJTI(id); !ok {
+// 		err = ErrJTINotExists
+// 		return
+// 	}
+// 	if claims.StrictPath != path {
+// 		err = ErrStrictPathNotMatch
+// 		return
+// 	}
+// 	for k, v := range claims.StrictQuery {
+// 		if query.Get(k) != v {
+// 			err = ErrStrictQueryNotMatch
+// 			return
+// 		}
+// 	}
+// 	return
+// }

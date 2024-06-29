@@ -21,14 +21,36 @@ package v0
 
 import (
 	"net/http"
+
+	"github.com/google/uuid"
+
+	"github.com/LiterMC/go-openbmclapi/api"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
+func (h *Handler) buildSubscriptionRoute(mux *http.ServeMux) {
+	mux.HandleFunc("GET /subscribeKey", h.routeSubscribeKey)
+	mux.Handle("/subscribe", permHandle(api.SubscribePerm, &utils.HttpMethodHandler{
+		Get:    (http.HandlerFunc)(h.routeSubscribeGET),
+		Post:   (http.HandlerFunc)(h.routeSubscribePOST),
+		Delete: (http.HandlerFunc)(h.routeSubscribeDELETE),
+	}))
+	mux.Handle("/subscribe_email", permHandle(api.SubscribePerm, &utils.HttpMethodHandler{
+		Get:    (http.HandlerFunc)(h.routeSubscribeEmailGET),
+		Post:   (http.HandlerFunc)(h.routeSubscribeEmailPOST),
+		Patch:  (http.HandlerFunc)(h.routeSubscribeEmailPATCH),
+		Delete: (http.HandlerFunc)(h.routeSubscribeEmailDELETE),
+	}))
+	mux.Handle("/webhook", permHandle(api.SubscribePerm, &utils.HttpMethodHandler{
+		Get:    (http.HandlerFunc)(h.routeWebhookGET),
+		Post:   (http.HandlerFunc)(h.routeWebhookPOST),
+		Patch:  (http.HandlerFunc)(h.routeWebhookPATCH),
+		Delete: (http.HandlerFunc)(h.routeWebhookDELETE),
+	}))
+}
+
 func (h *Handler) routeSubscribeKey(rw http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		errorMethodNotAllowed(rw, req, http.MethodGet)
-		return
-	}
-	key := h.subManager.GetWebPushKey()
+	key := h.subscriptions.GetWebPushKey()
 	etag := `"` + utils.AsSha256(key) + `"`
 	rw.Header().Set("ETag", etag)
 	if cachedTag := req.Header.Get("If-None-Match"); cachedTag == etag {
@@ -43,9 +65,9 @@ func (h *Handler) routeSubscribeKey(rw http.ResponseWriter, req *http.Request) {
 func (h *Handler) routeSubscribeGET(rw http.ResponseWriter, req *http.Request) {
 	client := apiGetClientId(req)
 	user := getLoggedUser(req)
-	record, err := h.subManager.GetSubscribe(user, client)
+	record, err := h.subscriptions.GetSubscribe(user.Username, client)
 	if err != nil {
-		if err == database.ErrNotFound {
+		if err == api.ErrNotFound {
 			writeJson(rw, http.StatusNotFound, Map{
 				"error": "no subscription was found",
 			})
@@ -66,13 +88,13 @@ func (h *Handler) routeSubscribeGET(rw http.ResponseWriter, req *http.Request) {
 func (h *Handler) routeSubscribePOST(rw http.ResponseWriter, req *http.Request) {
 	client := apiGetClientId(req)
 	user := getLoggedUser(req)
-	data, ok := parseRequestBody[database.SubscribeRecord](rw, req, nil)
-	if !ok {
+	var data api.SubscribeRecord
+	if !parseRequestBody(rw, req, &data) {
 		return
 	}
-	data.User = user
+	data.User = user.Username
 	data.Client = client
-	if err := h.subManager.SetSubscribe(data); err != nil {
+	if err := h.subscriptions.SetSubscribe(data); err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Database update failed",
 			"message": err.Error(),
@@ -85,8 +107,8 @@ func (h *Handler) routeSubscribePOST(rw http.ResponseWriter, req *http.Request) 
 func (h *Handler) routeSubscribeDELETE(rw http.ResponseWriter, req *http.Request) {
 	client := apiGetClientId(req)
 	user := getLoggedUser(req)
-	if err := h.subManager.RemoveSubscribe(user, client); err != nil {
-		if err == database.ErrNotFound {
+	if err := h.subscriptions.RemoveSubscribe(user.Username, client); err != nil {
+		if err == api.ErrNotFound {
 			writeJson(rw, http.StatusNotFound, Map{
 				"error": "no subscription was found",
 			})
@@ -104,9 +126,9 @@ func (h *Handler) routeSubscribeDELETE(rw http.ResponseWriter, req *http.Request
 func (h *Handler) routeSubscribeEmailGET(rw http.ResponseWriter, req *http.Request) {
 	user := getLoggedUser(req)
 	if addr := req.URL.Query().Get("addr"); addr != "" {
-		record, err := h.subManager.GetEmailSubscription(user, addr)
+		record, err := h.subscriptions.GetEmailSubscription(user.Username, addr)
 		if err != nil {
-			if err == database.ErrNotFound {
+			if err == api.ErrNotFound {
 				writeJson(rw, http.StatusNotFound, Map{
 					"error": "no email subscription was found",
 				})
@@ -121,8 +143,8 @@ func (h *Handler) routeSubscribeEmailGET(rw http.ResponseWriter, req *http.Reque
 		writeJson(rw, http.StatusOK, record)
 		return
 	}
-	records := make([]database.EmailSubscriptionRecord, 0, 4)
-	if err := h.subManager.ForEachUsersEmailSubscription(user, func(rec *database.EmailSubscriptionRecord) error {
+	records := make([]api.EmailSubscriptionRecord, 0, 4)
+	if err := h.subscriptions.ForEachUsersEmailSubscription(user.Username, func(rec *api.EmailSubscriptionRecord) error {
 		records = append(records, *rec)
 		return nil
 	}); err != nil {
@@ -137,13 +159,13 @@ func (h *Handler) routeSubscribeEmailGET(rw http.ResponseWriter, req *http.Reque
 
 func (h *Handler) routeSubscribeEmailPOST(rw http.ResponseWriter, req *http.Request) {
 	user := getLoggedUser(req)
-	data, ok := parseRequestBody[database.EmailSubscriptionRecord](rw, req, nil)
-	if !ok {
+	var data api.EmailSubscriptionRecord
+	if !parseRequestBody(rw, req, &data) {
 		return
 	}
 
-	data.User = user
-	if err := h.subManager.AddEmailSubscription(data); err != nil {
+	data.User = user.Username
+	if err := h.subscriptions.AddEmailSubscription(data); err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "Database update failed",
 			"message": err.Error(),
@@ -156,14 +178,14 @@ func (h *Handler) routeSubscribeEmailPOST(rw http.ResponseWriter, req *http.Requ
 func (h *Handler) routeSubscribeEmailPATCH(rw http.ResponseWriter, req *http.Request) {
 	user := getLoggedUser(req)
 	addr := req.URL.Query().Get("addr")
-	data, ok := parseRequestBody[database.EmailSubscriptionRecord](rw, req, nil)
-	if !ok {
+	var data api.EmailSubscriptionRecord
+	if !parseRequestBody(rw, req, &data) {
 		return
 	}
-	data.User = user
+	data.User = user.Username
 	data.Addr = addr
-	if err := h.subManager.UpdateEmailSubscription(data); err != nil {
-		if err == database.ErrNotFound {
+	if err := h.subscriptions.UpdateEmailSubscription(data); err != nil {
+		if err == api.ErrNotFound {
 			writeJson(rw, http.StatusNotFound, Map{
 				"error": "no email subscription was found",
 			})
@@ -181,10 +203,128 @@ func (h *Handler) routeSubscribeEmailPATCH(rw http.ResponseWriter, req *http.Req
 func (h *Handler) routeSubscribeEmailDELETE(rw http.ResponseWriter, req *http.Request) {
 	user := getLoggedUser(req)
 	addr := req.URL.Query().Get("addr")
-	if err := h.subManager.RemoveEmailSubscription(user, addr); err != nil {
-		if err == database.ErrNotFound {
+	if err := h.subscriptions.RemoveEmailSubscription(user.Username, addr); err != nil {
+		if err == api.ErrNotFound {
 			writeJson(rw, http.StatusNotFound, Map{
 				"error": "no email subscription was found",
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) routeWebhookGET(rw http.ResponseWriter, req *http.Request) {
+	user := getLoggedUser(req)
+	if sid := req.URL.Query().Get("id"); sid != "" {
+		id, err := uuid.Parse(sid)
+		if err != nil {
+			writeJson(rw, http.StatusBadRequest, Map{
+				"error":   "uuid format error",
+				"message": err.Error(),
+			})
+			return
+		}
+		record, err := h.subscriptions.GetWebhook(user.Username, id)
+		if err != nil {
+			if err == api.ErrNotFound {
+				writeJson(rw, http.StatusNotFound, Map{
+					"error": "no webhook was found",
+				})
+				return
+			}
+			writeJson(rw, http.StatusInternalServerError, Map{
+				"error":   "database error",
+				"message": err.Error(),
+			})
+			return
+		}
+		writeJson(rw, http.StatusOK, record)
+		return
+	}
+	records := make([]api.WebhookRecord, 0, 4)
+	if err := h.subscriptions.ForEachUsersWebhook(user.Username, func(rec *api.WebhookRecord) error {
+		records = append(records, *rec)
+		return nil
+	}); err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	writeJson(rw, http.StatusOK, records)
+}
+
+func (h *Handler) routeWebhookPOST(rw http.ResponseWriter, req *http.Request) {
+	user := getLoggedUser(req)
+	var data api.WebhookRecord
+	if !parseRequestBody(rw, req, &data) {
+		return
+	}
+
+	data.User = user.Username
+	if err := h.subscriptions.AddWebhook(data); err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "Database update failed",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusCreated)
+}
+
+func (h *Handler) routeWebhookPATCH(rw http.ResponseWriter, req *http.Request) {
+	user := getLoggedUser(req)
+	id := req.URL.Query().Get("id")
+	var data api.WebhookRecord
+	if !parseRequestBody(rw, req, &data) {
+		return
+	}
+	data.User = user.Username
+	var err error
+	if data.Id, err = uuid.Parse(id); err != nil {
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":   "uuid format error",
+			"message": err.Error(),
+		})
+		return
+	}
+	if err := h.subscriptions.UpdateWebhook(data); err != nil {
+		if err == api.ErrNotFound {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error": "no webhook was found",
+			})
+			return
+		}
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "database error",
+			"message": err.Error(),
+		})
+		return
+	}
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) routeWebhookDELETE(rw http.ResponseWriter, req *http.Request) {
+	user := getLoggedUser(req)
+	id, err := uuid.Parse(req.URL.Query().Get("id"))
+	if err != nil {
+		writeJson(rw, http.StatusBadRequest, Map{
+			"error":   "uuid format error",
+			"message": err.Error(),
+		})
+		return
+	}
+	if err := h.subscriptions.RemoveWebhook(user.Username, id); err != nil {
+		if err == api.ErrNotFound {
+			writeJson(rw, http.StatusNotFound, Map{
+				"error": "no webhook was found",
 			})
 			return
 		}

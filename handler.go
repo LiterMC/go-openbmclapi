@@ -52,22 +52,6 @@ func init() {
 	})
 }
 
-const (
-	RealAddrCtxKey       = "handle.real.addr"
-	RealPathCtxKey       = "handle.real.path"
-	AccessLogExtraCtxKey = "handle.access.extra"
-)
-
-func GetRequestRealPath(req *http.Request) string {
-	return req.Context().Value(RealPathCtxKey).(string)
-}
-
-func SetAccessInfo(req *http.Request, key string, value any) {
-	if info, ok := req.Context().Value(AccessLogExtraCtxKey).(map[string]any); ok {
-		info[key] = value
-	}
-}
-
 type preAccessRecord struct {
 	Type   string    `json:"type"`
 	Time   time.Time `json:"time"`

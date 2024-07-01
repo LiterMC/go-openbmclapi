@@ -82,7 +82,7 @@ type accessStatHistoryData struct {
 type AccessStatData struct {
 	Date statTime `json:"date"`
 	accessStatHistoryData
-	Prev  accessStatHistoryData         `json:"prev"`
+	Prev  accessStatHistoryData   `json:"prev"`
 	Years map[string]statInstData `json:"years"`
 
 	Accesses map[string]int `json:"accesses"`

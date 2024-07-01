@@ -193,7 +193,7 @@ type HttpMethodHandler struct {
 	Options http.Handler
 	Trace   http.Handler
 
-	allows string
+	allows     string
 	allowsOnce sync.Once
 }
 

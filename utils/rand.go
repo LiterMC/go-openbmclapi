@@ -1,6 +1,6 @@
 /**
  * OpenBmclAPI (Golang Edition)
- * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
+ * Copyright (C) 2024 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,16 +17,25 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package build
+package utils
 
 import (
-	"fmt"
+	"math/rand"
+	"time"
 )
 
-const ClusterVersion = "1.10.9"
+var randInt32Ch = func() chan int32 {
+	ch := make(chan int32, 64)
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	go func() {
+		for {
+			ch <- r.Int31()
+		}
+	}()
+	return ch
+}()
 
-var BuildVersion string = "dev"
-
-var ClusterUserAgent string = fmt.Sprintf("openbmclapi-cluster/%s", ClusterVersion)
-var ClusterUserAgentFull string = fmt.Sprintf("%s go-openbmclapi-cluster/%s", ClusterUserAgent, BuildVersion)
-var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", BuildVersion)
+func RandIntn(n int) int {
+	rn := <-randInt32Ch
+	return (int)(rn) % n
+}

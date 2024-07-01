@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package cluster
 
 import (
 	"bytes"
@@ -26,9 +26,14 @@ import (
 	"crypto/hmac"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
+
+	"github.com/hamba/avro/v2"
+	"github.com/klauspost/compress/zstd"
 
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/utils"
@@ -85,7 +90,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		}
 	}()
 	req, err := cr.makeReq(ctx, http.MethodGet, "/openbmclapi-agent/challenge", url.Values{
-		"clusterId": {cr.clusterId},
+		"clusterId": {cr.ID()},
 	})
 	if err != nil {
 		return
@@ -109,7 +114,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 	}
 
 	var buf [32]byte
-	hs := hmac.New(crypto.SHA256.New, ([]byte)(cr.clusterSecret))
+	hs := hmac.New(crypto.SHA256.New, ([]byte)(cr.Secret()))
 	hs.Write(([]byte)(res1.Challenge))
 	signature := hex.EncodeToString(hs.Sum(buf[:0]))
 
@@ -118,7 +123,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		Challenge string `json:"challenge"`
 		Signature string `json:"signature"`
 	}{
-		ClusterId: cr.clusterId,
+		ClusterId: cr.ID(),
 		Challenge: res1.Challenge,
 		Signature: signature,
 	})
@@ -158,7 +163,7 @@ func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *Cl
 		ClusterId string `json:"clusterId"`
 		Token     string `json:"token"`
 	}{
-		ClusterId: cr.clusterId,
+		ClusterId: cr.ID(),
 		Token:     oldToken,
 	})
 	if err != nil {
@@ -192,4 +197,129 @@ func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *Cl
 		Token:    res.Token,
 		ExpireAt: time.Now().Add((time.Duration)(res.TTL)*time.Millisecond - 10*time.Second),
 	}, nil
+}
+
+type OpenbmclapiAgentConfig struct {
+	Sync OpenbmclapiAgentSyncConfig `json:"sync"`
+}
+
+type OpenbmclapiAgentSyncConfig struct {
+	Source      string `json:"source"`
+	Concurrency int    `json:"concurrency"`
+}
+
+func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
+	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
+	if err != nil {
+		return
+	}
+	res, err := cr.cachedCli.Do(req)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		err = utils.NewHTTPStatusErrorFromResponse(res)
+		return
+	}
+	cfg = new(OpenbmclapiAgentConfig)
+	if err = json.NewDecoder(res.Body).Decode(cfg); err != nil {
+		cfg = nil
+		return
+	}
+	return
+}
+
+type CertKeyPair struct {
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
+
+func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
+	resCh, err := cr.socket.EmitWithAck("request-cert")
+	if err != nil {
+		return
+	}
+	var data []any
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case data = <-resCh:
+	}
+	if ero := data[0]; ero != nil {
+		err = fmt.Errorf("socket.io remote error: %v", ero)
+		return
+	}
+	pair := data[1].(map[string]any)
+	ckp = new(CertKeyPair)
+	var ok bool
+	if ckp.Cert, ok = pair["cert"].(string); !ok {
+		err = fmt.Errorf(`"cert" is not a string, got %T`, pair["cert"])
+		return
+	}
+	if ckp.Key, ok = pair["key"].(string); !ok {
+		err = fmt.Errorf(`"key" is not a string, got %T`, pair["key"])
+		return
+	}
+	return
+}
+
+type FileInfo struct {
+	Path  string `json:"path" avro:"path"`
+	Hash  string `json:"hash" avro:"hash"`
+	Size  int64  `json:"size" avro:"size"`
+	Mtime int64  `json:"mtime" avro:"mtime"`
+}
+
+// from <https://github.com/bangbang93/openbmclapi/blob/master/src/constants.ts>
+var fileListSchema = avro.MustParse(`{
+	"type": "array",
+	"items": {
+		"type": "record",
+		"name": "fileinfo",
+		"fields": [
+			{"name": "path", "type": "string"},
+			{"name": "hash", "type": "string"},
+			{"name": "size", "type": "long"},
+			{"name": "mtime", "type": "long"}
+		]
+	}
+}`)
+
+func (cr *Cluster) GetFileList(ctx context.Context, lastMod int64) (files []FileInfo, err error) {
+	var query url.Values
+	if lastMod > 0 {
+		query = url.Values{
+			"lastModified": {strconv.FormatInt(lastMod, 10)},
+		}
+	}
+	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/files", query)
+	if err != nil {
+		return
+	}
+	res, err := cr.cachedCli.Do(req)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	switch res.StatusCode {
+	case http.StatusOK:
+		//
+	case http.StatusNoContent, http.StatusNotModified:
+		return
+	default:
+		err = utils.NewHTTPStatusErrorFromResponse(res)
+		return
+	}
+	log.Debug("Parsing filelist body ...")
+	zr, err := zstd.NewReader(res.Body)
+	if err != nil {
+		return
+	}
+	defer zr.Close()
+	if err = avro.NewDecoderForSchema(fileListSchema, zr).Decode(&files); err != nil {
+		return
+	}
+	log.Debugf("Filelist parsed, length = %d", len(files))
+	return
 }

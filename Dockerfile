@@ -37,6 +37,7 @@ ARG NPM_DIR
 
 WORKDIR "/go/src/${REPO}/"
 
+ENV CGO_ENABLED=0
 COPY ./go.mod ./go.sum "/go/src/${REPO}/"
 RUN go mod download
 COPY . "/go/src/${REPO}"
@@ -45,7 +46,7 @@ COPY --from=WEB_BUILD "/web/dist" "/go/src/${REPO}/${NPM_DIR}/dist"
 ENV ldflags="-X 'github.com/LiterMC/go-openbmclapi/internal/build.BuildVersion=$TAG'"
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
- CGO_ENABLED=0 go build -v -o "/go/bin/go-openbmclapi" -ldflags="$ldflags" "."
+ go build -v -o "/go/bin/go-openbmclapi" -ldflags="$ldflags" "."
 
 FROM alpine:latest
 
@@ -54,4 +55,4 @@ COPY ./config.yaml /opt/openbmclapi/config.yaml
 
 COPY --from=BUILD "/go/bin/go-openbmclapi" "/go-openbmclapi"
 
-CMD ["/go-openbmclapi"]
+ENTRYPOINT ["/go-openbmclapi"]

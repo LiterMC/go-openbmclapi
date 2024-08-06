@@ -4,3 +4,5 @@ User-Agent: *
 Disallow: /api/
 Disallow: /dashboard/login
 Disallow: /dashboard/settings/
+Disallow: /download/
+Disallow: /measure/

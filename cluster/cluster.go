@@ -55,12 +55,12 @@ type Cluster struct {
 	hits          atomic.Int32
 	hbts          atomic.Int64
 
-	mux       sync.RWMutex
-	status    atomic.Int32
+	mux          sync.RWMutex
+	status       atomic.Int32
 	socketStatus atomic.Int32
-	socket    *socket.Socket
-	client    *http.Client
-	cachedCli *http.Client
+	socket       *socket.Socket
+	client       *http.Client
+	cachedCli    *http.Client
 
 	authTokenMux sync.RWMutex
 	authToken    *ClusterToken

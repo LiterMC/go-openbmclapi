@@ -405,6 +405,7 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 		if err := cr.storages[0].ServeMeasure(rw, req, n); err != nil {
 			log.Errorf("Could not serve measure %d: %v", n, err)
+			SetAccessInfo(req, "error", err.Error())
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 		}
 		return
@@ -472,18 +473,20 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 	if !ok {
 		if err := cr.DownloadFile(req.Context(), hash); err != nil {
 			// TODO: check if the file exists
-			http.Error(rw, "Cannot download file from center server: "+err.Error(), http.StatusInternalServerError)
+			estr := "Cannot download file from center server: " + err.Error()
+			SetAccessInfo(req, "error", estr)
+			http.Error(rw, estr, http.StatusInternalServerError)
 			return
 		}
 	}
 	var sto storage.Storage
 	if forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
 		sto = cr.storages[i]
-		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.String())
+		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.Options().Id)
 
 		sz, er := sto.ServeDownload(rw, req, hash, size)
 		if er != nil {
-			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.String(), er)
+			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.Options().Id, er)
 			err = er
 			return false
 		}
@@ -500,7 +503,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 		err = nil
 	}
 	if sto != nil {
-		SetAccessInfo(req, "storage", sto.String())
+		SetAccessInfo(req, "storage", sto.Options().Id)
 	}
 	if err != nil {
 		log.Debugf("[handler]: failed to serve download: %v", err)
@@ -508,6 +511,7 @@ func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, has
 			http.Error(rw, "404 Status Not Found", http.StatusNotFound)
 			return
 		}
+		SetAccessInfo(req, "error", err.Error())
 		if _, ok := err.(*utils.HTTPStatusError); ok {
 			http.Error(rw, err.Error(), http.StatusBadGateway)
 		} else {

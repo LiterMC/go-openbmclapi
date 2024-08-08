@@ -40,6 +40,8 @@ type StatManager struct {
 	Storages map[string]*StatData
 }
 
+var _ json.Marshaler = (*StatManager)(nil)
+
 func NewStatManager() *StatManager {
 	return &StatManager{
 		Overall:  new(StatData),
@@ -77,6 +79,9 @@ func (m *StatManager) AddHit(bytes int64, cluster, storage string) {
 
 func (m *StatManager) Load(dir string) error {
 	clustersDir, storagesDir := filepath.Join(dir, "clusters"), filepath.Join(dir, "storages")
+
+	m.mux.Lock()
+	defer m.mux.Unlock()
 
 	*m.Overall = StatData{}
 	clear(m.Clusters)
@@ -119,6 +124,9 @@ func (m *StatManager) Load(dir string) error {
 func (m *StatManager) Save(dir string) error {
 	clustersDir, storagesDir := filepath.Join(dir, "clusters"), filepath.Join(dir, "storages")
 
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+
 	if err := m.Overall.save(filepath.Join(dir, statsOverallFileName)); err != nil {
 		return err
 	}
@@ -139,6 +147,17 @@ func (m *StatManager) Save(dir string) error {
 		}
 	}
 	return nil
+}
+
+func (m *StatManager) MarshalJSON() ([]byte, error) {
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+
+	return json.Marshal(map[string]any{
+		"overall":  m.Overall,
+		"clusters": m.Clusters,
+		"storages": m.Storages,
+	})
 }
 
 type statInstData struct {

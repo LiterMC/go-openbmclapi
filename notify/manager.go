@@ -209,7 +209,7 @@ func (m *Manager) OnReportStatus(stats *cluster.StatManager) {
 		TimestampEvent: TimestampEvent{
 			At: now,
 		},
-		Stats: stats.Overall.Clone(),
+		Stats: stats,
 	}
 	res := make(chan error, 0)
 	for _, p := range m.plugins {

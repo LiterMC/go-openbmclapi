@@ -362,7 +362,7 @@ func (p *Plugin) OnUpdateAvaliable(e *notify.UpdateAvaliableEvent) error {
 }
 
 func (p *Plugin) OnReportStatus(e *notify.ReportStatusEvent) (err error) {
-	stat, err := json.Marshal(e.Stats)
+	stat, err := json.Marshal(e.Stats.Overall)
 	if err != nil {
 		log.Errorf("Cannot marshal subscribe message: %v", err)
 		return

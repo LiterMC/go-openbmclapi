@@ -49,6 +49,6 @@ type (
 
 	ReportStatusEvent struct {
 		TimestampEvent
-		Stats *cluster.StatData
+		Stats *cluster.StatManager
 	}
 )

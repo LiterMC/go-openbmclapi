@@ -33,6 +33,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
@@ -52,6 +53,9 @@ func getDialerWithDNS(dnsaddr string) *net.Dialer {
 type downloadHandlerFn = func(rw http.ResponseWriter, req *http.Request, hash string)
 
 type HjProxy struct {
+	RequireAuth bool
+	AuthUsers   []config.UserItem
+
 	client          *http.Client
 	fileMap         database.DB
 	downloadHandler downloadHandlerFn
@@ -76,11 +80,11 @@ func NewHjProxy(client *http.Client, fileMap database.DB, downloadHandler downlo
 	return
 }
 
-func hjResponseWithCache(rw http.ResponseWriter, req *http.Request, c *cacheStat, force bool) (ok bool) {
+func hjResponseWithCache(rw http.ResponseWriter, req *http.Request, cachePath string, c *cacheStat, force bool) (ok bool) {
 	if c == nil {
 		return false
 	}
-	cacheFileName := filepath.Join(config.Hijack.LocalCachePath, filepath.FromSlash(req.URL.Path))
+	cacheFileName := filepath.Join(cachePath, filepath.FromSlash(req.URL.Path))
 	age := c.ExpiresAt - time.Now().Unix()
 	if !force && age <= 0 {
 		return false
@@ -107,15 +111,11 @@ func hjResponseWithCache(rw http.ResponseWriter, req *http.Request, c *cacheStat
 const hijackingHost = "bmclapi2.bangbang93.com"
 
 func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if !config.Hijack.Enable {
-		http.Error(rw, "Hijack is disabled in the config", http.StatusServiceUnavailable)
-		return
-	}
-	if config.Hijack.RequireAuth {
+	if h.RequireAuth {
 		needAuth := true
 		user, passwd, ok := req.BasicAuth()
 		if ok {
-			for _, u := range config.Hijack.AuthUsers {
+			for _, u := range h.AuthUsers {
 				if u.Username == user && utils.ComparePasswd(u.Password, passwd) {
 					needAuth = false
 					return

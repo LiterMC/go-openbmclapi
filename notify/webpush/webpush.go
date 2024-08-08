@@ -44,6 +44,7 @@ import (
 	"github.com/crow-misia/http-ece"
 	"github.com/golang-jwt/jwt/v5"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
@@ -88,7 +89,7 @@ func (p *Plugin) Init(ctx context.Context, m *notify.Manager) (err error) {
 
 type Subscription struct {
 	EndPoint string
-	Keys     database.SubscribeRecordKeys
+	Keys     api.SubscribeRecordKeys
 }
 
 type PushOptions struct {
@@ -170,16 +171,16 @@ func (p *Plugin) sendNotification(ctx context.Context, message []byte, s *Subscr
 	return
 }
 
-func (p *Plugin) sendMessageIf(ctx context.Context, message []byte, opts *PushOptions, filter func(*database.SubscribeRecord) bool) (err error) {
+func (p *Plugin) sendMessageIf(ctx context.Context, message []byte, opts *PushOptions, filter func(*api.SubscribeRecord) bool) (err error) {
 	log.Debugf("Sending notification: %s", message)
 	var wg sync.WaitGroup
 	var mux sync.Mutex
-	var outdated []database.SubscribeRecord
-	err = p.db.ForEachSubscribe(func(record *database.SubscribeRecord) error {
+	var outdated []api.SubscribeRecord
+	err = p.db.ForEachSubscribe(func(record *api.SubscribeRecord) error {
 		if filter(record) {
 			log.Debugf("Sending notification to %s", record.EndPoint)
 			wg.Add(1)
-			go func(record database.SubscribeRecord) {
+			go func(record api.SubscribeRecord) {
 				defer wg.Done()
 				subs := &Subscription{
 					EndPoint: record.EndPoint,
@@ -279,7 +280,7 @@ func (p *Plugin) OnEnabled(e *notify.EnabledEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Enabled })
+	return p.sendMessageIf(tctx, message, opts, func(record *api.SubscribeRecord) bool { return record.Scopes.Enabled })
 }
 
 func (p *Plugin) OnDisabled(e *notify.DisabledEvent) error {
@@ -298,7 +299,7 @@ func (p *Plugin) OnDisabled(e *notify.DisabledEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Disabled })
+	return p.sendMessageIf(tctx, message, opts, func(record *api.SubscribeRecord) bool { return record.Scopes.Disabled })
 }
 
 func (p *Plugin) OnSyncBegin(e *notify.SyncBeginEvent) error {
@@ -319,7 +320,7 @@ func (p *Plugin) OnSyncBegin(e *notify.SyncBeginEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.SyncBegin })
+	return p.sendMessageIf(tctx, message, opts, func(record *api.SubscribeRecord) bool { return record.Scopes.SyncBegin })
 }
 
 func (p *Plugin) OnSyncDone(e *notify.SyncDoneEvent) error {
@@ -338,7 +339,7 @@ func (p *Plugin) OnSyncDone(e *notify.SyncDoneEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.SyncDone })
+	return p.sendMessageIf(tctx, message, opts, func(record *api.SubscribeRecord) bool { return record.Scopes.SyncDone })
 }
 
 func (p *Plugin) OnUpdateAvaliable(e *notify.UpdateAvaliableEvent) error {
@@ -357,7 +358,7 @@ func (p *Plugin) OnUpdateAvaliable(e *notify.UpdateAvaliableEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
-	return p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool { return record.Scopes.Updates })
+	return p.sendMessageIf(tctx, message, opts, func(record *api.SubscribeRecord) bool { return record.Scopes.Updates })
 }
 
 func (p *Plugin) OnReportStatus(e *notify.ReportStatusEvent) (err error) {
@@ -388,8 +389,8 @@ func (p *Plugin) OnReportStatus(e *notify.ReportStatusEvent) (err error) {
 	tctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancel()
 	now := e.At.UTC()
-	var sent []database.SubscribeRecord
-	err = p.sendMessageIf(tctx, message, opts, func(record *database.SubscribeRecord) bool {
+	var sent []api.SubscribeRecord
+	err = p.sendMessageIf(tctx, message, opts, func(record *api.SubscribeRecord) bool {
 		if !record.Scopes.DailyReport {
 			return false
 		}

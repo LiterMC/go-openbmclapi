@@ -50,10 +50,6 @@ func (cr *Cluster) KeepAlive(ctx context.Context) KeepAliveRes {
 		Hits:  hits,
 		Bytes: hbts,
 	})
-
-	if e := cr.stats.Save(cr.dataDir); e != nil {
-		log.TrErrorf("error.cluster.stat.save.failed", e)
-	}
 	if err != nil {
 		log.TrErrorf("error.cluster.keepalive.send.failed", err)
 		return KeepAliveFailed
@@ -80,9 +76,9 @@ func (cr *Cluster) KeepAlive(ctx context.Context) KeepAliveRes {
 		log.TrErrorf("error.cluster.keepalive.failed", ero)
 		return KeepAliveFailed
 	}
-	log.TrInfof("info.cluster.keepalive.success", ahits, utils.BytesToUnit((float64)(ahbts)), data[1])
-	cr.hits.Add(-hits2)
-	cr.hbts.Add(-hbts2)
+	log.TrInfof("info.cluster.keepalive.success", hits, utils.BytesToUnit((float64)(hbts)), data[1])
+	cr.hits.Add(-hits)
+	cr.hbts.Add(-hbts)
 	if data[1] == false {
 		cr.markKicked()
 		return KeepAliveKicked

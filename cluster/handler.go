@@ -40,7 +40,9 @@ func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash st
 			return false
 		}
 		if sz >= 0 {
-			cr.AddHits(1, sz, opts.Id)
+			cr.hits.Add(1)
+			cr.hbts.Add(sz)
+			cr.statManager.AddHit(sz, cr.ID(), opts.Id)
 		}
 		return true
 	}) {

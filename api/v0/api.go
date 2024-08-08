@@ -27,6 +27,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/schema"
+	"github.com/gorilla/websocket"
 
 	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/utils"
@@ -35,6 +36,7 @@ import (
 type Handler struct {
 	handler       *utils.HttpMiddleWareHandler
 	router        *http.ServeMux
+	wsUpgrader    *websocket.Upgrader
 	config        api.ConfigHandler
 	users         api.UserManager
 	tokens        api.TokenManager
@@ -45,6 +47,7 @@ type Handler struct {
 var _ http.Handler = (*Handler)(nil)
 
 func NewHandler(
+	wsUpgrader *websocket.Upgrader,
 	config api.ConfigHandler,
 	users api.UserManager,
 	tokenManager api.TokenManager,
@@ -54,6 +57,7 @@ func NewHandler(
 	h := &Handler{
 		router:        mux,
 		handler:       utils.NewHttpMiddleWareHandler(mux),
+		wsUpgrader:    wsUpgrader,
 		config:        config,
 		users:         users,
 		tokens:        tokenManager,

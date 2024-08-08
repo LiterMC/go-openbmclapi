@@ -48,6 +48,15 @@ func NewManager(storages []Storage) (m *Manager) {
 	return
 }
 
+func (m *Manager) Get(id string) Storage {
+	for _, s := range m.Storages {
+		if s.Options().Id == id {
+			return s
+		}
+	}
+	return nil
+}
+
 func (m *Manager) GetFlavorString(storages []int) string {
 	typeCount := make(map[string]int, 2)
 	for _, i := range storages {

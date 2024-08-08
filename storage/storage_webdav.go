@@ -140,14 +140,16 @@ var _ Storage = (*WebDavStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageWebdav, StorageFactory{
-		New: func(opt StorageOption) Storage {
-			return &WebDavStorage{
-				basicOpt: opt,
-				opt:      *(opt.Data.(*WebDavStorageOption)),
-			}
-		},
+		New:       func(opt StorageOption) Storage { return NewWebDavStorage(opt) },
 		NewConfig: func() any { return new(WebDavStorageOption) },
 	})
+}
+
+func NewWebDavStorage(opt StorageOption) *WebDavStorage {
+	return &WebDavStorage{
+		basicOpt: opt,
+		opt:      *(opt.Data.(*WebDavStorageOption)),
+	}
 }
 
 func (s *WebDavStorage) String() string {

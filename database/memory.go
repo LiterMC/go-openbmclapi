@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -41,13 +42,13 @@ type MemoryDB struct {
 	tokens   map[string]time.Time
 
 	subscribeMux     sync.RWMutex
-	subscribeRecords map[[2]string]*SubscribeRecord
+	subscribeRecords map[[2]string]*api.SubscribeRecord
 
 	emailSubMux     sync.RWMutex
-	emailSubRecords map[[2]string]*EmailSubscriptionRecord
+	emailSubRecords map[[2]string]*api.EmailSubscriptionRecord
 
 	webhookMux     sync.RWMutex
-	webhookRecords map[webhookMemKey]*WebhookRecord
+	webhookRecords map[webhookMemKey]*api.WebhookRecord
 }
 
 var _ DB = (*MemoryDB)(nil)
@@ -56,7 +57,7 @@ func NewMemoryDB() *MemoryDB {
 	return &MemoryDB{
 		fileRecords:      make(map[string]*FileRecord),
 		tokens:           make(map[string]time.Time),
-		subscribeRecords: make(map[[2]string]*SubscribeRecord),
+		subscribeRecords: make(map[[2]string]*api.SubscribeRecord),
 	}
 }
 
@@ -156,7 +157,7 @@ func (m *MemoryDB) ForEachFileRecord(cb func(*FileRecord) error) error {
 	return nil
 }
 
-func (m *MemoryDB) GetSubscribe(user string, client string) (*SubscribeRecord, error) {
+func (m *MemoryDB) GetSubscribe(user string, client string) (*api.SubscribeRecord, error) {
 	m.subscribeMux.RLock()
 	defer m.subscribeMux.RUnlock()
 
@@ -167,7 +168,7 @@ func (m *MemoryDB) GetSubscribe(user string, client string) (*SubscribeRecord, e
 	return record, nil
 }
 
-func (m *MemoryDB) SetSubscribe(record SubscribeRecord) error {
+func (m *MemoryDB) SetSubscribe(record api.SubscribeRecord) error {
 	m.subscribeMux.Lock()
 	defer m.subscribeMux.Unlock()
 
@@ -196,7 +197,7 @@ func (m *MemoryDB) RemoveSubscribe(user string, client string) error {
 	return nil
 }
 
-func (m *MemoryDB) ForEachSubscribe(cb func(*SubscribeRecord) error) error {
+func (m *MemoryDB) ForEachSubscribe(cb func(*api.SubscribeRecord) error) error {
 	m.subscribeMux.RLock()
 	defer m.subscribeMux.RUnlock()
 
@@ -211,7 +212,7 @@ func (m *MemoryDB) ForEachSubscribe(cb func(*SubscribeRecord) error) error {
 	return nil
 }
 
-func (m *MemoryDB) GetEmailSubscription(user string, addr string) (*EmailSubscriptionRecord, error) {
+func (m *MemoryDB) GetEmailSubscription(user string, addr string) (*api.EmailSubscriptionRecord, error) {
 	m.emailSubMux.RLock()
 	defer m.emailSubMux.RUnlock()
 
@@ -222,7 +223,7 @@ func (m *MemoryDB) GetEmailSubscription(user string, addr string) (*EmailSubscri
 	return record, nil
 }
 
-func (m *MemoryDB) AddEmailSubscription(record EmailSubscriptionRecord) error {
+func (m *MemoryDB) AddEmailSubscription(record api.EmailSubscriptionRecord) error {
 	m.emailSubMux.Lock()
 	defer m.emailSubMux.Unlock()
 
@@ -234,7 +235,7 @@ func (m *MemoryDB) AddEmailSubscription(record EmailSubscriptionRecord) error {
 	return nil
 }
 
-func (m *MemoryDB) UpdateEmailSubscription(record EmailSubscriptionRecord) error {
+func (m *MemoryDB) UpdateEmailSubscription(record api.EmailSubscriptionRecord) error {
 	m.emailSubMux.Lock()
 	defer m.emailSubMux.Unlock()
 
@@ -260,7 +261,7 @@ func (m *MemoryDB) RemoveEmailSubscription(user string, addr string) error {
 	return nil
 }
 
-func (m *MemoryDB) ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) error) error {
+func (m *MemoryDB) ForEachEmailSubscription(cb func(*api.EmailSubscriptionRecord) error) error {
 	m.emailSubMux.RLock()
 	defer m.emailSubMux.RUnlock()
 
@@ -275,7 +276,7 @@ func (m *MemoryDB) ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) er
 	return nil
 }
 
-func (m *MemoryDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubscriptionRecord) error) error {
+func (m *MemoryDB) ForEachUsersEmailSubscription(user string, cb func(*api.EmailSubscriptionRecord) error) error {
 	m.emailSubMux.RLock()
 	defer m.emailSubMux.RUnlock()
 
@@ -293,7 +294,7 @@ func (m *MemoryDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubs
 	return nil
 }
 
-func (m *MemoryDB) ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRecord) error) error {
+func (m *MemoryDB) ForEachEnabledEmailSubscription(cb func(*api.EmailSubscriptionRecord) error) error {
 	m.emailSubMux.RLock()
 	defer m.emailSubMux.RUnlock()
 
@@ -311,7 +312,7 @@ func (m *MemoryDB) ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRec
 	return nil
 }
 
-func (m *MemoryDB) GetWebhook(user string, id uuid.UUID) (*WebhookRecord, error) {
+func (m *MemoryDB) GetWebhook(user string, id uuid.UUID) (*api.WebhookRecord, error) {
 	m.webhookMux.RLock()
 	defer m.webhookMux.RUnlock()
 
@@ -327,7 +328,7 @@ var (
 	emptyStrPtr = &emptyStr
 )
 
-func (m *MemoryDB) AddWebhook(record WebhookRecord) (err error) {
+func (m *MemoryDB) AddWebhook(record api.WebhookRecord) (err error) {
 	m.webhookMux.Lock()
 	defer m.webhookMux.Unlock()
 
@@ -349,7 +350,7 @@ func (m *MemoryDB) AddWebhook(record WebhookRecord) (err error) {
 	return nil
 }
 
-func (m *MemoryDB) UpdateWebhook(record WebhookRecord) error {
+func (m *MemoryDB) UpdateWebhook(record api.WebhookRecord) error {
 	m.webhookMux.Lock()
 	defer m.webhookMux.Unlock()
 
@@ -395,7 +396,7 @@ func (m *MemoryDB) RemoveWebhook(user string, id uuid.UUID) error {
 	return nil
 }
 
-func (m *MemoryDB) ForEachWebhook(cb func(*WebhookRecord) error) error {
+func (m *MemoryDB) ForEachWebhook(cb func(*api.WebhookRecord) error) error {
 	m.webhookMux.RLock()
 	defer m.webhookMux.RUnlock()
 
@@ -410,7 +411,7 @@ func (m *MemoryDB) ForEachWebhook(cb func(*WebhookRecord) error) error {
 	return nil
 }
 
-func (m *MemoryDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) error) error {
+func (m *MemoryDB) ForEachUsersWebhook(user string, cb func(*api.WebhookRecord) error) error {
 	m.webhookMux.RLock()
 	defer m.webhookMux.RUnlock()
 
@@ -428,7 +429,7 @@ func (m *MemoryDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) erro
 	return nil
 }
 
-func (m *MemoryDB) ForEachEnabledWebhook(cb func(*WebhookRecord) error) error {
+func (m *MemoryDB) ForEachEnabledWebhook(cb func(*api.WebhookRecord) error) error {
 	m.webhookMux.RLock()
 	defer m.webhookMux.RUnlock()
 

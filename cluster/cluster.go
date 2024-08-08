@@ -32,6 +32,7 @@ import (
 
 	"github.com/LiterMC/socket.io"
 
+	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
@@ -41,42 +42,34 @@ var (
 	reFileHashMismatchError = regexp.MustCompile(` hash mismatch, expected ([0-9a-f]+), got ([0-9a-f]+)`)
 )
 
-type ClusterOptions struct {
-	Id          string   `json:"id" yaml:"id"`
-	Secret      string   `json:"secret" yaml:"secret"`
-	PublicHosts []string `json:"public-hosts" yaml:"public-hosts"`
-	Prefix      string   `json:"prefix" yaml:"prefix"`
-}
-
-type ClusterGeneralConfig struct {
-	Host         string `json:"host" yaml:"host"`
-	Port         uint16 `json:"port" yaml:"port"`
-	Byoc         bool   `json:"byoc" yaml:"byoc"`
-	NoFastEnable bool   `json:"no-fast-enable" yaml:"no-fast-enable"`
-}
-
 type Cluster struct {
-	opts ClusterOptions
-	gcfg ClusterGeneralConfig
+	opts config.ClusterOptions
+	gcfg config.ClusterGeneralConfig
 
 	storageManager *storage.Manager
 	storages       []int // the index of storages in the storage manager
+	statManager    *StatManager
 
 	enableSignals []chan bool
 	disableSignal chan struct{}
+	hits          atomic.Int32
+	hbts          atomic.Int64
 
-	mux    sync.RWMutex
-	status atomic.Int32
-	socket *socket.Socket
-	client *http.Client
+	mux       sync.RWMutex
+	status    atomic.Int32
+	socketStatus atomic.Int32
+	socket    *socket.Socket
+	client    *http.Client
+	cachedCli *http.Client
 
 	authTokenMux sync.RWMutex
 	authToken    *ClusterToken
 }
 
 func NewCluster(
-	opts ClusterOptions, gcfg ClusterGeneralConfig,
+	opts config.ClusterOptions, gcfg config.ClusterGeneralConfig,
 	storageManager *storage.Manager, storages []int,
+	statManager *StatManager,
 ) (cr *Cluster) {
 	cr = &Cluster{
 		opts: opts,
@@ -84,8 +77,7 @@ func NewCluster(
 
 		storageManager: storageManager,
 		storages:       storages,
-
-		client: &http.Client{},
+		statManager:    statManager,
 	}
 	return
 }

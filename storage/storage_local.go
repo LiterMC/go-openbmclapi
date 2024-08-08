@@ -50,14 +50,16 @@ var _ Storage = (*LocalStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageLocal, StorageFactory{
-		New: func(opt StorageOption) Storage {
-			return &LocalStorage{
-				basicOpt: opt,
-				opt:      *(opt.Data.(*LocalStorageOption)),
-			}
-		},
+		New:       func(opt StorageOption) Storage { return NewLocalStorage(opt) },
 		NewConfig: func() any { return new(LocalStorageOption) },
 	})
+}
+
+func NewLocalStorage(opt StorageOption) *LocalStorage {
+	return &LocalStorage{
+		basicOpt: opt,
+		opt:      *(opt.Data.(*LocalStorageOption)),
+	}
 }
 
 func (s *LocalStorage) String() string {

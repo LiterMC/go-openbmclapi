@@ -21,10 +21,16 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/LiterMC/socket.io"
 	"github.com/LiterMC/socket.io/engine.io"
+
+	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 // Connect connects to the central server
@@ -42,10 +48,10 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 	}
 
 	engio, err := engine.NewSocket(engine.Options{
-		Host: cr.prefix,
+		Host: cr.opts.Prefix,
 		Path: "/socket.io/",
 		ExtraHeaders: http.Header{
-			"Origin":     {cr.prefix},
+			"Origin":     {cr.opts.Prefix},
 			"User-Agent": {build.ClusterUserAgent},
 		},
 		DialTimeout: time.Minute * 6,
@@ -62,23 +68,22 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 		})
 	}
 	engio.OnConnect(func(s *engine.Socket) {
-		log.Info("Engine.IO %s connected for cluster %s", s.ID(), cr.Id())
+		log.Info("Engine.IO %s connected for cluster %s", s.ID(), cr.ID())
 	})
 	engio.OnDisconnect(cr.onDisconnected)
-	engio.OnDialError(func(s *engine.Socket, err *DialErrorContext) {
+	engio.OnDialError(func(s *engine.Socket, err *engine.DialErrorContext) {
 		if err.Count() < 0 {
 			return
 		}
-		log.TrErrorf("error.cluster.connect.failed", cr.Id(), err.Count(), config.MaxReconnectCount, err.Err())
-		if config.MaxReconnectCount >= 0 && err.Count() >= config.MaxReconnectCount {
-			log.TrErrorf("error.cluster.connect.failed.toomuch", cr.Id())
+		log.TrErrorf("error.cluster.connect.failed", cr.ID(), err.Count(), cr.gcfg.MaxReconnectCount, err.Err())
+		if cr.gcfg.MaxReconnectCount >= 0 && err.Count() >= cr.gcfg.MaxReconnectCount {
+			log.TrErrorf("error.cluster.connect.failed.toomuch", cr.ID())
 			s.Close()
 		}
 	})
-	log.Infof("Dialing %s for cluster %s", engio.URL().String(), cr.Id())
+	log.Infof("Dialing %s for cluster %s", engio.URL().String(), cr.ID())
 	if err := engio.Dial(ctx); err != nil {
-		log.Errorf("Dial error: %v", err)
-		return false
+		return fmt.Errorf("Dial error: %w", err)
 	}
 
 	cr.socket = socket.NewSocket(engio, socket.WithAuthTokenFn(func() (string, error) {
@@ -99,10 +104,9 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 	})
 	log.Info("Connecting to socket.io namespace")
 	if err := cr.socket.Connect(""); err != nil {
-		log.Errorf("Namespace connect error: %v", err)
-		return false
+		return fmt.Errorf("Namespace connect error: %w", err)
 	}
-	return true
+	return nil
 }
 
 // Disconnect close the connection which connected to the central server
@@ -111,7 +115,7 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 // See Connect
 func (cr *Cluster) Disconnect() error {
 	if cr.Disconnected() {
-		return
+		return nil
 	}
 	cr.mux.Lock()
 	defer cr.mux.Unlock()

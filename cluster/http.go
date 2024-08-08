@@ -21,13 +21,64 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
 
+	"github.com/gregjones/httpcache"
+
+	gocache "github.com/LiterMC/go-openbmclapi/cache"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 )
+
+type HTTPClient struct {
+	cli, cachedCli *http.Client
+}
+
+func NewHTTPClient(dialer *net.Dialer, cache gocache.Cache) *HTTPClient {
+	transport := http.DefaultTransport
+	if dialer != nil {
+		transport = &http.Transport{
+			DialContext: dialer.DialContext,
+		}
+	}
+	cachedTransport := transport
+	if cache != gocache.NoCache {
+		cachedTransport = &httpcache.Transport{
+			Transport: transport,
+			Cache:     gocache.WrapToHTTPCache(gocache.NewCacheWithNamespace(cache, "http@")),
+		}
+	}
+	return &HTTPClient{
+		cli: &http.Client{
+			Transport:     transport,
+			CheckRedirect: redirectChecker,
+		},
+		cachedCli: &http.Client{
+			Transport:     cachedTransport,
+			CheckRedirect: redirectChecker,
+		},
+	}
+}
+
+func (c *HTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return c.cli.Do(req)
+}
+
+func (c *HTTPClient) DoUseCache(req *http.Request) (*http.Response, error) {
+	return c.cachedCli.Do(req)
+}
+
+func redirectChecker(req *http.Request, via []*http.Request) error {
+	req.Header.Del("Referer")
+	if len(via) > 10 {
+		return errors.New("More than 10 redirects detected")
+	}
+	return nil
+}
 
 func (cr *Cluster) makeReq(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
 	return cr.makeReqWithBody(ctx, method, relpath, query, nil)

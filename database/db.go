@@ -20,16 +20,12 @@
 package database
 
 import (
-	"database/sql"
-	"database/sql/driver"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 
-	"github.com/LiterMC/go-openbmclapi/utils"
+	"github.com/LiterMC/go-openbmclapi/api"
 )
 
 var (
@@ -55,27 +51,27 @@ type DB interface {
 	// the callback should not edit the record pointer
 	ForEachFileRecord(cb func(*FileRecord) error) error
 
-	GetSubscribe(user string, client string) (*SubscribeRecord, error)
-	SetSubscribe(SubscribeRecord) error
+	GetSubscribe(user string, client string) (*api.SubscribeRecord, error)
+	SetSubscribe(api.SubscribeRecord) error
 	RemoveSubscribe(user string, client string) error
-	ForEachSubscribe(cb func(*SubscribeRecord) error) error
+	ForEachSubscribe(cb func(*api.SubscribeRecord) error) error
 
-	GetEmailSubscription(user string, addr string) (*EmailSubscriptionRecord, error)
-	AddEmailSubscription(EmailSubscriptionRecord) error
-	UpdateEmailSubscription(EmailSubscriptionRecord) error
+	GetEmailSubscription(user string, addr string) (*api.EmailSubscriptionRecord, error)
+	AddEmailSubscription(api.EmailSubscriptionRecord) error
+	UpdateEmailSubscription(api.EmailSubscriptionRecord) error
 	RemoveEmailSubscription(user string, addr string) error
-	ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) error) error
-	ForEachUsersEmailSubscription(user string, cb func(*EmailSubscriptionRecord) error) error
-	ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRecord) error) error
+	ForEachEmailSubscription(cb func(*api.EmailSubscriptionRecord) error) error
+	ForEachUsersEmailSubscription(user string, cb func(*api.EmailSubscriptionRecord) error) error
+	ForEachEnabledEmailSubscription(cb func(*api.EmailSubscriptionRecord) error) error
 
-	GetWebhook(user string, id uuid.UUID) (*WebhookRecord, error)
-	AddWebhook(WebhookRecord) error
-	UpdateWebhook(WebhookRecord) error
+	GetWebhook(user string, id uuid.UUID) (*api.WebhookRecord, error)
+	AddWebhook(api.WebhookRecord) error
+	UpdateWebhook(api.WebhookRecord) error
 	UpdateEnableWebhook(user string, id uuid.UUID, enabled bool) error
 	RemoveWebhook(user string, id uuid.UUID) error
-	ForEachWebhook(cb func(*WebhookRecord) error) error
-	ForEachUsersWebhook(user string, cb func(*WebhookRecord) error) error
-	ForEachEnabledWebhook(cb func(*WebhookRecord) error) error
+	ForEachWebhook(cb func(*api.WebhookRecord) error) error
+	ForEachUsersWebhook(user string, cb func(*api.WebhookRecord) error) error
+	ForEachEnabledWebhook(cb func(*api.WebhookRecord) error) error
 }
 
 type FileRecord struct {

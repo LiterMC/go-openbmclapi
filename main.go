@@ -62,8 +62,6 @@ var (
 
 var startTime = time.Now()
 
-var config Config = defaultConfig
-
 const baseDir = "."
 
 func parseArgs() {

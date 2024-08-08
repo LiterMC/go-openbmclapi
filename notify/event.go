@@ -22,6 +22,7 @@ package notify
 import (
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/cluster"
 	"github.com/LiterMC/go-openbmclapi/update"
 )
 
@@ -48,6 +49,6 @@ type (
 
 	ReportStatusEvent struct {
 		TimestampEvent
-		Stats *StatData
+		Stats *cluster.StatData
 	}
 )

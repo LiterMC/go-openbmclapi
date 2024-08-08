@@ -21,9 +21,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
-	"errors"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -35,6 +35,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 func cmdUploadWebdav(args []string) {
@@ -236,7 +237,7 @@ func cmdUploadWebdav(args []string) {
 				bar.SetTotal(size, false)
 
 				log.Debugf("Uploading %s/%s", s.String(), hash)
-				err := s.Create(hash, ProxyReadSeeker(fd, bar, totalBar, lastInc))
+				err := s.Create(hash, utils.ProxyPBReadSeeker(fd, bar, totalBar, lastInc))
 				uploadedFiles.Add(1)
 				if err != nil {
 					log.Errorf("Cannot create %s at %s: %v", hash, s.String(), err)

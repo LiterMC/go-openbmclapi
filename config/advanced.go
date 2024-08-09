@@ -1,6 +1,6 @@
 /**
  * OpenBmclAPI (Golang Edition)
- * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
+ * Copyright (C) 2024 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,16 +17,19 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package build
+package config
 
-import (
-	"fmt"
-)
+type AdvancedConfig struct {
+	DebugLog           bool `yaml:"debug-log"`
+	SocketIOLog        bool `yaml:"socket-io-log"`
+	NoHeavyCheck       bool `yaml:"no-heavy-check"`
+	NoGC               bool `yaml:"no-gc"`
+	HeavyCheckInterval int  `yaml:"heavy-check-interval"`
+	KeepaliveTimeout   int  `yaml:"keepalive-timeout"`
+	SkipSignatureCheck bool `yaml:"skip-signature-check"`
+	NoFastEnable       bool `yaml:"no-fast-enable"`
+	WaitBeforeEnable   int  `yaml:"wait-before-enable"`
 
-const ClusterVersion = "1.10.9"
-
-var BuildVersion string = "dev"
-
-var ClusterUserAgent string = fmt.Sprintf("openbmclapi-cluster/%s", ClusterVersion)
-var ClusterUserAgentFull string = fmt.Sprintf("%s go-openbmclapi-cluster/%s", ClusterUserAgent, BuildVersion)
-var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", BuildVersion)
+	DoNotRedirectHTTPSToSecureHostname bool `yaml:"do-NOT-redirect-https-to-SECURE-hostname"`
+	DoNotOpenFAQOnWindows              bool `yaml:"do-not-open-faq-on-windows"`
+}

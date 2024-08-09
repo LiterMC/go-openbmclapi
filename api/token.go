@@ -1,6 +1,6 @@
 /**
  * OpenBmclAPI (Golang Edition)
- * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
+ * Copyright (C) 2024 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,16 +17,22 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package build
+package api
 
 import (
-	"fmt"
+	"net/url"
 )
 
-const ClusterVersion = "1.10.9"
+type TokenVerifier interface {
+	VerifyChallengeToken(clientId string, token string, action string) (err error)
+	VerifyAuthToken(clientId string, token string) (tokenId string, userId string, err error)
+	VerifyAPIToken(clientId string, token string, path string, query url.Values) (userId string, err error)
+}
 
-var BuildVersion string = "dev"
-
-var ClusterUserAgent string = fmt.Sprintf("openbmclapi-cluster/%s", ClusterVersion)
-var ClusterUserAgentFull string = fmt.Sprintf("%s go-openbmclapi-cluster/%s", ClusterUserAgent, BuildVersion)
-var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", BuildVersion)
+type TokenManager interface {
+	TokenVerifier
+	GenerateChallengeToken(clientId string, action string) (token string, err error)
+	GenerateAuthToken(clientId string, userId string) (token string, err error)
+	GenerateAPIToken(clientId string, userId string, path string, query map[string]string) (token string, err error)
+	InvalidToken(tokenId string) error
+}

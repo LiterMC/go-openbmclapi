@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package utils
 
 import (
 	"io"
@@ -27,15 +27,15 @@ import (
 	"github.com/vbauerster/mpb/v8"
 )
 
-type ProxiedReader struct {
+type ProxiedPBReader struct {
 	io.Reader
 	bar, total *mpb.Bar
 	lastRead   time.Time
 	lastInc    *atomic.Int64
 }
 
-func ProxyReader(r io.Reader, bar, total *mpb.Bar, lastInc *atomic.Int64) *ProxiedReader {
-	return &ProxiedReader{
+func ProxyPBReader(r io.Reader, bar, total *mpb.Bar, lastInc *atomic.Int64) *ProxiedPBReader {
+	return &ProxiedPBReader{
 		Reader:  r,
 		bar:     bar,
 		total:   total,
@@ -43,7 +43,7 @@ func ProxyReader(r io.Reader, bar, total *mpb.Bar, lastInc *atomic.Int64) *Proxi
 	}
 }
 
-func (p *ProxiedReader) Read(buf []byte) (n int, err error) {
+func (p *ProxiedPBReader) Read(buf []byte) (n int, err error) {
 	start := p.lastRead
 	if start.IsZero() {
 		start = time.Now()
@@ -60,15 +60,15 @@ func (p *ProxiedReader) Read(buf []byte) (n int, err error) {
 	return
 }
 
-type ProxiedReadSeeker struct {
+type ProxiedPBReadSeeker struct {
 	io.ReadSeeker
 	bar, total *mpb.Bar
 	lastRead   time.Time
 	lastInc    *atomic.Int64
 }
 
-func ProxyReadSeeker(r io.ReadSeeker, bar, total *mpb.Bar, lastInc *atomic.Int64) *ProxiedReadSeeker {
-	return &ProxiedReadSeeker{
+func ProxyPBReadSeeker(r io.ReadSeeker, bar, total *mpb.Bar, lastInc *atomic.Int64) *ProxiedPBReadSeeker {
+	return &ProxiedPBReadSeeker{
 		ReadSeeker: r,
 		bar:        bar,
 		total:      total,
@@ -76,7 +76,7 @@ func ProxyReadSeeker(r io.ReadSeeker, bar, total *mpb.Bar, lastInc *atomic.Int64
 	}
 }
 
-func (p *ProxiedReadSeeker) Read(buf []byte) (n int, err error) {
+func (p *ProxiedPBReadSeeker) Read(buf []byte) (n int, err error) {
 	start := p.lastRead
 	if start.IsZero() {
 		start = time.Now()

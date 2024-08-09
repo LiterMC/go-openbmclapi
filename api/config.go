@@ -1,6 +1,6 @@
 /**
  * OpenBmclAPI (Golang Edition)
- * Copyright (C) 2023 Kevin Z <zyxkad@gmail.com>
+ * Copyright (C) 2024 Kevin Z <zyxkad@gmail.com>
  * All rights reserved
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -17,16 +17,19 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package build
+package api
 
 import (
-	"fmt"
+	"encoding/json"
 )
 
-const ClusterVersion = "1.10.9"
+type ConfigHandler interface {
+	json.Marshaler
+	json.Unmarshaler
+	UnmarshalYAML(data []byte) error
+	MarshalJSONPath(path string) ([]byte, error)
+	UnmarshalJSONPath(path string, data []byte) error
 
-var BuildVersion string = "dev"
-
-var ClusterUserAgent string = fmt.Sprintf("openbmclapi-cluster/%s", ClusterVersion)
-var ClusterUserAgentFull string = fmt.Sprintf("%s go-openbmclapi-cluster/%s", ClusterUserAgent, BuildVersion)
-var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", BuildVersion)
+	Fingerprint() string
+	DoLockedAction(fingerprint string, callback func(ConfigHandler) error) error
+}

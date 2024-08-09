@@ -17,38 +17,36 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package notify
+package cluster
 
 import (
-	"time"
+	"net/http"
 
-	"github.com/LiterMC/go-openbmclapi/cluster"
-	"github.com/LiterMC/go-openbmclapi/update"
+	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/storage"
 )
 
-type TimestampEvent struct {
-	At time.Time
+func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash string, size int64) {
+	defer log.RecoverPanic(nil)
+	var err error
+	if cr.storageManager.ForEachFromRandom(cr.storages, func(s storage.Storage) bool {
+		opts := s.Options()
+		log.Debugf("[handler]: Checking %s on storage %s ...", hash, opts.Id)
+
+		sz, er := s.ServeDownload(rw, req, hash, size)
+		if er != nil {
+			log.Debugf("[handler]: File %s failed on storage %s: %v", hash, opts.Id, er)
+			err = er
+			return false
+		}
+		if sz >= 0 {
+			cr.hits.Add(1)
+			cr.hbts.Add(sz)
+			cr.statManager.AddHit(sz, cr.ID(), opts.Id)
+		}
+		return true
+	}) {
+		return
+	}
+	http.Error(rw, err.Error(), http.StatusInternalServerError)
 }
-
-type (
-	EnabledEvent TimestampEvent
-
-	DisabledEvent TimestampEvent
-
-	SyncBeginEvent struct {
-		TimestampEvent
-		Count int
-		Size  int64
-	}
-
-	SyncDoneEvent TimestampEvent
-
-	UpdateAvaliableEvent struct {
-		Release *update.GithubRelease
-	}
-
-	ReportStatusEvent struct {
-		TimestampEvent
-		Stats *cluster.StatManager
-	}
-)

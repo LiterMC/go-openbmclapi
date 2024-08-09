@@ -176,6 +176,8 @@ type APIRateMiddleWare struct {
 	startAt     time.Time
 }
 
+var _ utils.MiddleWare = (*APIRateMiddleWare)(nil)
+
 func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMiddleWare) {
 	a = &APIRateMiddleWare{
 		loggedContextKey: loggedContextKey,
@@ -184,9 +186,9 @@ func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMid
 		cleanTicker:      time.NewTicker(time.Minute),
 		startAt:          time.Now(),
 	}
-	go func() {
+	go func(ticker *time.Ticker) {
 		count := 0
-		for range a.cleanTicker.C {
+		for range ticker.C {
 			count++
 			ishour := count > 60
 			if ishour {
@@ -195,11 +197,9 @@ func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMid
 			a.clean(ishour)
 		}
 		log.Debugf("cleaner exited")
-	}()
+	}(a.cleanTicker)
 	return
 }
-
-var _ utils.MiddleWare = (*APIRateMiddleWare)(nil)
 
 const (
 	RateLimitOverrideContextKey = "go-openbmclapi.limited.rate.api.override"

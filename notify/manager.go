@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/cluster"
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/update"
@@ -192,7 +193,7 @@ func (m *Manager) OnUpdateAvaliable(release *update.GithubRelease) {
 	}
 }
 
-func (m *Manager) OnReportStatus(stats *Stats) {
+func (m *Manager) OnReportStatus(stats *cluster.StatManager) {
 	if !m.reportMux.TryLock() {
 		return
 	}
@@ -208,7 +209,7 @@ func (m *Manager) OnReportStatus(stats *Stats) {
 		TimestampEvent: TimestampEvent{
 			At: now,
 		},
-		Stats: stats.Clone(),
+		Stats: stats,
 	}
 	res := make(chan error, 0)
 	for _, p := range m.plugins {

@@ -1,3 +1,5 @@
+//go:build ignore
+
 /**
  * OpenBmclAPI (Golang Edition)
  * Copyright (C) 2024 Kevin Z <zyxkad@gmail.com>

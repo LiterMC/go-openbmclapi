@@ -28,6 +28,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/log"
 )
 
@@ -613,11 +614,11 @@ func (db *SqlDB) setupSubscribeDollarMark(ctx context.Context) (err error) {
 	return err
 }
 
-func (db *SqlDB) GetSubscribe(user string, client string) (rec *SubscribeRecord, err error) {
+func (db *SqlDB) GetSubscribe(user string, client string) (rec *api.SubscribeRecord, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	rec = new(SubscribeRecord)
+	rec = new(api.SubscribeRecord)
 	rec.User = user
 	rec.Client = client
 	if err = db.subscribeStmts.get.QueryRowContext(ctx, user, client).Scan(&rec.EndPoint, &rec.Keys, &rec.Scopes, &rec.ReportAt); err != nil {
@@ -629,7 +630,7 @@ func (db *SqlDB) GetSubscribe(user string, client string) (rec *SubscribeRecord,
 	return
 }
 
-func (db *SqlDB) SetSubscribe(rec SubscribeRecord) (err error) {
+func (db *SqlDB) SetSubscribe(rec api.SubscribeRecord) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -691,7 +692,7 @@ func (db *SqlDB) RemoveSubscribe(user string, client string) (err error) {
 	return
 }
 
-func (db *SqlDB) ForEachSubscribe(cb func(*SubscribeRecord) error) (err error) {
+func (db *SqlDB) ForEachSubscribe(cb func(*api.SubscribeRecord) error) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -700,7 +701,7 @@ func (db *SqlDB) ForEachSubscribe(cb func(*SubscribeRecord) error) (err error) {
 		return
 	}
 	defer rows.Close()
-	var rec SubscribeRecord
+	var rec api.SubscribeRecord
 	for rows.Next() {
 		if err = rows.Scan(&rec.User, &rec.Client, &rec.EndPoint, &rec.Keys, &rec.Scopes, &rec.ReportAt, &rec.LastReport); err != nil {
 			return
@@ -856,11 +857,11 @@ func (db *SqlDB) setupEmailSubscriptionsDollarMark(ctx context.Context) (err err
 	return err
 }
 
-func (db *SqlDB) GetEmailSubscription(user string, addr string) (rec *EmailSubscriptionRecord, err error) {
+func (db *SqlDB) GetEmailSubscription(user string, addr string) (rec *api.EmailSubscriptionRecord, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	rec = new(EmailSubscriptionRecord)
+	rec = new(api.EmailSubscriptionRecord)
 	rec.User = user
 	rec.Addr = addr
 	if err = db.emailSubscriptionStmts.get.QueryRowContext(ctx, user, addr).Scan(&rec.Scopes, &rec.Enabled); err != nil {
@@ -872,7 +873,7 @@ func (db *SqlDB) GetEmailSubscription(user string, addr string) (rec *EmailSubsc
 	return
 }
 
-func (db *SqlDB) AddEmailSubscription(rec EmailSubscriptionRecord) (err error) {
+func (db *SqlDB) AddEmailSubscription(rec api.EmailSubscriptionRecord) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -882,7 +883,7 @@ func (db *SqlDB) AddEmailSubscription(rec EmailSubscriptionRecord) (err error) {
 	return
 }
 
-func (db *SqlDB) UpdateEmailSubscription(rec EmailSubscriptionRecord) (err error) {
+func (db *SqlDB) UpdateEmailSubscription(rec api.EmailSubscriptionRecord) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -915,7 +916,7 @@ func (db *SqlDB) RemoveEmailSubscription(user string, addr string) (err error) {
 	return
 }
 
-func (db *SqlDB) ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) error) (err error) {
+func (db *SqlDB) ForEachEmailSubscription(cb func(*api.EmailSubscriptionRecord) error) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -924,7 +925,7 @@ func (db *SqlDB) ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) erro
 		return
 	}
 	defer rows.Close()
-	var rec EmailSubscriptionRecord
+	var rec api.EmailSubscriptionRecord
 	for rows.Next() {
 		if err = rows.Scan(&rec.User, &rec.Addr, &rec.Scopes, &rec.Enabled); err != nil {
 			return
@@ -937,7 +938,7 @@ func (db *SqlDB) ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) erro
 	return
 }
 
-func (db *SqlDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubscriptionRecord) error) (err error) {
+func (db *SqlDB) ForEachUsersEmailSubscription(user string, cb func(*api.EmailSubscriptionRecord) error) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -946,7 +947,7 @@ func (db *SqlDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubscr
 		return
 	}
 	defer rows.Close()
-	var rec EmailSubscriptionRecord
+	var rec api.EmailSubscriptionRecord
 	rec.User = user
 	for rows.Next() {
 		if err = rows.Scan(&rec.Addr, &rec.Scopes, &rec.Enabled); err != nil {
@@ -960,7 +961,7 @@ func (db *SqlDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubscr
 	return
 }
 
-func (db *SqlDB) ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRecord) error) (err error) {
+func (db *SqlDB) ForEachEnabledEmailSubscription(cb func(*api.EmailSubscriptionRecord) error) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -969,7 +970,7 @@ func (db *SqlDB) ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRecor
 		return
 	}
 	defer rows.Close()
-	var rec EmailSubscriptionRecord
+	var rec api.EmailSubscriptionRecord
 	for rows.Next() {
 		if err = rows.Scan(&rec.User, &rec.Addr, &rec.Scopes); err != nil {
 			return
@@ -1143,11 +1144,11 @@ func (db *SqlDB) setupWebhooksDollarMark(ctx context.Context) (err error) {
 	return err
 }
 
-func (db *SqlDB) GetWebhook(user string, id uuid.UUID) (rec *WebhookRecord, err error) {
+func (db *SqlDB) GetWebhook(user string, id uuid.UUID) (rec *api.WebhookRecord, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	rec = new(WebhookRecord)
+	rec = new(api.WebhookRecord)
 	rec.User = user
 	rec.Id = id
 	if err = db.webhookStmts.get.QueryRowContext(ctx, user, hex.EncodeToString(id[:])).Scan(&rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes, &rec.Enabled); err != nil {
@@ -1159,7 +1160,7 @@ func (db *SqlDB) GetWebhook(user string, id uuid.UUID) (rec *WebhookRecord, err 
 	return
 }
 
-func (db *SqlDB) AddWebhook(rec WebhookRecord) (err error) {
+func (db *SqlDB) AddWebhook(rec api.WebhookRecord) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -1172,7 +1173,7 @@ func (db *SqlDB) AddWebhook(rec WebhookRecord) (err error) {
 	return
 }
 
-func (db *SqlDB) UpdateWebhook(rec WebhookRecord) (err error) {
+func (db *SqlDB) UpdateWebhook(rec api.WebhookRecord) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -1211,7 +1212,7 @@ func (db *SqlDB) RemoveWebhook(user string, id uuid.UUID) (err error) {
 	return
 }
 
-func (db *SqlDB) ForEachWebhook(cb func(*WebhookRecord) error) (err error) {
+func (db *SqlDB) ForEachWebhook(cb func(*api.WebhookRecord) error) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -1220,7 +1221,7 @@ func (db *SqlDB) ForEachWebhook(cb func(*WebhookRecord) error) (err error) {
 		return
 	}
 	defer rows.Close()
-	var rec WebhookRecord
+	var rec api.WebhookRecord
 	for rows.Next() {
 		if err = rows.Scan(&rec.User, &rec.Id, &rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes, &rec.Enabled); err != nil {
 			return
@@ -1233,7 +1234,7 @@ func (db *SqlDB) ForEachWebhook(cb func(*WebhookRecord) error) (err error) {
 	return
 }
 
-func (db *SqlDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) error) (err error) {
+func (db *SqlDB) ForEachUsersWebhook(user string, cb func(*api.WebhookRecord) error) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -1242,7 +1243,7 @@ func (db *SqlDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) error)
 		return
 	}
 	defer rows.Close()
-	var rec WebhookRecord
+	var rec api.WebhookRecord
 	rec.User = user
 	for rows.Next() {
 		if err = rows.Scan(&rec.Id, &rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes, &rec.Enabled, &rec.User); err != nil {
@@ -1256,7 +1257,7 @@ func (db *SqlDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) error)
 	return
 }
 
-func (db *SqlDB) ForEachEnabledWebhook(cb func(*WebhookRecord) error) (err error) {
+func (db *SqlDB) ForEachEnabledWebhook(cb func(*api.WebhookRecord) error) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
@@ -1265,7 +1266,7 @@ func (db *SqlDB) ForEachEnabledWebhook(cb func(*WebhookRecord) error) (err error
 		return
 	}
 	defer rows.Close()
-	var rec WebhookRecord
+	var rec api.WebhookRecord
 	for rows.Next() {
 		if err = rows.Scan(&rec.User, &rec.Id, &rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes); err != nil {
 			return

@@ -53,7 +53,8 @@ func (opt *MountStorageOption) CachePath() string {
 }
 
 type MountStorage struct {
-	opt MountStorageOption
+	basicOpt StorageOption
+	opt      MountStorageOption
 
 	supportRange atomic.Bool
 	working      atomic.Int32
@@ -65,7 +66,12 @@ var _ Storage = (*MountStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageMount, StorageFactory{
-		New:       func() Storage { return new(MountStorage) },
+		New: func(opt StorageOption) Storage {
+			return &MountStorage{
+				basicOpt: opt,
+				opt:      *(opt.Data.(*MountStorageOption)),
+			}
+		},
 		NewConfig: func() any { return new(MountStorageOption) },
 	})
 }
@@ -74,12 +80,8 @@ func (s *MountStorage) String() string {
 	return fmt.Sprintf("<MountStorage path=%q redirect=%q>", s.opt.Path, s.opt.RedirectBase)
 }
 
-func (s *MountStorage) Options() any {
-	return &s.opt
-}
-
-func (s *MountStorage) SetOptions(newOpts any) {
-	s.opt = *(newOpts.(*MountStorageOption))
+func (s *MountStorage) Options() *StorageOption {
+	return &s.basicOpt
 }
 
 var checkerClient = &http.Client{

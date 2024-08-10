@@ -132,9 +132,9 @@ func main() {
 			log.TrErrorf("program.exited", code)
 			log.TrErrorf("error.exit.please.read.faq")
 			if runtime.GOOS == "windows" && !config.Advanced.DoNotOpenFAQOnWindows {
-				log.TrWarnf("warn.exit.detected.windows.open.browser")
-				cmd := exec.Command("cmd", "/C", "start", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq")
-				cmd.Start()
+				// log.TrWarnf("warn.exit.detected.windows.open.browser")
+				// cmd := exec.Command("cmd", "/C", "start", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq")
+				// cmd.Start()
 				time.Sleep(time.Hour)
 			}
 		}
@@ -145,7 +145,6 @@ func main() {
 
 	r := new(Runner)
 
-START:
 	ctx, cancel := context.WithCancel(context.Background())
 
 	config = readConfig()
@@ -222,15 +221,10 @@ START:
 	}(ctx)
 
 	code := r.DoSignals(cancel)
-	if r.restartFlag {
-		goto START
-	}
 	exitCode = code
 }
 
 type Runner struct {
-	restartFlag bool
-
 	cluster    *Cluster
 	clusterSvr *http.Server
 
@@ -261,13 +255,13 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer signal.Stop(signalCh)
 
-	r.restartFlag = false
 	for {
 		select {
 		case code := <-exitCh:
 			return code
 		case s := <-signalCh:
-			if s == syscall.SIGQUIT {
+			switch s {
+			case syscall.SIGQUIT:
 				// avaliable commands see <https://pkg.go.dev/runtime/pprof#Profile>
 				dumpCommand := "heap"
 				dumpFileName := filepath.Join(os.TempDir(), fmt.Sprintf("go-openbmclapi-dump-command.%d.in", os.Getpid()))
@@ -302,35 +296,38 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 					}
 				}
 				continue
+			case syscall.SIGHUP:
+				r.ReloadConfig()
+			default:
+				cancel()
+				r.StopServer(signalCh)
 			}
 
-			cancel()
-			shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Second*15)
-			log.TrWarnf("warn.server.closing")
-			shutExit := make(chan struct{}, 0)
-			go func() {
-				defer close(shutExit)
-				defer cancelShut()
-				r.cluster.Disable(shutCtx)
-				log.TrWarnf("warn.httpserver.closing")
-				r.clusterSvr.Shutdown(shutCtx)
-			}()
-			select {
-			case <-shutExit:
-			case s := <-signalCh:
-				log.Warn("signal:", s)
-				log.Error("Second close signal received, exit")
-				return CodeClientError
-			}
-			log.TrWarnf("warn.server.closed")
-			if s == syscall.SIGHUP {
-				log.Info("Restarting server ...")
-				r.restartFlag = true
-				return 0
-			}
 		}
 		return 0
 	}
+}
+
+func (r *Runner) StopServer(sigCh <-chan os.Signal) {
+	shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancelShut()
+	log.TrWarnf("warn.server.closing")
+	shutDone := make(chan struct{}, 0)
+	go func() {
+		defer close(shutDone)
+		defer cancelShut()
+		r.cluster.Disable(shutCtx)
+		log.TrWarnf("warn.httpserver.closing")
+		r.clusterSvr.Shutdown(shutCtx)
+	}()
+	select {
+	case <-shutDone:
+	case s := <-sigCh:
+		log.Warn("signal:", s)
+		log.Error("Second close signal received, forcely exit")
+		return
+	}
+	log.TrWarnf("warn.server.closed")
 }
 
 func (r *Runner) InitCluster(ctx context.Context) {

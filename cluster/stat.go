@@ -50,7 +50,7 @@ func NewStatManager() *StatManager {
 	}
 }
 
-func (m *StatManager) AddHit(bytes int64, cluster, storage string) {
+func (m *StatManager) AddHit(bytes int64, cluster, storage string, userAgent string) {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 
@@ -59,6 +59,9 @@ func (m *StatManager) AddHit(bytes int64, cluster, storage string) {
 		Bytes: bytes,
 	}
 	m.Overall.update(data)
+	if userAgent != "" {
+		m.Overall.Accesses[userAgent]++
+	}
 	if cluster != "" {
 		d := m.Clusters[cluster]
 		if d == nil {
@@ -66,6 +69,9 @@ func (m *StatManager) AddHit(bytes int64, cluster, storage string) {
 			m.Clusters[cluster] = d
 		}
 		d.update(data)
+		if userAgent != "" {
+			d.Accesses[userAgent]++
+		}
 	}
 	if storage != "" {
 		d := m.Storages[storage]
@@ -74,6 +80,9 @@ func (m *StatManager) AddHit(bytes int64, cluster, storage string) {
 			m.Storages[storage] = d
 		}
 		d.update(data)
+		if userAgent != "" {
+			d.Accesses[userAgent]++
+		}
 	}
 }
 

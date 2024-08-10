@@ -32,10 +32,11 @@ import (
 )
 
 type ClusterOptions struct {
-	Id          string   `json:"id" yaml:"id"`
-	Secret      string   `json:"secret" yaml:"secret"`
-	PublicHosts []string `json:"public-hosts" yaml:"public-hosts"`
-	Prefix      string   `json:"prefix" yaml:"prefix"`
+	Id                 string   `json:"id" yaml:"id"`
+	Secret             string   `json:"secret" yaml:"secret"`
+	PublicHosts        []string `json:"public-hosts" yaml:"public-hosts"`
+	Prefix             string   `json:"prefix" yaml:"prefix"`
+	SkipSignatureCheck bool     `json:"skip-signature-check" yaml:"skip-signature-check"`
 }
 
 type ClusterGeneralConfig struct {

@@ -60,7 +60,7 @@ var dsbManifest = func() (dsbManifest map[string]any) {
 	return
 }()
 
-func (cr *Cluster) serveDashboard(rw http.ResponseWriter, req *http.Request, pth string) {
+func (r *Runner) serveDashboard(rw http.ResponseWriter, req *http.Request, pth string) {
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		rw.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
 		http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)

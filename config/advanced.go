@@ -26,10 +26,9 @@ type AdvancedConfig struct {
 	NoGC               bool `yaml:"no-gc"`
 	HeavyCheckInterval int  `yaml:"heavy-check-interval"`
 	KeepaliveTimeout   int  `yaml:"keepalive-timeout"`
-	SkipSignatureCheck bool `yaml:"skip-signature-check"`
 	NoFastEnable       bool `yaml:"no-fast-enable"`
 	WaitBeforeEnable   int  `yaml:"wait-before-enable"`
 
-	DoNotRedirectHTTPSToSecureHostname bool `yaml:"do-NOT-redirect-https-to-SECURE-hostname"`
+	// DoNotRedirectHTTPSToSecureHostname bool `yaml:"do-NOT-redirect-https-to-SECURE-hostname"`
 	DoNotOpenFAQOnWindows              bool `yaml:"do-not-open-faq-on-windows"`
 }

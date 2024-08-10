@@ -38,6 +38,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/api"
+	"github.com/LiterMC/go-openbmclapi/api/v0"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
@@ -99,15 +101,18 @@ func (r *accessRecord) String() string {
 	return buf.String()
 }
 
-func (cr *Cluster) GetHandler() http.Handler {
-	cr.apiRateLimiter = limited.NewAPIRateMiddleWare(RealAddrCtxKey, loggedUserKey)
-	cr.apiRateLimiter.SetAnonymousRateLimit(config.RateLimit.Anonymous)
-	cr.apiRateLimiter.SetLoggedRateLimit(config.RateLimit.Logged)
-	cr.handlerAPIv0 = http.StripPrefix("/api/v0", cr.cliIdHandle(cr.initAPIv0()))
-	cr.handlerAPIv1 = http.StripPrefix("/api/v1", cr.cliIdHandle(cr.initAPIv1()))
-	cr.hijackHandler = http.StripPrefix("/bmclapi", cr.hijackProxy)
+var wsUpgrader = &websocket.Upgrader{
+	HandshakeTimeout: time.Second * 30,
+}
 
-	handler := utils.NewHttpMiddleWareHandler(cr)
+func (r *Runner) GetHandler() http.Handler {
+	r.apiRateLimiter = limited.NewAPIRateMiddleWare(RealAddrCtxKey, loggedUserKey)
+	r.apiRateLimiter.SetAnonymousRateLimit(r.RateLimit.Anonymous)
+	r.apiRateLimiter.SetLoggedRateLimit(r.RateLimit.Logged)
+	r.handlerAPIv0 = http.StripPrefix("/api/v0", v0.NewHandler(wsUpgrader))
+	r.hijackHandler = http.StripPrefix("/bmclapi", r.hijackProxy)
+
+	handler := utils.NewHttpMiddleWareHandler(r)
 	// recover panic and log it
 	handler.UseFunc(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
 		defer log.RecoverPanic(func(any) {
@@ -115,55 +120,9 @@ func (cr *Cluster) GetHandler() http.Handler {
 		})
 		next.ServeHTTP(rw, req)
 	})
+	handler.Use(r.apiRateLimiter)
 
-	if !config.Advanced.DoNotRedirectHTTPSToSecureHostname {
-		// rediect the client to the first public host if it is connecting with a unsecure host
-		handler.UseFunc(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
-			host, _, err := net.SplitHostPort(req.Host)
-			if err != nil {
-				host = req.Host
-			}
-			if host != "" && len(cr.publicHosts) > 0 {
-				host = strings.ToLower(host)
-				needRed := true
-				for _, h := range cr.publicHosts { // cr.publicHosts are already lower case
-					if h, ok := strings.CutPrefix(h, "*."); ok {
-						if strings.HasSuffix(host, h) {
-							needRed = false
-							break
-						}
-					} else if host == h {
-						needRed = false
-						break
-					}
-				}
-				if needRed {
-					host := ""
-					for _, h := range cr.publicHosts {
-						if !strings.HasSuffix(h, "*.") {
-							host = h
-							break
-						}
-					}
-					if host != "" {
-						u := *req.URL
-						u.Scheme = "https"
-						u.Host = net.JoinHostPort(host, strconv.Itoa((int)(cr.publicPort)))
-
-						log.Debugf("Redirecting from %s to %s", req.Host, u.String())
-
-						rw.Header().Set("Location", u.String())
-						rw.Header().Set("Content-Length", "0")
-						rw.WriteHeader(http.StatusFound)
-						return
-					}
-				}
-			}
-			next.ServeHTTP(rw, req)
-		})
-	}
-
-	handler.Use(cr.getRecordMiddleWare())
+	handler.Use(r.getRecordMiddleWare())
 	return handler
 }
 
@@ -175,64 +134,6 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 		skipUA bool
 	}
 	recordCh := make(chan record, 1024)
-
-	go func() {
-		defer log.RecoverPanic(nil)
-
-		<-cr.WaitForEnable()
-		disabled := cr.Disabled()
-
-		updateTicker := time.NewTicker(time.Minute)
-		defer updateTicker.Stop()
-
-		var (
-			total      int
-			totalUsed  float64
-			totalBytes float64
-			uas        = make(map[string]int, 10)
-		)
-		for {
-			select {
-			case <-updateTicker.C:
-				cr.stats.Lock()
-
-				log.Infof("Served %d requests, total responsed body = %s, total IO waiting time = %.2fs",
-					total, utils.BytesToUnit(totalBytes), totalUsed)
-				for ua, v := range uas {
-					if ua == "" {
-						ua = "[Unknown]"
-					}
-					cr.stats.Accesses[ua] += v
-				}
-
-				total = 0
-				totalUsed = 0
-				totalBytes = 0
-				clear(uas)
-
-				cr.stats.Unlock()
-			case rec := <-recordCh:
-				total++
-				totalUsed += rec.used
-				totalBytes += rec.bytes
-				if !rec.skipUA {
-					uas[rec.ua]++
-				}
-			case <-disabled:
-				total = 0
-				totalUsed = 0
-				totalBytes = 0
-				clear(uas)
-
-				select {
-				case <-cr.WaitForEnable():
-					disabled = cr.Disabled()
-				case <-time.After(time.Hour):
-					return
-				}
-			}
-		}
-	}()
 
 	return func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
 		ua := req.UserAgent()
@@ -281,55 +182,7 @@ func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
 			accRec.Extra = extraInfoMap
 		}
 		log.LogAccess(log.LevelInfo, accRec)
-
-		if srw.Status < 200 || 400 <= srw.Status {
-			return
-		}
-		if !strings.HasPrefix(req.URL.Path, "/download/") {
-			return
-		}
-		var rec record
-		rec.used = used.Seconds()
-		rec.bytes = (float64)(srw.Wrote)
-		ua, _, _ = strings.Cut(ua, " ")
-		rec.ua, _, _ = strings.Cut(ua, "/")
-		rec.skipUA = extraInfoMap["skip-ua-count"] != nil
-		select {
-		case recordCh <- rec:
-		default:
-		}
 	}
-}
-
-func (cr *Cluster) checkQuerySign(req *http.Request, hash string, secret string) bool {
-	if config.Advanced.SkipSignatureCheck {
-		return true
-	}
-	query := req.URL.Query()
-	sign, e := query.Get("s"), query.Get("e")
-	if len(sign) == 0 || len(e) == 0 {
-		return false
-	}
-	before, err := strconv.ParseInt(e, 36, 64)
-	if err != nil {
-		return false
-	}
-	if time.Now().UnixMilli() > before {
-		return false
-	}
-	hs := crypto.SHA1.New()
-	io.WriteString(hs, secret)
-	io.WriteString(hs, hash)
-	io.WriteString(hs, e)
-	var (
-		buf  [20]byte
-		sbuf [27]byte
-	)
-	base64.RawURLEncoding.Encode(sbuf[:], hs.Sum(buf[:0]))
-	if (string)(sbuf[:]) != sign {
-		return false
-	}
-	return true
 }
 
 var emptyHashes = func() (hashes map[string]struct{}) {
@@ -347,7 +200,7 @@ var emptyHashes = func() (hashes map[string]struct{}) {
 //go:embed robots.txt
 var robotTxtContent string
 
-func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (r *Runner) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	u := req.URL
 
@@ -368,19 +221,13 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		if !cr.checkQuerySign(req, hash, cr.clusterSecret) {
-			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
-			return
+		for _, cr := range r.clusters {
+			if cr.AcceptHost(req.Host) {
+				cr.HandleFile(rw, req, hash)
+				return
+			}
 		}
-
-		if !cr.shouldEnable.Load() {
-			// do not serve file if cluster is not enabled yet
-			http.Error(rw, "Cluster is not enabled yet", http.StatusServiceUnavailable)
-			return
-		}
-
-		log.Debugf("Handling download %s", hash)
-		cr.handleDownload(rw, req, hash)
+		http.Error(rw, "Host have not bind to a cluster", http.StatusNotFound)
 		return
 	case strings.HasPrefix(rawpath, "/measure/"):
 		if method != http.MethodGet && method != http.MethodHead {
@@ -389,162 +236,50 @@ func (cr *Cluster) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		if !cr.checkQuerySign(req, u.Path, cr.clusterSecret) {
-			http.Error(rw, "Cannot verify signature", http.StatusForbidden)
-			return
-		}
-
-		size := rawpath[len("/measure/"):]
-		n, e := strconv.Atoi(size)
+		size, e := strconv.Atoi(rawpath[len("/measure/"):])
 		if e != nil {
 			http.Error(rw, e.Error(), http.StatusBadRequest)
 			return
-		} else if n < 0 || n > 200 {
-			http.Error(rw, fmt.Sprintf("measure size %d out of range (0, 200]", n), http.StatusBadRequest)
+		} else if size < 0 || size > 200 {
+			http.Error(rw, fmt.Sprintf("measure size %d out of range (0, 200]", size), http.StatusBadRequest)
 			return
 		}
-		if err := cr.storages[0].ServeMeasure(rw, req, n); err != nil {
-			log.Errorf("Could not serve measure %d: %v", n, err)
-			SetAccessInfo(req, "error", err.Error())
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
+
+		for _, cr := range r.clusters {
+			if cr.AcceptHost(req.Host) {
+				cr.HandleFile(rw, req, hash)
+				return
+			}
 		}
+		http.Error(rw, "Host have not bind to a cluster", http.StatusNotFound)
+		return
+	case rawpath == "/robots.txt":
+		http.ServeContent(rw, req, "robots.txt", time.Time{}, strings.NewReader(robotTxtContent))
 		return
 	case strings.HasPrefix(rawpath, "/api/"):
 		version, _, _ := strings.Cut(rawpath[len("/api/"):], "/")
 		switch version {
 		case "v0":
-			cr.handlerAPIv0.ServeHTTP(rw, req)
+			r.handlerAPIv0.ServeHTTP(rw, req)
 			return
 		case "v1":
-			cr.handlerAPIv1.ServeHTTP(rw, req)
+			r.handlerAPIv1.ServeHTTP(rw, req)
 			return
 		}
-	case rawpath == "/robots.txt":
-		http.ServeContent(rw, req, "robots.txt", time.Time{}, strings.NewReader(robotTxtContent))
+	case rawpath == "/" || rawpath == "/dashboard":
+		http.Redirect(rw, req, "/dashboard/", http.StatusFound)
 		return
 	case strings.HasPrefix(rawpath, "/dashboard/"):
-		if !config.Dashboard.Enable {
+		if !r.DashboardEnabled {
 			http.NotFound(rw, req)
 			return
 		}
 		pth := rawpath[len("/dashboard/"):]
-		cr.serveDashboard(rw, req, pth)
-		return
-	case rawpath == "/" || rawpath == "/dashboard":
-		http.Redirect(rw, req, "/dashboard/", http.StatusFound)
+		r.serveDashboard(rw, req, pth)
 		return
 	case strings.HasPrefix(rawpath, "/bmclapi/"):
-		cr.hijackHandler.ServeHTTP(rw, req)
+		r.hijackHandler.ServeHTTP(rw, req)
 		return
 	}
 	http.NotFound(rw, req)
-}
-
-func (cr *Cluster) handleDownload(rw http.ResponseWriter, req *http.Request, hash string) {
-	keepaliveRec := req.Context().Value("go-openbmclapi.handler.no.record.for.keepalive") != true
-	rw.Header().Set("X-Bmclapi-Hash", hash)
-
-	if _, ok := emptyHashes[hash]; ok {
-		name := req.URL.Query().Get("name")
-		rw.Header().Set("ETag", `"`+hash+`"`)
-		rw.Header().Set("Cache-Control", "public, max-age=31536000, immutable") // cache for a year
-		rw.Header().Set("Content-Type", "application/octet-stream")
-		rw.Header().Set("Content-Length", "0")
-		if name != "" {
-			rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
-		}
-		rw.WriteHeader(http.StatusOK)
-		cr.stats.AddHits(1, 0, "")
-		if !keepaliveRec {
-			cr.statOnlyHits.Add(1)
-		}
-		return
-	}
-
-	if r := req.Header.Get("Range"); r != "" {
-		if start, ok := parseRangeFirstStart(r); ok && start != 0 {
-			SetAccessInfo(req, "skip-ua-count", "range")
-		}
-	}
-
-	var err error
-	// check if file was indexed in the fileset
-	size, ok := cr.CachedFileSize(hash)
-	if !ok {
-		if err := cr.DownloadFile(req.Context(), hash); err != nil {
-			// TODO: check if the file exists
-			estr := "Cannot download file from center server: " + err.Error()
-			SetAccessInfo(req, "error", estr)
-			http.Error(rw, estr, http.StatusInternalServerError)
-			return
-		}
-	}
-	var sto storage.Storage
-	if forEachFromRandomIndexWithPossibility(cr.storageWeights, cr.storageTotalWeight, func(i int) bool {
-		sto = cr.storages[i]
-		log.Debugf("[handler]: Checking %s on storage [%d] %s ...", hash, i, sto.Options().Id)
-
-		sz, er := sto.ServeDownload(rw, req, hash, size)
-		if er != nil {
-			log.Debugf("[handler]: File %s failed on storage [%d] %s: %v", hash, i, sto.Options().Id, er)
-			err = er
-			return false
-		}
-		if sz >= 0 {
-			opts := cr.storageOpts[i]
-			cr.stats.AddHits(1, sz, opts.Id)
-			if !keepaliveRec {
-				cr.statOnlyHits.Add(1)
-				cr.statOnlyHbts.Add(sz)
-			}
-		}
-		return true
-	}) {
-		err = nil
-	}
-	if sto != nil {
-		SetAccessInfo(req, "storage", sto.Options().Id)
-	}
-	if err != nil {
-		log.Debugf("[handler]: failed to serve download: %v", err)
-		if errors.Is(err, os.ErrNotExist) {
-			http.Error(rw, "404 Status Not Found", http.StatusNotFound)
-			return
-		}
-		SetAccessInfo(req, "error", err.Error())
-		if _, ok := err.(*utils.HTTPStatusError); ok {
-			http.Error(rw, err.Error(), http.StatusBadGateway)
-		} else {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-		}
-		if err == storage.ErrNotWorking {
-			log.Errorf("All storages are down, exit.")
-			tctx, cancel := context.WithTimeout(context.TODO(), time.Second*10)
-			cr.Disable(tctx)
-			cancel()
-			osExit(CodeClientOrEnvionmentError)
-		}
-		return
-	}
-	log.Debug("[handler]: download served successed")
-}
-
-// Note: this method is a fast parse, it does not deeply check if the range is valid or not
-func parseRangeFirstStart(rg string) (start int64, ok bool) {
-	const b = "bytes="
-	if rg, ok = strings.CutPrefix(rg, b); !ok {
-		return
-	}
-	rg, _, _ = strings.Cut(rg, ",")
-	if rg, _, ok = strings.Cut(rg, "-"); !ok {
-		return
-	}
-	if rg = textproto.TrimString(rg); rg == "" {
-		return -1, true
-	}
-	start, err := strconv.ParseInt(rg, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return start, true
 }

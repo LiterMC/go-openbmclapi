@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"regexp"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,6 +106,17 @@ func (cr *Cluster) Port() uint16 {
 // PublicHosts returns the cluster public hosts
 func (cr *Cluster) PublicHosts() []string {
 	return cr.opts.PublicHosts
+}
+
+// AcceptHost checks if the host is binded to the cluster
+func (cr *Cluster) AcceptHost(host string) bool {
+	host = strings.ToUpper(host)
+	for _, h := range cr.opts.PublicHosts {
+		if h == "*" || strings.ToUpper(h) == host {
+			return true
+		}
+	}
+	return false
 }
 
 // Init do setup on the cluster
@@ -286,8 +298,6 @@ func (cr *Cluster) disable(ctx context.Context) error {
 		return err
 	}
 	select {
-	case <-ctx.Done():
-		return ctx.Err()
 	case data := <-resCh:
 		log.Debug("disable ack:", data)
 		if ero := data[0]; ero != nil {
@@ -295,6 +305,8 @@ func (cr *Cluster) disable(ctx context.Context) error {
 		} else if !data[1].(bool) {
 			return errors.New("Disable acked non true value")
 		}
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 	return nil
 }

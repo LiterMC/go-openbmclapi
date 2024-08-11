@@ -66,6 +66,10 @@ func (s *LocalStorage) String() string {
 	return fmt.Sprintf("<LocalStorage cache=%q>", s.opt.CachePath)
 }
 
+func (s *LocalStorage) Id() string {
+	return s.basicOpt.Id
+}
+
 func (s *LocalStorage) Options() *StorageOption {
 	return &s.basicOpt
 }

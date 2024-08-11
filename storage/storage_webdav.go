@@ -156,6 +156,10 @@ func (s *WebDavStorage) String() string {
 	return fmt.Sprintf("<WebDavStorage endpoint=%q user=%s>", s.opt.GetEndPoint(), s.opt.GetUsername())
 }
 
+func (s *WebDavStorage) Id() string {
+	return s.basicOpt.Id
+}
+
 func (s *WebDavStorage) Options() *StorageOption {
 	return &s.basicOpt
 }

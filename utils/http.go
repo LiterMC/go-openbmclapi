@@ -290,10 +290,12 @@ func (m *HttpMethodHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 // Else it will just return the tls connection
 type HTTPTLSListener struct {
 	net.Listener
-	TLSConfig *tls.Config
-	mux       sync.RWMutex
-	hosts     []string
-	port      string
+	TLSConfig     *tls.Config
+	AllowUnsecure bool
+
+	mux   sync.RWMutex
+	hosts []string
+	port  string
 
 	accepting  atomic.Bool
 	acceptedCh chan net.Conn
@@ -397,6 +399,10 @@ func (s *HTTPTLSListener) accepter() {
 			s.acceptedCh <- tls.Server(hr, s.TLSConfig)
 			return
 		}
+		if s.AllowUnsecure {
+			s.acceptedCh <- hr
+			return
+		}
 		go s.serveHTTP(hr)
 	}
 }
@@ -418,6 +424,10 @@ func (s *HTTPTLSListener) serveHTTP(conn net.Conn) {
 	if host != "" {
 		host = strings.ToLower(host)
 		for _, h := range s.hosts {
+			if h == "*" {
+				inhosts = true
+				break
+			}
 			if h, ok := strings.CutPrefix(h, "*."); ok {
 				if strings.HasSuffix(host, h) {
 					inhosts = true
@@ -432,15 +442,15 @@ func (s *HTTPTLSListener) serveHTTP(conn net.Conn) {
 	u := *req.URL
 	u.Scheme = "https"
 	if !inhosts {
+		host = ""
 		for _, h := range s.hosts {
-			if !strings.HasSuffix(h, "*.") {
+			if h != "*" && !strings.HasSuffix(h, "*.") {
 				host = h
 				break
 			}
 		}
 	}
 	if host == "" {
-		// we have nowhere to redirect
 		body := strings.NewReader("Sent http request on https server")
 		resp := &http.Response{
 			StatusCode: http.StatusBadRequest,

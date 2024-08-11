@@ -63,8 +63,9 @@ type Cluster struct {
 	client       *http.Client
 	cachedCli    *http.Client
 
-	authTokenMux sync.RWMutex
-	authToken    *ClusterToken
+	authTokenMux    sync.RWMutex
+	authToken       *ClusterToken
+	fileListLastMod int64
 }
 
 func NewCluster(
@@ -95,12 +96,12 @@ func (cr *Cluster) Secret() string {
 
 // Host returns the cluster public host
 func (cr *Cluster) Host() string {
-	return cr.gcfg.Host
+	return cr.gcfg.PublicHost
 }
 
 // Port returns the cluster public port
 func (cr *Cluster) Port() uint16 {
-	return cr.gcfg.Port
+	return cr.gcfg.PublicPort
 }
 
 // PublicHosts returns the cluster public hosts
@@ -168,8 +169,8 @@ func (cr *Cluster) enable(ctx context.Context) error {
 
 	log.TrInfof("info.cluster.enable.sending")
 	resCh, err := cr.socket.EmitWithAck("enable", EnableData{
-		Host:         cr.gcfg.Host,
-		Port:         cr.gcfg.Port,
+		Host:         cr.gcfg.PublicHost,
+		Port:         cr.gcfg.PublicPort,
 		Version:      build.ClusterVersion,
 		Byoc:         cr.gcfg.Byoc,
 		NoFastEnable: cr.gcfg.NoFastEnable,

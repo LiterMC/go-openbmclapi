@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package sub_commands
 
 import (
 	"context"
@@ -38,7 +38,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
-func cmdUploadWebdav(args []string) {
+func CmdUploadWebdav(args []string) {
 	cfg := readConfig()
 
 	var (

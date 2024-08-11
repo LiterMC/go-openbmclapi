@@ -88,34 +88,6 @@ type syncStats struct {
 	lastInc  atomic.Int64
 }
 
-func (cr *Cluster) SyncFiles(ctx context.Context, files []FileInfo, heavyCheck bool) bool {
-	log.Infof(Tr("info.sync.prepare"), len(files))
-	if !cr.issync.CompareAndSwap(false, true) {
-		log.Warn("Another sync task is running!")
-		return false
-	}
-	defer cr.issync.Store(false)
-
-	sort.Slice(files, func(i, j int) bool { return files[i].Hash < files[j].Hash })
-	if cr.syncFiles(ctx, files, heavyCheck) != nil {
-		return false
-	}
-
-	cr.filesetMux.Lock()
-	for _, f := range files {
-		cr.fileset[f.Hash] = f.Size
-	}
-	cr.filesetMux.Unlock()
-
-	return true
-}
-
-type fileInfoWithTargets struct {
-	FileInfo
-	tgMux   sync.Mutex
-	targets []storage.Storage
-}
-
 func (cr *Cluster) checkFileFor(
 	ctx context.Context,
 	sto storage.Storage, files []FileInfo,

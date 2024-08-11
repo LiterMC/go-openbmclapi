@@ -38,6 +38,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/api/v0"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
@@ -126,7 +128,7 @@ func (r *Runner) GetHandler() http.Handler {
 	return handler
 }
 
-func (cr *Cluster) getRecordMiddleWare() utils.MiddleWareFunc {
+func (r *Runner) getRecordMiddleWare() utils.MiddleWareFunc {
 	type record struct {
 		used   float64
 		bytes  float64

@@ -34,6 +34,7 @@ import (
 type Config struct {
 	PublicHost           string `yaml:"public-host"`
 	PublicPort           uint16 `yaml:"public-port"`
+	Host                 string `yaml:"host"`
 	Port                 uint16 `yaml:"port"`
 	Byoc                 bool   `yaml:"byoc"`
 	UseCert              bool   `yaml:"use-cert"`
@@ -76,6 +77,7 @@ func NewDefaultConfig() *Config {
 	return &Config{
 		PublicHost:           "",
 		PublicPort:           0,
+		Host:                 "0.0.0.0",
 		Port:                 4000,
 		Byoc:                 false,
 		TrustedXForwardedFor: false,

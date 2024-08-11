@@ -50,7 +50,7 @@ func NewManager(storages []Storage) (m *Manager) {
 
 func (m *Manager) Get(id string) Storage {
 	for _, s := range m.Storages {
-		if s.Options().Id == id {
+		if s.Id() == id {
 			return s
 		}
 	}

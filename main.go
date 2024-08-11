@@ -44,11 +44,14 @@ import (
 
 	doh "github.com/libp2p/go-doh-resolver"
 
+	"github.com/LiterMC/go-openbmclapi/config"
+	"github.com/LiterMC/go-openbmclapi/cluster"
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/lang"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
+	subcmds "github.com/LiterMC/go-openbmclapi/sub_commands"
 
 	_ "github.com/LiterMC/go-openbmclapi/lang/en"
 	_ "github.com/LiterMC/go-openbmclapi/lang/zh"
@@ -79,14 +82,14 @@ func parseArgs() {
 		case "help", "--help":
 			printHelp()
 			os.Exit(0)
-		case "zip-cache":
-			cmdZipCache(os.Args[2:])
-			os.Exit(0)
-		case "unzip-cache":
-			cmdUnzipCache(os.Args[2:])
-			os.Exit(0)
+		// case "zip-cache":
+		// 	cmdZipCache(os.Args[2:])
+		// 	os.Exit(0)
+		// case "unzip-cache":
+		// 	cmdUnzipCache(os.Args[2:])
+		// 	os.Exit(0)
 		case "upload-webdav":
-			cmdUploadWebdav(os.Args[2:])
+			subcmds.CmdUploadWebdav(os.Args[2:])
 			os.Exit(0)
 		default:
 			fmt.Println("Unknown sub command:", subcmd)
@@ -94,16 +97,6 @@ func parseArgs() {
 			os.Exit(0x7f)
 		}
 	}
-}
-
-var exitCh = make(chan int, 1)
-
-func osExit(n int) {
-	select {
-	case exitCh <- n:
-	default:
-	}
-	runtime.Goexit()
 }
 
 func main() {
@@ -118,28 +111,6 @@ func main() {
 	printShortLicense()
 	parseArgs()
 
-	exitCode := -1
-	defer func() {
-		code := exitCode
-		if code == -1 {
-			select {
-			case code = <-exitCh:
-			default:
-				code = 0
-			}
-		}
-		if code != 0 {
-			log.TrErrorf("program.exited", code)
-			log.TrErrorf("error.exit.please.read.faq")
-			if runtime.GOOS == "windows" && !config.Advanced.DoNotOpenFAQOnWindows {
-				// log.TrWarnf("warn.exit.detected.windows.open.browser")
-				// cmd := exec.Command("cmd", "/C", "start", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq")
-				// cmd.Start()
-				time.Sleep(time.Hour)
-			}
-		}
-		os.Exit(code)
-	}()
 	defer log.RecordPanic()
 	log.StartFlushLogFile()
 
@@ -147,28 +118,32 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	config = readConfig()
-	if config.Advanced.DebugLog {
+	if config, err := readAndRewriteConfig(); err != nil {
+		log.Errorf("Config error: %s", err)
+		os.Exit(1)
+	} else {
+		r.Config = config
+	}
+	if r.Config.Advanced.DebugLog {
 		log.SetLevel(log.LevelDebug)
 	} else {
 		log.SetLevel(log.LevelInfo)
 	}
-	if config.NoAccessLog {
+	if r.Config.NoAccessLog {
 		log.SetAccessLogSlots(-1)
 	} else {
-		log.SetAccessLogSlots(config.AccessLogSlots)
+		log.SetAccessLogSlots(r.Config.AccessLogSlots)
 	}
 
-	config.applyWebManifest(dsbManifest)
+	r.Config.applyWebManifest(dsbManifest)
 
 	log.TrInfof("program.starting", build.ClusterVersion, build.BuildVersion)
 
-	if config.ClusterId == defaultConfig.ClusterId || config.ClusterSecret == defaultConfig.ClusterSecret {
-		log.TrErrorf("error.set.cluster.id")
-		osExit(CodeClientError)
+	if r.Config.Tunneler.Enable {
+		r.StartTunneler()
 	}
-
-	r.InitCluster(ctx)
+	r.InitServer()
+	r.InitClusters(ctx)
 
 	go func(ctx context.Context) {
 		defer log.RecordPanic()
@@ -189,7 +164,7 @@ func main() {
 			defer listener.Close()
 			if err := r.clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 				log.Error("Error when serving:", err)
-				osExit(CodeClientError)
+				os.Exit(1)
 			}
 		}(listener)
 
@@ -221,25 +196,39 @@ func main() {
 	}(ctx)
 
 	code := r.DoSignals(cancel)
-	exitCode = code
+	if code != 0 {
+		log.TrErrorf("program.exited", code)
+		log.TrErrorf("error.exit.please.read.faq")
+		if runtime.GOOS == "windows" && !config.Advanced.DoNotOpenFAQOnWindows {
+			// log.TrWarnf("warn.exit.detected.windows.open.browser")
+			// cmd := exec.Command("cmd", "/C", "start", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq")
+			// cmd.Start()
+			time.Sleep(time.Hour)
+		}
+	}
+	os.Exit(code)
 }
 
 type Runner struct {
-	cluster    *Cluster
-	clusterSvr *http.Server
+	Config *config.Config
+
+	clusters map[string]*Cluster
+	server   *http.Server
 
 	tlsConfig   *tls.Config
 	listener    net.Listener
 	publicHosts []string
 
-	updating atomic.Bool
+	reloading    atomic.Bool
+	updating     atomic.Bool
+	tunnelCancel context.CancelFunc
 }
 
 func (r *Runner) getPublicPort() uint16 {
-	if config.PublicPort > 0 {
-		return config.PublicPort
+	if r.Config.PublicPort > 0 {
+		return r.Config.PublicPort
 	}
-	return config.Port
+	return r.Config.Port
 }
 
 func (r *Runner) getCertCount() int {
@@ -255,10 +244,15 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer signal.Stop(signalCh)
 
+	var (
+		forceStop context.CancelFunc
+		exited    = make(chan struct{}, 0)
+	)
+
 	for {
 		select {
-		case code := <-exitCh:
-			return code
+		case <-exited:
+			return 0
 		case s := <-signalCh:
 			switch s {
 			case syscall.SIGQUIT:
@@ -295,20 +289,46 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 						log.Info("Dump file created")
 					}
 				}
-				continue
 			case syscall.SIGHUP:
-				r.ReloadConfig()
+				go r.ReloadConfig()
 			default:
 				cancel()
-				r.StopServer(signalCh)
+				if forceStop == nil {
+					ctx, cancel := context.WithCancel(context.Background())
+					forceStop = cancel
+					go func() {
+						defer close(exited)
+						r.StopServer(ctx)
+					}()
+				} else {
+					log.Warn("signal:", s)
+					log.Error("Second close signal received, forcely shutting down")
+					forceStop()
+				}
 			}
 
 		}
-		return 0
+	}
+	return 0
+}
+
+func (r *Runner) ReloadConfig() {
+	if r.reloading.CompareAndSwap(false, true) {
+		log.Error("Config is already reloading!")
+		return
+	}
+	defer r.reloading.Store(false)
+
+	config, err := readAndRewriteConfig()
+	if err != nil {
+		log.Errorf("Config error: %s", err)
+	} else {
+		r.Config = config
 	}
 }
 
-func (r *Runner) StopServer(sigCh <-chan os.Signal) {
+func (r *Runner) StopServer(ctx context.Context) {
+	r.tunnelCancel()
 	shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancelShut()
 	log.TrWarnf("warn.server.closing")
@@ -316,24 +336,39 @@ func (r *Runner) StopServer(sigCh <-chan os.Signal) {
 	go func() {
 		defer close(shutDone)
 		defer cancelShut()
-		r.cluster.Disable(shutCtx)
+		var wg sync.WaitGroup
+		for _, cr := range r.clusters {
+			go func() {
+				defer wg.Done()
+				cr.Disable(shutCtx)
+			}()
+		}
+		wg.Wait()
 		log.TrWarnf("warn.httpserver.closing")
-		r.clusterSvr.Shutdown(shutCtx)
+		r.server.Shutdown(shutCtx)
 	}()
 	select {
 	case <-shutDone:
-	case s := <-sigCh:
-		log.Warn("signal:", s)
-		log.Error("Second close signal received, forcely exit")
+	case <-ctx.Done():
 		return
 	}
 	log.TrWarnf("warn.server.closed")
 }
 
-func (r *Runner) InitCluster(ctx context.Context) {
+func (r *Runner) InitServer() {
+	r.server = &http.Server{
+		Addr:        fmt.Sprintf("%s:%d", d.Config.Host, d.Config.Port),
+		ReadTimeout: 10 * time.Second,
+		IdleTimeout: 5 * time.Second,
+		Handler:     r,
+		ErrorLog:    log.ProxiedStdLog,
+	}
+}
+
+func (r *Runner) InitClusters(ctx context.Context) {
 	var (
 		dialer *net.Dialer
-		cache  = config.Cache.newCache()
+		cache  = r.Config.Cache.newCache()
 	)
 
 	_ = doh.NewResolver // TODO: use doh resolver
@@ -349,20 +384,12 @@ func (r *Runner) InitCluster(ctx context.Context) {
 	)
 	if err := r.cluster.Init(ctx); err != nil {
 		log.Errorf(Tr("error.init.failed"), err)
-		osExit(CodeClientError)
-	}
-
-	r.clusterSvr = &http.Server{
-		Addr:        fmt.Sprintf("%s:%d", "0.0.0.0", config.Port),
-		ReadTimeout: 10 * time.Second,
-		IdleTimeout: 5 * time.Second,
-		Handler:     r.cluster.GetHandler(),
-		ErrorLog:    log.ProxiedStdLog,
+		os.Exit(1)
 	}
 }
 
-func (r *Runner) UpdateFileRecords(files []FileInfo, oldfileset map[string]int64) {
-	if !config.Hijack.Enable {
+func (r *Runner) UpdateFileRecords(files map[string]*cluster.StorageFileInfo, oldfileset map[string]int64) {
+	if !r.hijacker.Enabled {
 		return
 	}
 	if !r.updating.CompareAndSwap(false, true) {
@@ -394,15 +421,14 @@ func (r *Runner) UpdateFileRecords(files []FileInfo, oldfileset map[string]int64
 }
 
 func (r *Runner) InitSynchronizer(ctx context.Context) {
-	log.Info(Tr("info.filelist.fetching"))
-	fl, err := r.cluster.GetFileList(ctx, 0)
-	if err != nil {
-		log.Errorf(Tr("error.filelist.fetch.failed"), err)
-		if errors.Is(err, context.Canceled) {
-			return
-		}
-		if !config.Advanced.SkipFirstSync {
-			osExit(CodeClientOrServerError)
+	fileMap := make(map[string]*StorageFileInfo)
+	for _, cr := range r.clusters {
+		log.Info(Tr("info.filelist.fetching"), cr.ID())
+		if err := cr.GetFileList(ctx, fileMap, true); err != nil {
+			log.Errorf(Tr("error.filelist.fetch.failed"), cr.ID(), err)
+			if errors.Is(err, context.Canceled) {
+				return
+			}
 		}
 	}
 
@@ -414,10 +440,10 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 	}
 
 	if !config.Advanced.SkipFirstSync {
-		if !r.cluster.SyncFiles(ctx, fl, false) {
+		if !r.cluster.SyncFiles(ctx, fileMap, false) {
 			return
 		}
-		go r.UpdateFileRecords(fl, nil)
+		go r.UpdateFileRecords(fileMap, nil)
 
 		if !config.Advanced.NoGC {
 			go r.cluster.Gc()
@@ -428,28 +454,18 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		}
 	}
 
-	var lastMod int64
-	for _, f := range fl {
-		if f.Mtime > lastMod {
-			lastMod = f.Mtime
-		}
-	}
-
 	createInterval(ctx, func() {
-		log.Info(Tr("info.filelist.fetching"))
-		fl, err := r.cluster.GetFileList(ctx, lastMod)
-		if err != nil {
-			log.Errorf(Tr("error.filelist.fetch.failed"), err)
-			return
-		}
-		if len(fl) == 0 {
-			log.Infof("No file was updated since %s", time.UnixMilli(lastMod).Format(time.DateTime))
-			return
-		}
-		for _, f := range fl {
-			if f.Mtime > lastMod {
-				lastMod = f.Mtime
+		fileMap := make(map[string]*StorageFileInfo)
+		for _, cr := range r.clusters {
+			log.Info(Tr("info.filelist.fetching"), cr.ID())
+			if err := cr.GetFileList(ctx, fileMap, false); err != nil {
+				log.Errorf(Tr("error.filelist.fetch.failed"), cr.ID(), err)
+				return
 			}
+		}
+		if len(fileMap) == 0 {
+			log.Infof("No file was updated since last check")
+			return
 		}
 
 		checkCount = (checkCount + 1) % heavyCheckInterval
@@ -464,12 +480,12 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 }
 
 func (r *Runner) CreateHTTPServerListener(ctx context.Context) (listener net.Listener) {
-	listener, err := net.Listen("tcp", r.clusterSvr.Addr)
+	listener, err := net.Listen("tcp", r.Addr)
 	if err != nil {
-		log.Errorf(Tr("error.address.listen.failed"), r.clusterSvr.Addr, err)
+		log.Errorf(Tr("error.address.listen.failed"), r.Addr, err)
 		osExit(CodeEnvironmentError)
 	}
-	if config.ServeLimit.Enable {
+	if r.Config.ServeLimit.Enable {
 		limted := limited.NewLimitedListener(listener, config.ServeLimit.MaxConn, 0, config.ServeLimit.UploadRate*1024)
 		limted.SetMinWriteRate(1024)
 		listener = limted
@@ -483,7 +499,7 @@ func (r *Runner) CreateHTTPServerListener(ctx context.Context) (listener net.Lis
 				r.publicHosts = append(r.publicHosts, strings.ToLower(h))
 			}
 		}
-		listener = newHttpTLSListener(listener, tlsConfig, r.publicHosts, r.getPublicPort())
+		listener = utils.NewHttpTLSListener(listener, tlsConfig, r.publicHosts, r.getPublicPort())
 	}
 	r.listener = listener
 	return
@@ -493,7 +509,7 @@ func (r *Runner) GenerateTLSConfig(ctx context.Context) (tlsConfig *tls.Config) 
 	if config.UseCert {
 		if len(config.Certificates) == 0 {
 			log.Error(Tr("error.cert.not.set"))
-			osExit(CodeClientError)
+			os.Exit(1)
 		}
 		tlsConfig = new(tls.Config)
 		tlsConfig.Certificates = make([]tls.Certificate, len(config.Certificates))
@@ -502,31 +518,33 @@ func (r *Runner) GenerateTLSConfig(ctx context.Context) (tlsConfig *tls.Config) 
 			tlsConfig.Certificates[i], err = tls.LoadX509KeyPair(c.Cert, c.Key)
 			if err != nil {
 				log.Errorf(Tr("error.cert.parse.failed"), i, err)
-				osExit(CodeClientError)
+				os.Exit(1)
 			}
 		}
 	}
 	if !config.Byoc {
-		log.Info(Tr("info.cert.requesting"))
-		tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
-		pair, err := r.cluster.RequestCert(tctx)
-		cancel()
-		if err != nil {
-			log.Errorf(Tr("error.cert.request.failed"), err)
-			osExit(CodeServerError)
+		for _, cr := range r.clusters {
+			log.Info(Tr("info.cert.requesting"), cr.ID())
+			tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
+			pair, err := cr.RequestCert(tctx)
+			cancel()
+			if err != nil {
+				log.Errorf(Tr("error.cert.request.failed"), err)
+				os.Exit(2)
+			}
+			if tlsConfig == nil {
+				tlsConfig = new(tls.Config)
+			}
+			var cert tls.Certificate
+			cert, err = tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
+			if err != nil {
+				log.Errorf(Tr("error.cert.requested.parse.failed"), err)
+				os.Exit(2)
+			}
+			tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
+			certHost, _ := parseCertCommonName(cert.Certificate[0])
+			log.Infof(Tr("info.cert.requested"), certHost)
 		}
-		if tlsConfig == nil {
-			tlsConfig = new(tls.Config)
-		}
-		var cert tls.Certificate
-		cert, err = tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
-		if err != nil {
-			log.Errorf(Tr("error.cert.requested.parse.failed"), err)
-			osExit(CodeServerUnexpectedError)
-		}
-		tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
-		certHost, _ := parseCertCommonName(cert.Certificate[0])
-		log.Infof(Tr("info.cert.requested"), certHost)
 	}
 	r.tlsConfig = tlsConfig
 	return
@@ -554,7 +572,31 @@ func (r *Runner) EnableCluster(ctx context.Context) {
 	}
 }
 
-func (r *Runner) enableClusterByTunnel(ctx context.Context) {
+func (r *Runner) StartTunneler() {
+	ctx, cancel := context.WithCancel(context.Background())
+	r.tunnelCancel = cancel
+	go func() {
+		dur := time.Second
+		for {
+			start := time.Now()
+			r.RunTunneler(ctx)
+			used := time.Since(start)
+			// If the program runs no longer than 30s, then it fails too fast.
+			if used < time.Second*30 {
+				dur = min(dur*2, time.Minute*10)
+			} else {
+				dur = time.Second
+			}
+			select {
+			case <-time.After(dur):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+func (r *Runner) RunTunneler(ctx context.Context) {
 	cmd := exec.CommandContext(ctx, config.Tunneler.TunnelProg)
 	log.Infof(Tr("info.tunnel.running"), cmd.String())
 	var (
@@ -562,18 +604,18 @@ func (r *Runner) enableClusterByTunnel(ctx context.Context) {
 		err            error
 	)
 	cmd.Env = append(os.Environ(),
-		"CLUSTER_PORT="+strconv.Itoa((int)(config.Port)))
+		"CLUSTER_PORT="+strconv.Itoa((int)(r.Config.Port)))
 	if cmdOut, err = cmd.StdoutPipe(); err != nil {
 		log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
-		osExit(CodeClientUnexpectedError)
+		os.Exit(1)
 	}
 	if cmdErr, err = cmd.StderrPipe(); err != nil {
 		log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
-		osExit(CodeClientUnexpectedError)
+		os.Exit(1)
 	}
 	if err = cmd.Start(); err != nil {
 		log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
-		osExit(CodeClientError)
+		os.Exit(1)
 	}
 	type addrOut struct {
 		host string
@@ -651,7 +693,7 @@ func (r *Runner) enableClusterByTunnel(ctx context.Context) {
 					if ctx.Err() != nil {
 						return
 					}
-					osExit(CodeServerOrEnvionmentError)
+					os.Exit(2)
 				}
 			case <-ctx.Done():
 				return
@@ -663,11 +705,5 @@ func (r *Runner) enableClusterByTunnel(ctx context.Context) {
 			return
 		}
 		log.Errorf("Tunnel program exited: %v", err)
-		osExit(CodeClientError)
 	}
-	// TODO: maybe restart the tunnel program?
-}
-
-func Tr(name string) string {
-	return lang.Tr(name)
 }

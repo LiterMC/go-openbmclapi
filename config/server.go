@@ -40,8 +40,8 @@ type ClusterOptions struct {
 }
 
 type ClusterGeneralConfig struct {
-	Host              string `json:"host"`
-	Port              uint16 `json:"port"`
+	PublicHost        string `json:"public-host"`
+	PublicPort        uint16 `json:"public-port"`
 	Byoc              bool   `json:"byoc"`
 	NoFastEnable      bool   `json:"no-fast-enable"`
 	MaxReconnectCount int    `json:"max-reconnect-count"`

@@ -113,7 +113,7 @@ func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash st
 		return true
 	})
 	if sto != nil {
-		api.SetAccessInfo(req, "storage", sto.Options().Id)
+		api.SetAccessInfo(req, "storage", sto.Id())
 	}
 	if ok {
 		return
@@ -135,7 +135,7 @@ func (cr *Cluster) HandleMeasure(req *http.Request, rw http.ResponseWriter, size
 
 	api.SetAccessInfo(req, "cluster", cr.ID())
 	storage := cr.storageManager.Storages[cr.storages[0]]
-	api.SetAccessInfo(req, "storage", storage.Options().Id)
+	api.SetAccessInfo(req, "storage", storage.Id())
 	if err := storage.ServeMeasure(rw, req, size); err != nil {
 		log.Errorf("Could not serve measure %d: %v", size, err)
 		api.SetAccessInfo(req, "error", err.Error())

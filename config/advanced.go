@@ -30,5 +30,5 @@ type AdvancedConfig struct {
 	WaitBeforeEnable   int  `yaml:"wait-before-enable"`
 
 	// DoNotRedirectHTTPSToSecureHostname bool `yaml:"do-NOT-redirect-https-to-SECURE-hostname"`
-	DoNotOpenFAQOnWindows              bool `yaml:"do-not-open-faq-on-windows"`
+	DoNotOpenFAQOnWindows bool `yaml:"do-not-open-faq-on-windows"`
 }

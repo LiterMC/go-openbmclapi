@@ -80,6 +80,10 @@ func (s *MountStorage) String() string {
 	return fmt.Sprintf("<MountStorage path=%q redirect=%q>", s.opt.Path, s.opt.RedirectBase)
 }
 
+func (s *MountStorage) Id() string {
+	return s.basicOpt.Id
+}
+
 func (s *MountStorage) Options() *StorageOption {
 	return &s.basicOpt
 }

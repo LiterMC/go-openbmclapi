@@ -35,6 +35,7 @@ import (
 type Storage interface {
 	fmt.Stringer
 
+	Id() string
 	// Options should return the pointer of the StorageOption that should not be modified.
 	Options() *StorageOption
 	// Init will be called before start to use a storage

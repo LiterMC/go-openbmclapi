@@ -30,7 +30,6 @@ import (
 	"net/url"
 	"path"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -290,12 +289,9 @@ func (m *HttpMethodHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 // Else it will just return the tls connection
 type HTTPTLSListener struct {
 	net.Listener
-	TLSConfig     *tls.Config
+	TLSConfig     atomic.Pointer[tls.Config]
+	DoRedirect    bool
 	AllowUnsecure bool
-
-	mux   sync.RWMutex
-	hosts []string
-	port  string
 
 	accepting  atomic.Bool
 	acceptedCh chan net.Conn
@@ -304,15 +300,17 @@ type HTTPTLSListener struct {
 
 var _ net.Listener = (*HTTPTLSListener)(nil)
 
-func NewHttpTLSListener(l net.Listener, cfg *tls.Config, publicHosts []string, port uint16) net.Listener {
-	return &HTTPTLSListener{
-		Listener:   l,
-		TLSConfig:  cfg,
-		hosts:      publicHosts,
-		port:       strconv.Itoa((int)(port)),
+func NewHttpTLSListener(l net.Listener, cfg *tls.Config) *HTTPTLSListener {
+	h := &HTTPTLSListener{
+		Listener:      l,
+		DoRedirect:    true,
+		AllowUnsecure: false,
+
 		acceptedCh: make(chan net.Conn, 1),
 		errCh:      make(chan error, 1),
 	}
+	h.TLSConfig.Store(cfg)
+	return h
 }
 
 func (s *HTTPTLSListener) Close() (err error) {
@@ -329,22 +327,7 @@ func (s *HTTPTLSListener) Close() (err error) {
 	return
 }
 
-func (s *HTTPTLSListener) SetPublicPort(port string) {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-	s.port = port
-}
-
-func (s *HTTPTLSListener) GetPublicPort() string {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-	return s.port
-}
-
 func (s *HTTPTLSListener) maybeHTTPConn(c *connHeadReader) (ishttp bool) {
-	if len(s.hosts) == 0 {
-		return false
-	}
 	var buf [4096]byte
 	i, n := 0, 0
 READ_HEAD:
@@ -389,6 +372,11 @@ func (s *HTTPTLSListener) accepter() {
 			s.errCh <- err
 			return
 		}
+		tlsCfg := s.TLSConfig.Load()
+		if tlsCfg == nil {
+			s.acceptedCh <- conn
+			return
+		}
 		go s.accepter()
 		hr := &connHeadReader{Conn: conn}
 		hr.SetReadDeadline(time.Now().Add(time.Second * 5))
@@ -396,7 +384,7 @@ func (s *HTTPTLSListener) accepter() {
 		hr.SetReadDeadline(time.Time{})
 		if !ishttp {
 			// if it's not a http connection, it must be a tls connection
-			s.acceptedCh <- tls.Server(hr, s.TLSConfig)
+			s.acceptedCh <- tls.Server(hr, tlsCfg)
 			return
 		}
 		if s.AllowUnsecure {
@@ -416,41 +404,13 @@ func (s *HTTPTLSListener) serveHTTP(conn net.Conn) {
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
-	host, _, err := net.SplitHostPort(req.Host)
-	if err != nil {
-		host = req.Host
-	}
-	inhosts := false
-	if host != "" {
-		host = strings.ToLower(host)
-		for _, h := range s.hosts {
-			if h == "*" {
-				inhosts = true
-				break
-			}
-			if h, ok := strings.CutPrefix(h, "*."); ok {
-				if strings.HasSuffix(host, h) {
-					inhosts = true
-					break
-				}
-			} else if h == host {
-				inhosts = true
-				break
-			}
-		}
-	}
+	// host, _, err := net.SplitHostPort(req.Host)
+	// if err != nil {
+	// 	host = req.Host
+	// }
 	u := *req.URL
 	u.Scheme = "https"
-	if !inhosts {
-		host = ""
-		for _, h := range s.hosts {
-			if h != "*" && !strings.HasSuffix(h, "*.") {
-				host = h
-				break
-			}
-		}
-	}
-	if host == "" {
+	if !s.DoRedirect {
 		body := strings.NewReader("Sent http request on https server")
 		resp := &http.Response{
 			StatusCode: http.StatusBadRequest,
@@ -468,7 +428,7 @@ func (s *HTTPTLSListener) serveHTTP(conn net.Conn) {
 		io.Copy(conn, body)
 		return
 	}
-	u.Host = net.JoinHostPort(host, s.GetPublicPort())
+	// u.Host = net.JoinHostPort(host, s.GetPublicPort())
 	resp := &http.Response{
 		StatusCode: http.StatusPermanentRedirect,
 		ProtoMajor: req.ProtoMajor,

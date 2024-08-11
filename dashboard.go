@@ -60,13 +60,14 @@ var dsbManifest = func() (dsbManifest map[string]any) {
 	return
 }()
 
-func (r *Runner) serveDashboard(rw http.ResponseWriter, req *http.Request, pth string) {
+func (r *Runner) serveDashboard(rw http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		rw.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
 		http.Error(rw, "405 Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	acceptEncoding := utils.SplitCSV(req.Header.Get("Accept-Encoding"))
+	pth := strings.TrimPrefix(req.URL.Path, "/")
 	switch pth {
 	case "":
 		break

@@ -36,7 +36,6 @@ type Config struct {
 	PublicPort           uint16 `yaml:"public-port"`
 	Host                 string `yaml:"host"`
 	Port                 uint16 `yaml:"port"`
-	Byoc                 bool   `yaml:"byoc"`
 	UseCert              bool   `yaml:"use-cert"`
 	TrustedXForwardedFor bool   `yaml:"trusted-x-forwarded-for"`
 
@@ -65,7 +64,7 @@ type Config struct {
 	Advanced     AdvancedConfig                 `yaml:"advanced"`
 }
 
-func (cfg *Config) applyWebManifest(manifest map[string]any) {
+func (cfg *Config) ApplyWebManifest(manifest map[string]any) {
 	if cfg.Dashboard.Enable {
 		manifest["name"] = cfg.Dashboard.PwaName
 		manifest["short_name"] = cfg.Dashboard.PwaShortName
@@ -79,7 +78,6 @@ func NewDefaultConfig() *Config {
 		PublicPort:           0,
 		Host:                 "0.0.0.0",
 		Port:                 4000,
-		Byoc:                 false,
 		TrustedXForwardedFor: false,
 
 		OnlyGcWhenStart:   false,

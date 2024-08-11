@@ -57,6 +57,15 @@ func (m *Manager) Get(id string) Storage {
 	return nil
 }
 
+func (m *Manager) GetIndex(id string) int {
+	for i, s := range m.Storages {
+		if s.Id() == id {
+			return i
+		}
+	}
+	return -1
+}
+
 func (m *Manager) GetFlavorString(storages []int) string {
 	typeCount := make(map[string]int, 2)
 	for _, i := range storages {

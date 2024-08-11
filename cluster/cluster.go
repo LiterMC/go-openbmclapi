@@ -70,9 +70,13 @@ type Cluster struct {
 
 func NewCluster(
 	opts config.ClusterOptions, gcfg config.ClusterGeneralConfig,
-	storageManager *storage.Manager, storages []int,
+	storageManager *storage.Manager,
 	statManager *StatManager,
 ) (cr *Cluster) {
+	storages := make([]int, len(opts.Storages))
+	for i, name := range opts.Storages {
+		storages[i] = storageManager.GetIndex(name)
+	}
 	cr = &Cluster{
 		opts: opts,
 		gcfg: gcfg,
@@ -120,10 +124,23 @@ func (cr *Cluster) AcceptHost(host string) bool {
 	return false
 }
 
+func (cr *Cluster) Options() *config.ClusterOptions {
+	return &cr.opts
+}
+
+func (cr *Cluster) GeneralConfig() *config.ClusterGeneralConfig {
+	return &cr.gcfg
+}
+
 // Init do setup on the cluster
 // Init should only be called once during the cluster's whole life
 // The context passed in only affect the logical of Init method
 func (cr *Cluster) Init(ctx context.Context) error {
+	for i, ind := range cr.storages {
+		if ind == -1 {
+			return fmt.Errorf("Storage %q does not exists", cr.opts.Storages[i])
+		}
+	}
 	return nil
 }
 
@@ -172,7 +189,7 @@ func (cr *Cluster) enable(ctx context.Context) error {
 		Host:         cr.gcfg.PublicHost,
 		Port:         cr.gcfg.PublicPort,
 		Version:      build.ClusterVersion,
-		Byoc:         cr.gcfg.Byoc,
+		Byoc:         cr.opts.Byoc,
 		NoFastEnable: cr.gcfg.NoFastEnable,
 		Flavor: ConfigFlavor{
 			Runtime: "golang/" + runtime.GOOS + "-" + runtime.GOARCH,

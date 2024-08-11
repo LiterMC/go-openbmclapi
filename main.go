@@ -36,6 +36,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -44,6 +45,7 @@ import (
 
 	doh "github.com/libp2p/go-doh-resolver"
 
+	"github.com/LiterMC/go-openbmclapi/api/bmclapi"
 	"github.com/LiterMC/go-openbmclapi/cluster"
 	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/database"
@@ -51,7 +53,9 @@ import (
 	"github.com/LiterMC/go-openbmclapi/lang"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/storage"
 	subcmds "github.com/LiterMC/go-openbmclapi/sub_commands"
+	"github.com/LiterMC/go-openbmclapi/utils"
 
 	_ "github.com/LiterMC/go-openbmclapi/lang/en"
 	_ "github.com/LiterMC/go-openbmclapi/lang/zh"
@@ -124,18 +128,8 @@ func main() {
 	} else {
 		r.Config = config
 	}
-	if r.Config.Advanced.DebugLog {
-		log.SetLevel(log.LevelDebug)
-	} else {
-		log.SetLevel(log.LevelInfo)
-	}
-	if r.Config.NoAccessLog {
-		log.SetAccessLogSlots(-1)
-	} else {
-		log.SetAccessLogSlots(r.Config.AccessLogSlots)
-	}
 
-	r.Config.applyWebManifest(dsbManifest)
+	r.SetupLogger(ctx)
 
 	log.TrInfof("program.starting", build.ClusterVersion, build.BuildVersion)
 
@@ -143,13 +137,37 @@ func main() {
 		r.StartTunneler()
 	}
 	r.InitServer()
+	r.StartServer(ctx)
+
 	r.InitClusters(ctx)
 
 	go func(ctx context.Context) {
 		defer log.RecordPanic()
 
-		if !r.cluster.Connect(ctx) {
-			osExit(CodeClientOrServerError)
+		var wg sync.WaitGroup
+		errs := make([]error, len(r.clusters))
+		{
+			i := 0
+			for _, cr := range r.clusters {
+				i++
+				go func(i int, cr *cluster.Cluster) {
+					defer wg.Done()
+					errs[i] = cr.Connect(ctx)
+				}(i, cr)
+			}
+		}
+		wg.Wait()
+		if ctx.Err() != nil {
+			return
+		}
+
+		{
+			var err error
+			r.tlsConfig, err = r.PatchTLSWithClusterCert(ctx, r.tlsConfig)
+			if err != nil {
+				return
+			}
+			r.listener.TLSConfig.Store(r.tlsConfig)
 		}
 
 		firstSyncDone := make(chan struct{}, 0)
@@ -159,30 +177,11 @@ func main() {
 			r.InitSynchronizer(ctx)
 		}()
 
-		listener := r.CreateHTTPServerListener(ctx)
-		go func(listener net.Listener) {
-			defer listener.Close()
-			if err := r.clusterSvr.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-				log.Error("Error when serving:", err)
-				os.Exit(1)
-			}
-		}(listener)
-
-		var publicHost string
-		if len(r.publicHosts) == 0 {
-			publicHost = config.PublicHost
-		} else {
-			publicHost = r.publicHosts[0]
-		}
-		if !config.Tunneler.Enable {
+		if !r.Config.Tunneler.Enable {
 			strPort := strconv.Itoa((int)(r.getPublicPort()))
-			log.TrInfof("info.server.public.at", net.JoinHostPort(publicHost, strPort), r.clusterSvr.Addr, r.getCertCount())
-			if len(r.publicHosts) > 1 {
-				log.TrInfof("info.server.alternative.hosts")
-				for _, h := range r.publicHosts[1:] {
-					log.Infof("\t- https://%s", net.JoinHostPort(h, strPort))
-				}
-			}
+			pubAddr := net.JoinHostPort(r.Config.PublicHost, strPort)
+			localAddr := net.JoinHostPort(r.Config.Host, strconv.Itoa((int)(r.Config.Port)))
+			log.TrInfof("info.server.public.at", pubAddr, localAddr, r.getCertCount())
 		}
 
 		log.TrInfof("info.wait.first.sync")
@@ -192,14 +191,14 @@ func main() {
 			return
 		}
 
-		r.EnableCluster(ctx)
+		// r.EnableCluster(ctx)
 	}(ctx)
 
-	code := r.DoSignals(cancel)
+	code := r.ListenSignals(ctx, cancel)
 	if code != 0 {
 		log.TrErrorf("program.exited", code)
 		log.TrErrorf("error.exit.please.read.faq")
-		if runtime.GOOS == "windows" && !config.Advanced.DoNotOpenFAQOnWindows {
+		if runtime.GOOS == "windows" && !r.Config.Advanced.DoNotOpenFAQOnWindows {
 			// log.TrWarnf("warn.exit.detected.windows.open.browser")
 			// cmd := exec.Command("cmd", "/C", "start", "https://cdn.crashmc.com/https://github.com/LiterMC/go-openbmclapi?tab=readme-ov-file#faq")
 			// cmd.Start()
@@ -212,12 +211,21 @@ func main() {
 type Runner struct {
 	Config *config.Config
 
-	clusters map[string]*Cluster
-	server   *http.Server
+	clusters       map[string]*cluster.Cluster
+	apiRateLimiter *limited.APIRateMiddleWare
+	storageManager *storage.Manager
+	statManager    *cluster.StatManager
+	hijacker       *bmclapi.HjProxy
+	database       database.DB
+
+	server        *http.Server
+	handlerAPIv0  http.Handler
+	hijackHandler http.Handler
 
 	tlsConfig   *tls.Config
-	listener    net.Listener
-	publicHosts []string
+	publicHost string
+	publicPort uint16
+	listener    *utils.HTTPTLSListener
 
 	reloading    atomic.Bool
 	updating     atomic.Bool
@@ -225,8 +233,8 @@ type Runner struct {
 }
 
 func (r *Runner) getPublicPort() uint16 {
-	if r.Config.PublicPort > 0 {
-		return r.Config.PublicPort
+	if r.publicPort > 0 {
+		return r.publicPort
 	}
 	return r.Config.Port
 }
@@ -238,7 +246,80 @@ func (r *Runner) getCertCount() int {
 	return len(r.tlsConfig.Certificates)
 }
 
-func (r *Runner) DoSignals(cancel context.CancelFunc) int {
+func (r *Runner) InitServer() {
+	r.server = &http.Server{
+		ReadTimeout: 10 * time.Second,
+		IdleTimeout: 5 * time.Second,
+		Handler:     r.GetHandler(),
+		ErrorLog:    log.ProxiedStdLog,
+	}
+}
+
+// StartServer will start the HTTP server
+// If a server is already running on an old listener, the listener will be closed.
+func (r *Runner) StartServer(ctx context.Context) error {
+	htListener, err := r.CreateHTTPListener(ctx)
+	if err != nil {
+		return err
+	}
+	if r.listener != nil {
+		r.listener.Close()
+	}
+	r.listener = htListener
+	go func() {
+		defer htListener.Close()
+		if err := r.server.Serve(htListener); !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+			log.Error("Error when serving:", err)
+			os.Exit(1)
+		}
+	}()
+	return nil
+}
+
+func (r *Runner) GetClusterGeneralConfig() config.ClusterGeneralConfig {
+	return config.ClusterGeneralConfig{
+		PublicHost:        r.publicHost,
+		PublicPort:        r.getPublicPort(),
+		NoFastEnable:      r.Config.Advanced.NoFastEnable,
+		MaxReconnectCount: r.Config.MaxReconnectCount,
+	}
+}
+
+func (r *Runner) InitClusters(ctx context.Context) {
+	// var (
+	// 	dialer *net.Dialer
+	// 	cache  = r.Config.Cache.NewCache()
+	// )
+
+	_ = doh.NewResolver // TODO: use doh resolver
+
+	r.clusters = make(map[string]*cluster.Cluster)
+	gcfg := r.GetClusterGeneralConfig()
+	for name, opts := range r.Config.Clusters {
+		cr := cluster.NewCluster(opts, gcfg, r.storageManager, r.statManager)
+		if err := cr.Init(ctx); err != nil {
+			log.TrErrorf("error.init.failed", err)
+		} else {
+			r.clusters[name] = cr
+		}
+	}
+
+	// r.cluster = NewCluster(ctx,
+	// 	ClusterServerURL,
+	// 	baseDir,
+	// 	config.PublicHost, r.getPublicPort(),
+	// 	config.ClusterId, config.ClusterSecret,
+	// 	config.Byoc, dialer,
+	// 	config.Storages,
+	// 	cache,
+	// )
+	// if err := r.cluster.Init(ctx); err != nil {
+	// 	log.TrErrorf("error.init.failed"), err)
+	// 	os.Exit(1)
+	// }
+}
+
+func (r *Runner) ListenSignals(ctx context.Context, cancel context.CancelFunc) int {
 	signalCh := make(chan os.Signal, 1)
 	log.Debugf("Receiving signals")
 	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
@@ -290,7 +371,7 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 					}
 				}
 			case syscall.SIGHUP:
-				go r.ReloadConfig()
+				go r.ReloadConfig(ctx)
 			default:
 				cancel()
 				if forceStop == nil {
@@ -312,7 +393,7 @@ func (r *Runner) DoSignals(cancel context.CancelFunc) int {
 	return 0
 }
 
-func (r *Runner) ReloadConfig() {
+func (r *Runner) ReloadConfig(ctx context.Context) {
 	if r.reloading.CompareAndSwap(false, true) {
 		log.Error("Config is already reloading!")
 		return
@@ -321,10 +402,54 @@ func (r *Runner) ReloadConfig() {
 
 	config, err := readAndRewriteConfig()
 	if err != nil {
-		log.Errorf("Config error: %s", err)
+		log.Errorf("Config error: %v", err)
 	} else {
-		r.Config = config
+		if err := r.updateConfig(ctx, config); err != nil {
+			log.Errorf("Error when reloading config: %v", err)
+		}
 	}
+}
+
+func (r *Runner) updateConfig(ctx context.Context, newConfig *config.Config) error {
+	oldConfig := r.Config
+	reloadProcesses := make([]func(context.Context) error, 0, 8)
+
+	if newConfig.LogSlots != oldConfig.LogSlots || newConfig.NoAccessLog != oldConfig.NoAccessLog || newConfig.AccessLogSlots != oldConfig.AccessLogSlots || newConfig.Advanced.DebugLog != oldConfig.Advanced.DebugLog {
+		reloadProcesses = append(reloadProcesses, r.SetupLogger)
+	}
+	if newConfig.Host != oldConfig.Host || newConfig.Port != oldConfig.Port {
+		reloadProcesses = append(reloadProcesses, r.StartServer)
+	}
+	if newConfig.PublicHost != oldConfig.PublicHost || newConfig.PublicPort != oldConfig.PublicPort || newConfig.Advanced.NoFastEnable != oldConfig.Advanced.NoFastEnable || newConfig.MaxReconnectCount != oldConfig.MaxReconnectCount {
+		reloadProcesses = append(reloadProcesses, r.updateClustersWithGeneralConfig)
+	}
+
+	r.Config = newConfig
+	r.publicHost = r.Config.PublicHost
+	r.publicPort = r.Config.PublicPort
+	for _, proc := range reloadProcesses {
+		if err := proc(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runner) SetupLogger(ctx context.Context) error {
+	if r.Config.Advanced.DebugLog {
+		log.SetLevel(log.LevelDebug)
+	} else {
+		log.SetLevel(log.LevelInfo)
+	}
+	log.SetLogSlots(r.Config.LogSlots)
+	if r.Config.NoAccessLog {
+		log.SetAccessLogSlots(-1)
+	} else {
+		log.SetAccessLogSlots(r.Config.AccessLogSlots)
+	}
+
+	r.Config.ApplyWebManifest(dsbManifest)
+	return nil
 }
 
 func (r *Runner) StopServer(ctx context.Context) {
@@ -346,6 +471,8 @@ func (r *Runner) StopServer(ctx context.Context) {
 		wg.Wait()
 		log.TrWarnf("warn.httpserver.closing")
 		r.server.Shutdown(shutCtx)
+		r.listener.Close()
+		r.listener = nil
 	}()
 	select {
 	case <-shutDone:
@@ -355,41 +482,8 @@ func (r *Runner) StopServer(ctx context.Context) {
 	log.TrWarnf("warn.server.closed")
 }
 
-func (r *Runner) InitServer() {
-	r.server = &http.Server{
-		Addr:        fmt.Sprintf("%s:%d", d.Config.Host, d.Config.Port),
-		ReadTimeout: 10 * time.Second,
-		IdleTimeout: 5 * time.Second,
-		Handler:     r,
-		ErrorLog:    log.ProxiedStdLog,
-	}
-}
-
-func (r *Runner) InitClusters(ctx context.Context) {
-	var (
-		dialer *net.Dialer
-		cache  = r.Config.Cache.newCache()
-	)
-
-	_ = doh.NewResolver // TODO: use doh resolver
-
-	r.cluster = NewCluster(ctx,
-		ClusterServerURL,
-		baseDir,
-		config.PublicHost, r.getPublicPort(),
-		config.ClusterId, config.ClusterSecret,
-		config.Byoc, dialer,
-		config.Storages,
-		cache,
-	)
-	if err := r.cluster.Init(ctx); err != nil {
-		log.Errorf(Tr("error.init.failed"), err)
-		os.Exit(1)
-	}
-}
-
 func (r *Runner) UpdateFileRecords(files map[string]*cluster.StorageFileInfo, oldfileset map[string]int64) {
-	if !r.hijacker.Enabled {
+	if !r.Config.Hijack.Enable {
 		return
 	}
 	if !r.updating.CompareAndSwap(false, true) {
@@ -409,7 +503,7 @@ func (r *Runner) UpdateFileRecords(files map[string]*cluster.StorageFileInfo, ol
 		sem.Acquire()
 		go func(rec database.FileRecord) {
 			defer sem.Release()
-			r.cluster.database.SetFileRecord(rec)
+			r.database.SetFileRecord(rec)
 		}(database.FileRecord{
 			Path: f.Path,
 			Hash: f.Hash,
@@ -421,11 +515,11 @@ func (r *Runner) UpdateFileRecords(files map[string]*cluster.StorageFileInfo, ol
 }
 
 func (r *Runner) InitSynchronizer(ctx context.Context) {
-	fileMap := make(map[string]*StorageFileInfo)
+	fileMap := make(map[string]*cluster.StorageFileInfo)
 	for _, cr := range r.clusters {
-		log.Info(Tr("info.filelist.fetching"), cr.ID())
+		log.TrInfof("info.filelist.fetching", cr.ID())
 		if err := cr.GetFileList(ctx, fileMap, true); err != nil {
-			log.Errorf(Tr("error.filelist.fetch.failed"), cr.ID(), err)
+			log.TrErrorf("error.filelist.fetch.failed", cr.ID(), err)
 			if errors.Is(err, context.Canceled) {
 				return
 			}
@@ -433,33 +527,34 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 	}
 
 	checkCount := -1
-	heavyCheck := !config.Advanced.NoHeavyCheck
-	heavyCheckInterval := config.Advanced.HeavyCheckInterval
+	heavyCheck := !r.Config.Advanced.NoHeavyCheck
+	heavyCheckInterval := r.Config.Advanced.HeavyCheckInterval
 	if heavyCheckInterval <= 0 {
 		heavyCheck = false
 	}
 
-	if !config.Advanced.SkipFirstSync {
-		if !r.cluster.SyncFiles(ctx, fileMap, false) {
-			return
-		}
-		go r.UpdateFileRecords(fileMap, nil)
+	// if !r.Config.Advanced.SkipFirstSync {
+	// 	if !r.cluster.SyncFiles(ctx, fileMap, false) {
+	// 		return
+	// 	}
+	// 	go r.UpdateFileRecords(fileMap, nil)
 
-		if !config.Advanced.NoGC {
-			go r.cluster.Gc()
-		}
-	} else if fl != nil {
-		if err := r.cluster.SetFilesetByExists(ctx, fl); err != nil {
-			return
-		}
-	}
+	// 	if !r.Config.Advanced.NoGC {
+	// 		go r.cluster.Gc()
+	// 	}
+	// } else
+	// if fl != nil {
+	// 	if err := r.cluster.SetFilesetByExists(ctx, fl); err != nil {
+	// 		return
+	// 	}
+	// }
 
 	createInterval(ctx, func() {
-		fileMap := make(map[string]*StorageFileInfo)
+		fileMap := make(map[string]*cluster.StorageFileInfo)
 		for _, cr := range r.clusters {
-			log.Info(Tr("info.filelist.fetching"), cr.ID())
+			log.TrInfof("info.filelist.fetching", cr.ID())
 			if err := cr.GetFileList(ctx, fileMap, false); err != nil {
-				log.Errorf(Tr("error.filelist.fetch.failed"), cr.ID(), err)
+				log.TrErrorf("error.filelist.fetch.failed", cr.ID(), err)
 				return
 			}
 		}
@@ -472,104 +567,122 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		oldfileset := r.cluster.CloneFileset()
 		if r.cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0) {
 			go r.UpdateFileRecords(fl, oldfileset)
-			if !config.Advanced.NoGC && !config.OnlyGcWhenStart {
+			if !r.Config.Advanced.NoGC && !r.Config.OnlyGcWhenStart {
 				go r.cluster.Gc()
 			}
 		}
-	}, (time.Duration)(config.SyncInterval)*time.Minute)
+	}, (time.Duration)(r.Config.SyncInterval)*time.Minute)
 }
 
-func (r *Runner) CreateHTTPServerListener(ctx context.Context) (listener net.Listener) {
-	listener, err := net.Listen("tcp", r.Addr)
+func (r *Runner) CreateHTTPListener(ctx context.Context) (*utils.HTTPTLSListener, error) {
+	addr := net.JoinHostPort(r.Config.Host, strconv.Itoa((int)(r.Config.Port)))
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Errorf(Tr("error.address.listen.failed"), r.Addr, err)
-		osExit(CodeEnvironmentError)
+		log.TrErrorf("error.address.listen.failed", addr, err)
+		return nil, err
 	}
 	if r.Config.ServeLimit.Enable {
-		limted := limited.NewLimitedListener(listener, config.ServeLimit.MaxConn, 0, config.ServeLimit.UploadRate*1024)
+		limted := limited.NewLimitedListener(listener, r.Config.ServeLimit.MaxConn, 0, r.Config.ServeLimit.UploadRate*1024)
 		limted.SetMinWriteRate(1024)
 		listener = limted
 	}
 
-	tlsConfig := r.GenerateTLSConfig(ctx)
-	r.publicHosts = make([]string, 0, 2)
-	if tlsConfig != nil {
-		for _, cert := range tlsConfig.Certificates {
-			if h, err := parseCertCommonName(cert.Certificate[0]); err == nil {
-				r.publicHosts = append(r.publicHosts, strings.ToLower(h))
-			}
+	if r.Config.UseCert {
+		var err error
+		r.tlsConfig, err = r.GenerateTLSConfig()
+		if err != nil {
+			log.Errorf("Failed to generate TLS config: %v", err)
+			return nil, err
 		}
-		listener = utils.NewHttpTLSListener(listener, tlsConfig, r.publicHosts, r.getPublicPort())
 	}
-	r.listener = listener
-	return
+	return utils.NewHttpTLSListener(listener, r.tlsConfig), nil
 }
 
-func (r *Runner) GenerateTLSConfig(ctx context.Context) (tlsConfig *tls.Config) {
-	if config.UseCert {
-		if len(config.Certificates) == 0 {
-			log.Error(Tr("error.cert.not.set"))
-			os.Exit(1)
-		}
-		tlsConfig = new(tls.Config)
-		tlsConfig.Certificates = make([]tls.Certificate, len(config.Certificates))
-		for i, c := range config.Certificates {
-			var err error
-			tlsConfig.Certificates[i], err = tls.LoadX509KeyPair(c.Cert, c.Key)
-			if err != nil {
-				log.Errorf(Tr("error.cert.parse.failed"), i, err)
-				os.Exit(1)
-			}
+func (r *Runner) GenerateTLSConfig() (*tls.Config, error) {
+	if len(r.Config.Certificates) == 0 {
+		log.TrErrorf("error.cert.not.set")
+		return nil, errors.New("No certificate is defined")
+	}
+	tlsConfig := new(tls.Config)
+	tlsConfig.Certificates = make([]tls.Certificate, len(r.Config.Certificates))
+	for i, c := range r.Config.Certificates {
+		var err error
+		tlsConfig.Certificates[i], err = tls.LoadX509KeyPair(c.Cert, c.Key)
+		if err != nil {
+			log.TrErrorf("error.cert.parse.failed", i, err)
+			return nil, err
 		}
 	}
-	if !config.Byoc {
-		for _, cr := range r.clusters {
-			log.Info(Tr("info.cert.requesting"), cr.ID())
-			tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
-			pair, err := cr.RequestCert(tctx)
-			cancel()
-			if err != nil {
-				log.Errorf(Tr("error.cert.request.failed"), err)
-				os.Exit(2)
-			}
-			if tlsConfig == nil {
-				tlsConfig = new(tls.Config)
-			}
-			var cert tls.Certificate
-			cert, err = tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
-			if err != nil {
-				log.Errorf(Tr("error.cert.requested.parse.failed"), err)
-				os.Exit(2)
-			}
-			tlsConfig.Certificates = append(tlsConfig.Certificates, cert)
-			certHost, _ := parseCertCommonName(cert.Certificate[0])
-			log.Infof(Tr("info.cert.requested"), certHost)
-		}
-	}
-	r.tlsConfig = tlsConfig
-	return
+	return tlsConfig, nil
 }
 
-func (r *Runner) EnableCluster(ctx context.Context) {
-	if config.Advanced.WaitBeforeEnable > 0 {
-		select {
-		case <-time.After(time.Second * (time.Duration)(config.Advanced.WaitBeforeEnable)):
-		case <-ctx.Done():
-			return
+func (r *Runner) PatchTLSWithClusterCert(ctx context.Context, tlsConfig *tls.Config) (*tls.Config, error) {
+	certs := make([]tls.Certificate, 0)
+	for _, cr := range r.clusters {
+		if cr.Options().Byoc {
+			continue
 		}
+		log.TrInfof("info.cert.requesting", cr.ID())
+		tctx, cancel := context.WithTimeout(ctx, time.Minute*10)
+		pair, err := cr.RequestCert(tctx)
+		cancel()
+		if err != nil {
+			log.TrErrorf("error.cert.request.failed", err)
+			continue
+		}
+		cert, err := tls.X509KeyPair(([]byte)(pair.Cert), ([]byte)(pair.Key))
+		if err != nil {
+			log.TrErrorf("error.cert.requested.parse.failed", err)
+			continue
+		}
+		certs = append(certs, cert)
+		certHost, _ := parseCertCommonName(cert.Certificate[0])
+		log.TrInfof("info.cert.requested", certHost)
 	}
+	if len(certs) == 0 {
+		if tlsConfig == nil {
+			tlsConfig = new(tls.Config)
+		} else {
+			tlsConfig = tlsConfig.Clone()
+		}
+		tlsConfig.Certificates = append(tlsConfig.Certificates, certs...)
+	}
+	return tlsConfig, nil
+}
 
-	if config.Tunneler.Enable {
-		r.enableClusterByTunnel(ctx)
-	} else {
-		if err := r.cluster.Enable(ctx); err != nil {
-			log.Errorf(Tr("error.cluster.enable.failed"), err)
-			if ctx.Err() != nil {
+// updateClustersWithGeneralConfig will re-enable all clusters with latest general config
+func (r *Runner) updateClustersWithGeneralConfig(ctx context.Context) error {
+	gcfg := r.GetClusterGeneralConfig()
+	var wg sync.WaitGroup
+	for _, cr := range r.clusters {
+		wg.Add(1)
+		go func(cr *cluster.Cluster) {
+			defer wg.Done()
+			cr.Disable(ctx)
+			*cr.GeneralConfig() = gcfg
+			if err := cr.Enable(ctx); err != nil {
+				log.TrErrorf("error.cluster.enable.failed", cr.ID(), err)
 				return
 			}
-			osExit(CodeServerOrEnvionmentError)
-		}
+		}(cr)
 	}
+	wg.Wait()
+	return nil
+}
+
+func (r *Runner) EnableClusterAll(ctx context.Context) {
+	var wg sync.WaitGroup
+	for _, cr := range r.clusters {
+		wg.Add(1)
+		go func(cr *cluster.Cluster) {
+			defer wg.Done()
+			if err := cr.Enable(ctx); err != nil {
+				log.TrErrorf("error.cluster.enable.failed", cr.ID(), err)
+				return
+			}
+		}(cr)
+	}
+	wg.Wait()
 }
 
 func (r *Runner) StartTunneler() {
@@ -597,8 +710,8 @@ func (r *Runner) StartTunneler() {
 }
 
 func (r *Runner) RunTunneler(ctx context.Context) {
-	cmd := exec.CommandContext(ctx, config.Tunneler.TunnelProg)
-	log.Infof(Tr("info.tunnel.running"), cmd.String())
+	cmd := exec.CommandContext(ctx, r.Config.Tunneler.TunnelProg)
+	log.TrInfof("info.tunnel.running", cmd.String())
 	var (
 		cmdOut, cmdErr io.ReadCloser
 		err            error
@@ -606,15 +719,15 @@ func (r *Runner) RunTunneler(ctx context.Context) {
 	cmd.Env = append(os.Environ(),
 		"CLUSTER_PORT="+strconv.Itoa((int)(r.Config.Port)))
 	if cmdOut, err = cmd.StdoutPipe(); err != nil {
-		log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
+		log.TrErrorf("error.tunnel.command.prepare.failed", err)
 		os.Exit(1)
 	}
 	if cmdErr, err = cmd.StderrPipe(); err != nil {
-		log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
+		log.TrErrorf("error.tunnel.command.prepare.failed", err)
 		os.Exit(1)
 	}
 	if err = cmd.Start(); err != nil {
-		log.Errorf(Tr("error.tunnel.command.prepare.failed"), err)
+		log.TrErrorf("error.tunnel.command.prepare.failed", err)
 		os.Exit(1)
 	}
 	type addrOut struct {
@@ -623,11 +736,10 @@ func (r *Runner) RunTunneler(ctx context.Context) {
 	}
 	detectedCh := make(chan addrOut, 1)
 	onLog := func(line []byte) {
-		res := config.Tunneler.outputRegex.FindSubmatch(line)
-		if res == nil {
+		tunnelHost, tunnelPort, ok := r.Config.Tunneler.MatchTunnelOutput(line)
+		if !ok {
 			return
 		}
-		tunnelHost, tunnelPort := res[config.Tunneler.hostOut], res[config.Tunneler.portOut]
 		if len(tunnelHost) > 0 && tunnelHost[0] == '[' && tunnelHost[len(tunnelHost)-1] == ']' { // a IPv6 with port [<ipv6>]:<port>
 			tunnelHost = tunnelHost[1 : len(tunnelHost)-1]
 		}
@@ -667,33 +779,11 @@ func (r *Runner) RunTunneler(ctx context.Context) {
 		for {
 			select {
 			case addr := <-detectedCh:
-				log.Infof(Tr("info.tunnel.detected"), addr.host, addr.port)
-				r.cluster.publicPort = addr.port
-				if !r.cluster.byoc {
-					r.cluster.host = addr.host
-				}
-				strPort := strconv.Itoa((int)(r.getPublicPort()))
-				if spp, ok := r.listener.(interface{ SetPublicPort(port string) }); ok {
-					spp.SetPublicPort(strPort)
-				}
-				log.Infof(Tr("info.server.public.at"), net.JoinHostPort(addr.host, strPort), r.clusterSvr.Addr, r.getCertCount())
-				if len(r.publicHosts) > 1 {
-					log.Info(Tr("info.server.alternative.hosts"))
-					for _, h := range r.publicHosts[1:] {
-						log.Infof("\t- https://%s", net.JoinHostPort(h, strPort))
-					}
-				}
-				if !r.cluster.Enabled() {
-					shutCtx, cancel := context.WithTimeout(ctx, time.Minute)
-					r.cluster.Disable(shutCtx)
-					cancel()
-				}
-				if err := r.cluster.Enable(ctx); err != nil {
-					log.Errorf(Tr("error.cluster.enable.failed"), err)
-					if ctx.Err() != nil {
-						return
-					}
-					os.Exit(2)
+				log.TrInfof("info.tunnel.detected", addr.host, addr.port)
+				r.publicHost, r.publicPort = addr.host, addr.port
+				r.updateClustersWithGeneralConfig(ctx)
+				if ctx.Err() != nil {
+					return
 				}
 			case <-ctx.Done():
 				return

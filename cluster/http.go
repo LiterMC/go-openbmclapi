@@ -90,7 +90,7 @@ func (cr *Cluster) makeReqWithBody(
 	query url.Values, body io.Reader,
 ) (req *http.Request, err error) {
 	var u *url.URL
-	if u, err = url.Parse(cr.opts.Prefix); err != nil {
+	if u, err = url.Parse(cr.opts.Server); err != nil {
 		return
 	}
 	u.Path = path.Join(u.Path, relpath)

@@ -36,7 +36,7 @@ import (
 	"github.com/LiterMC/go-openbmclapi/storage"
 )
 
-func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash string, size int64) {
+func (cr *Cluster) HandleFile(rw http.ResponseWriter, req *http.Request, hash string) {
 	defer log.RecoverPanic(nil)
 
 	if !cr.Enabled() {
@@ -88,6 +88,8 @@ func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash st
 
 	api.SetAccessInfo(req, "cluster", cr.ID())
 
+	var size int64 = -1 // TODO: get the size
+
 	var (
 		sto storage.Storage
 		err error
@@ -121,7 +123,7 @@ func (cr *Cluster) HandleFile(req *http.Request, rw http.ResponseWriter, hash st
 	http.Error(rw, err.Error(), http.StatusInternalServerError)
 }
 
-func (cr *Cluster) HandleMeasure(req *http.Request, rw http.ResponseWriter, size int) {
+func (cr *Cluster) HandleMeasure(rw http.ResponseWriter, req *http.Request, size int) {
 	if !cr.Enabled() {
 		// do not serve file if cluster is not enabled yet
 		http.Error(rw, "Cluster is not enabled yet", http.StatusServiceUnavailable)

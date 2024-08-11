@@ -34,15 +34,16 @@ import (
 type ClusterOptions struct {
 	Id                 string   `json:"id" yaml:"id"`
 	Secret             string   `json:"secret" yaml:"secret"`
+	Byoc               bool     `json:"byoc"`
 	PublicHosts        []string `json:"public-hosts" yaml:"public-hosts"`
-	Prefix             string   `json:"prefix" yaml:"prefix"`
+	Server             string   `json:"server" yaml:"server"`
 	SkipSignatureCheck bool     `json:"skip-signature-check" yaml:"skip-signature-check"`
+	Storages           []string `json:"storages" yaml:"storages"`
 }
 
 type ClusterGeneralConfig struct {
 	PublicHost        string `json:"public-host"`
 	PublicPort        uint16 `json:"public-port"`
-	Byoc              bool   `json:"byoc"`
 	NoFastEnable      bool   `json:"no-fast-enable"`
 	MaxReconnectCount int    `json:"max-reconnect-count"`
 }
@@ -75,6 +76,10 @@ type CacheConfig struct {
 	Data any    `yaml:"data,omitempty"`
 
 	newCache func() cache.Cache `yaml:"-"`
+}
+
+func (c *CacheConfig) NewCache() cache.Cache {
+	return c.newCache()
 }
 
 func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
@@ -147,4 +152,12 @@ func (c *TunnelConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 		return errors.New("tunneler.output-regex: missing named `(?<port>)` capture group")
 	}
 	return
+}
+
+func (c *TunnelConfig) MatchTunnelOutput(line []byte) (host, port []byte, ok bool) {
+	res := c.outputRegex.FindSubmatch(line)
+	if res == nil {
+		return
+	}
+	return res[c.hostOut], res[c.portOut], true
 }

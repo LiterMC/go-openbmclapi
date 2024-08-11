@@ -24,16 +24,11 @@ import (
 	"context"
 	"crypto"
 	_ "embed"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"net/textproto"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -43,9 +38,9 @@ import (
 	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/api/v0"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
-	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -108,13 +103,13 @@ var wsUpgrader = &websocket.Upgrader{
 }
 
 func (r *Runner) GetHandler() http.Handler {
-	r.apiRateLimiter = limited.NewAPIRateMiddleWare(RealAddrCtxKey, loggedUserKey)
-	r.apiRateLimiter.SetAnonymousRateLimit(r.RateLimit.Anonymous)
-	r.apiRateLimiter.SetLoggedRateLimit(r.RateLimit.Logged)
+	r.apiRateLimiter = limited.NewAPIRateMiddleWare(api.RealAddrCtxKey, "go-openbmclapi.cluster.logged.user" /* api/v0.loggedUserKey */)
+	r.apiRateLimiter.SetAnonymousRateLimit(r.Config.RateLimit.Anonymous)
+	r.apiRateLimiter.SetLoggedRateLimit(r.Config.RateLimit.Logged)
 	r.handlerAPIv0 = http.StripPrefix("/api/v0", v0.NewHandler(wsUpgrader))
-	r.hijackHandler = http.StripPrefix("/bmclapi", r.hijackProxy)
+	r.hijackHandler = http.StripPrefix("/bmclapi", r.hijacker)
 
-	handler := utils.NewHttpMiddleWareHandler(r)
+	handler := utils.NewHttpMiddleWareHandler((http.HandlerFunc)(r.serveHTTP))
 	// recover panic and log it
 	handler.UseFunc(func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
 		defer log.RecoverPanic(func(any) {
@@ -124,67 +119,57 @@ func (r *Runner) GetHandler() http.Handler {
 	})
 	handler.Use(r.apiRateLimiter)
 
-	handler.Use(r.getRecordMiddleWare())
+	handler.UseFunc(r.recordMiddleWare)
 	return handler
 }
 
-func (r *Runner) getRecordMiddleWare() utils.MiddleWareFunc {
-	type record struct {
-		used   float64
-		bytes  float64
-		ua     string
-		skipUA bool
+func (r *Runner) recordMiddleWare(rw http.ResponseWriter, req *http.Request, next http.Handler) {
+	ua := req.UserAgent()
+	var addr string
+	if r.Config.TrustedXForwardedFor {
+		// X-Forwarded-For: <client>, <proxy1>, <proxy2>
+		adr, _, _ := strings.Cut(req.Header.Get("X-Forwarded-For"), ",")
+		addr = strings.TrimSpace(adr)
 	}
-	recordCh := make(chan record, 1024)
-
-	return func(rw http.ResponseWriter, req *http.Request, next http.Handler) {
-		ua := req.UserAgent()
-		var addr string
-		if config.TrustedXForwardedFor {
-			// X-Forwarded-For: <client>, <proxy1>, <proxy2>
-			adr, _, _ := strings.Cut(req.Header.Get("X-Forwarded-For"), ",")
-			addr = strings.TrimSpace(adr)
-		}
-		if addr == "" {
-			addr, _, _ = net.SplitHostPort(req.RemoteAddr)
-		}
-		srw := utils.WrapAsStatusResponseWriter(rw)
-		start := time.Now()
-
-		log.LogAccess(log.LevelDebug, &preAccessRecord{
-			Type:   "pre-access",
-			Time:   start,
-			Addr:   addr,
-			Method: req.Method,
-			URI:    req.RequestURI,
-			UA:     ua,
-		})
-
-		extraInfoMap := make(map[string]any)
-		ctx := req.Context()
-		ctx = context.WithValue(ctx, RealAddrCtxKey, addr)
-		ctx = context.WithValue(ctx, RealPathCtxKey, req.URL.Path)
-		ctx = context.WithValue(ctx, AccessLogExtraCtxKey, extraInfoMap)
-		req = req.WithContext(ctx)
-		next.ServeHTTP(srw, req)
-
-		used := time.Since(start)
-		accRec := &accessRecord{
-			Type:    "access",
-			Status:  srw.Status,
-			Used:    used,
-			Content: srw.Wrote,
-			Addr:    addr,
-			Proto:   req.Proto,
-			Method:  req.Method,
-			URI:     req.RequestURI,
-			UA:      ua,
-		}
-		if len(extraInfoMap) > 0 {
-			accRec.Extra = extraInfoMap
-		}
-		log.LogAccess(log.LevelInfo, accRec)
+	if addr == "" {
+		addr, _, _ = net.SplitHostPort(req.RemoteAddr)
 	}
+	srw := utils.WrapAsStatusResponseWriter(rw)
+	start := time.Now()
+
+	log.LogAccess(log.LevelDebug, &preAccessRecord{
+		Type:   "pre-access",
+		Time:   start,
+		Addr:   addr,
+		Method: req.Method,
+		URI:    req.RequestURI,
+		UA:     ua,
+	})
+
+	extraInfoMap := make(map[string]any)
+	ctx := req.Context()
+	ctx = context.WithValue(ctx, api.RealAddrCtxKey, addr)
+	ctx = context.WithValue(ctx, api.RealPathCtxKey, req.URL.Path)
+	ctx = context.WithValue(ctx, api.AccessLogExtraCtxKey, extraInfoMap)
+	req = req.WithContext(ctx)
+	next.ServeHTTP(srw, req)
+
+	used := time.Since(start)
+	accRec := &accessRecord{
+		Type:    "access",
+		Status:  srw.Status,
+		Used:    used,
+		Content: srw.Wrote,
+		Addr:    addr,
+		Proto:   req.Proto,
+		Method:  req.Method,
+		URI:     req.RequestURI,
+		UA:      ua,
+	}
+	if len(extraInfoMap) > 0 {
+		accRec.Extra = extraInfoMap
+	}
+	log.LogAccess(log.LevelInfo, accRec)
 }
 
 var emptyHashes = func() (hashes map[string]struct{}) {
@@ -202,11 +187,11 @@ var emptyHashes = func() (hashes map[string]struct{}) {
 //go:embed robots.txt
 var robotTxtContent string
 
-func (r *Runner) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (r *Runner) serveHTTP(rw http.ResponseWriter, req *http.Request) {
 	method := req.Method
 	u := req.URL
 
-	rw.Header().Set("X-Powered-By", HeaderXPoweredBy)
+	rw.Header().Set("X-Powered-By", build.HeaderXPoweredBy)
 
 	rawpath := u.EscapedPath()
 	switch {
@@ -249,7 +234,7 @@ func (r *Runner) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		for _, cr := range r.clusters {
 			if cr.AcceptHost(req.Host) {
-				cr.HandleFile(rw, req, hash)
+				cr.HandleMeasure(rw, req, size)
 				return
 			}
 		}
@@ -264,23 +249,24 @@ func (r *Runner) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		case "v0":
 			r.handlerAPIv0.ServeHTTP(rw, req)
 			return
-		case "v1":
-			r.handlerAPIv1.ServeHTTP(rw, req)
-			return
+			// case "v1":
+			// 	r.handlerAPIv1.ServeHTTP(rw, req)
+			// 	return
 		}
 	case rawpath == "/" || rawpath == "/dashboard":
 		http.Redirect(rw, req, "/dashboard/", http.StatusFound)
 		return
 	case strings.HasPrefix(rawpath, "/dashboard/"):
-		if !r.DashboardEnabled {
+		if !r.Config.Dashboard.Enable {
 			http.NotFound(rw, req)
 			return
 		}
-		pth := rawpath[len("/dashboard/"):]
-		r.serveDashboard(rw, req, pth)
+		req2 := gosrc.RequestStripPrefix(req, "/dashboard")
+		r.serveDashboard(rw, req2)
 		return
 	case strings.HasPrefix(rawpath, "/bmclapi/"):
-		r.hijackHandler.ServeHTTP(rw, req)
+		req2 := gosrc.RequestStripPrefix(req, "/bmclapi")
+		r.hijackHandler.ServeHTTP(rw, req2)
 		return
 	}
 	http.NotFound(rw, req)

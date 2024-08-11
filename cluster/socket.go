@@ -48,10 +48,10 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 	}
 
 	engio, err := engine.NewSocket(engine.Options{
-		Host: cr.opts.Prefix,
+		Host: cr.opts.Server,
 		Path: "/socket.io/",
 		ExtraHeaders: http.Header{
-			"Origin":     {cr.opts.Prefix},
+			"Origin":     {cr.opts.Server},
 			"User-Agent": {build.ClusterUserAgent},
 		},
 		DialTimeout: time.Minute * 6,

@@ -21,11 +21,19 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/LiterMC/go-openbmclapi/config"
+	"github.com/LiterMC/go-openbmclapi/log"
+	"github.com/LiterMC/go-openbmclapi/storage"
 )
+
+const DefaultBMCLAPIServer = "https://openbmclapi.bangbang93.com"
 
 func migrateConfig(data []byte, cfg *config.Config) {
 	var oldConfig map[string]any
@@ -45,11 +53,13 @@ func migrateConfig(data []byte, cfg *config.Config) {
 	if oldConfig["clusters"].(map[string]any) == nil {
 		id, ok1 := oldConfig["cluster-id"].(string)
 		secret, ok2 := oldConfig["cluster-secret"].(string)
-		if ok1 && ok2 {
-			cfg.Clusters = map[string]ClusterItem{
+		publicHost, ok3 := oldConfig["public-host"].(string)
+		if ok1 && ok2 && ok3 {
+			cfg.Clusters = map[string]config.ClusterOptions{
 				"main": {
-					Id:     id,
-					Secret: secret,
+					Id:          id,
+					Secret:      secret,
+					PublicHosts: []string{publicHost},
 				},
 			}
 		}
@@ -67,7 +77,7 @@ func readAndRewriteConfig() (cfg *config.Config, err error) {
 			log.TrErrorf("error.config.read.failed", err)
 			os.Exit(1)
 		}
-		log.TrError("error.config.not.exists")
+		log.TrErrorf("error.config.not.exists")
 		notexists = true
 	} else {
 		migrateConfig(data, cfg)
@@ -76,15 +86,18 @@ func readAndRewriteConfig() (cfg *config.Config, err error) {
 			os.Exit(1)
 		}
 		if len(cfg.Clusters) == 0 {
-			cfg.Clusters = map[string]ClusterItem{
+			cfg.Clusters = map[string]config.ClusterOptions{
 				"main": {
-					Id:     "${CLUSTER_ID}",
-					Secret: "${CLUSTER_SECRET}",
+					Id:                 "${CLUSTER_ID}",
+					Secret:             "${CLUSTER_SECRET}",
+					PublicHosts:        []string{},
+					Server:             DefaultBMCLAPIServer,
+					SkipSignatureCheck: false,
 				},
 			}
 		}
 		if len(cfg.Certificates) == 0 {
-			cfg.Certificates = []CertificateConfig{
+			cfg.Certificates = []config.CertificateConfig{
 				{
 					Cert: "/path/to/cert.pem",
 					Key:  "/path/to/key.pem",
@@ -123,12 +136,6 @@ func readAndRewriteConfig() (cfg *config.Config, err error) {
 				os.Exit(1)
 			}
 			ids[s.Id] = i
-			if s.Cluster != "" && s.Cluster != "-" {
-				if _, ok := cfg.Clusters[s.Cluster]; !ok {
-					log.Errorf("Storage %q is trying to connect to a not exists cluster %q.", s.Id, s.Cluster)
-					os.Exit(1)
-				}
-			}
 		}
 	}
 
@@ -173,7 +180,8 @@ func readAndRewriteConfig() (cfg *config.Config, err error) {
 		os.Exit(1)
 	}
 	if notexists {
-		log.TrError("error.config.created")
+		log.TrErrorf("error.config.created")
+		return nil, errors.New("Please edit the config before continue!")
 	}
 	return
 }

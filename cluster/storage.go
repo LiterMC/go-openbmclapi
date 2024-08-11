@@ -21,6 +21,8 @@ package cluster
 
 import (
 	"context"
+	"crypto"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,9 +32,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"crypto"
 	"time"
-	"encoding/hex"
 
 	"github.com/hamba/avro/v2"
 	"github.com/klauspost/compress/zstd"

@@ -122,10 +122,9 @@ type GithubAPIConfig struct {
 }
 
 type TunnelConfig struct {
-	Enable        bool   `yaml:"enable"`
-	TunnelProg    string `yaml:"tunnel-program"`
-	OutputRegex   string `yaml:"output-regex"`
-	TunnelTimeout int    `yaml:"tunnel-timeout"`
+	Enable      bool   `yaml:"enable"`
+	TunnelProg  string `yaml:"tunnel-program"`
+	OutputRegex string `yaml:"output-regex"`
 
 	outputRegex *regexp.Regexp
 	hostOut     int

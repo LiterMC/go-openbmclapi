@@ -39,7 +39,6 @@ import (
 	"github.com/LiterMC/go-openbmclapi/api/v0"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/internal/gosrc"
-	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
@@ -102,11 +101,14 @@ var wsUpgrader = &websocket.Upgrader{
 	HandshakeTimeout: time.Second * 30,
 }
 
-func (r *Runner) GetHandler() http.Handler {
-	r.apiRateLimiter = limited.NewAPIRateMiddleWare(api.RealAddrCtxKey, "go-openbmclapi.cluster.logged.user" /* api/v0.loggedUserKey */)
+func (r *Runner) updateRateLimit(ctx context.Context) error {
 	r.apiRateLimiter.SetAnonymousRateLimit(r.Config.RateLimit.Anonymous)
 	r.apiRateLimiter.SetLoggedRateLimit(r.Config.RateLimit.Logged)
-	r.handlerAPIv0 = http.StripPrefix("/api/v0", v0.NewHandler(wsUpgrader))
+	return nil
+}
+
+func (r *Runner) GetHandler() http.Handler {
+	r.handlerAPIv0 = http.StripPrefix("/api/v0", v0.NewHandler(wsUpgrader, r.configHandler, r.userManager, r.tokenManager, r.subManager))
 	r.hijackHandler = http.StripPrefix("/bmclapi", r.hijacker)
 
 	handler := utils.NewHttpMiddleWareHandler((http.HandlerFunc)(r.serveHTTP))

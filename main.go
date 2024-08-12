@@ -45,6 +45,7 @@ import (
 
 	doh "github.com/libp2p/go-doh-resolver"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/api/bmclapi"
 	"github.com/LiterMC/go-openbmclapi/cluster"
 	"github.com/LiterMC/go-openbmclapi/config"
@@ -118,7 +119,7 @@ func main() {
 	defer log.RecordPanic()
 	log.StartFlushLogFile()
 
-	r := new(Runner)
+	r := NewRunner()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -211,25 +212,38 @@ func main() {
 type Runner struct {
 	Config *config.Config
 
+	configHandler  *ConfigHandler
+	client         *cluster.HTTPClient
 	clusters       map[string]*cluster.Cluster
-	apiRateLimiter *limited.APIRateMiddleWare
+	userManager    api.UserManager
+	tokenManager   api.TokenManager
+	subManager     api.SubscriptionManager
 	storageManager *storage.Manager
 	statManager    *cluster.StatManager
 	hijacker       *bmclapi.HjProxy
 	database       database.DB
 
-	server        *http.Server
-	handlerAPIv0  http.Handler
-	hijackHandler http.Handler
+	server         *http.Server
+	apiRateLimiter *limited.APIRateMiddleWare
+	handler        http.Handler
+	handlerAPIv0   http.Handler
+	hijackHandler  http.Handler
 
-	tlsConfig   *tls.Config
+	tlsConfig  *tls.Config
 	publicHost string
 	publicPort uint16
-	listener    *utils.HTTPTLSListener
+	listener   *utils.HTTPTLSListener
 
 	reloading    atomic.Bool
 	updating     atomic.Bool
 	tunnelCancel context.CancelFunc
+}
+
+func NewRunner() *Runner {
+	r := new(Runner)
+	r.configHandler = &ConfigHandler{r: r}
+	r.apiRateLimiter = limited.NewAPIRateMiddleWare(api.RealAddrCtxKey, "go-openbmclapi.cluster.logged.user" /* api/v0.loggedUserKey */)
+	return r
 }
 
 func (r *Runner) getPublicPort() uint16 {
@@ -250,9 +264,13 @@ func (r *Runner) InitServer() {
 	r.server = &http.Server{
 		ReadTimeout: 10 * time.Second,
 		IdleTimeout: 5 * time.Second,
-		Handler:     r.GetHandler(),
-		ErrorLog:    log.ProxiedStdLog,
+		Handler: (http.HandlerFunc)(func(rw http.ResponseWriter, req *http.Request) {
+			r.handler.ServeHTTP(rw, req)
+		}),
+		ErrorLog: log.ProxiedStdLog,
 	}
+	r.updateRateLimit(context.TODO())
+	r.handler = r.GetHandler()
 }
 
 // StartServer will start the HTTP server
@@ -390,7 +408,6 @@ func (r *Runner) ListenSignals(ctx context.Context, cancel context.CancelFunc) i
 
 		}
 	}
-	return 0
 }
 
 func (r *Runner) ReloadConfig(ctx context.Context) {
@@ -411,28 +428,10 @@ func (r *Runner) ReloadConfig(ctx context.Context) {
 }
 
 func (r *Runner) updateConfig(ctx context.Context, newConfig *config.Config) error {
-	oldConfig := r.Config
-	reloadProcesses := make([]func(context.Context) error, 0, 8)
-
-	if newConfig.LogSlots != oldConfig.LogSlots || newConfig.NoAccessLog != oldConfig.NoAccessLog || newConfig.AccessLogSlots != oldConfig.AccessLogSlots || newConfig.Advanced.DebugLog != oldConfig.Advanced.DebugLog {
-		reloadProcesses = append(reloadProcesses, r.SetupLogger)
+	if err := r.configHandler.update(newConfig); err != nil {
+		return err
 	}
-	if newConfig.Host != oldConfig.Host || newConfig.Port != oldConfig.Port {
-		reloadProcesses = append(reloadProcesses, r.StartServer)
-	}
-	if newConfig.PublicHost != oldConfig.PublicHost || newConfig.PublicPort != oldConfig.PublicPort || newConfig.Advanced.NoFastEnable != oldConfig.Advanced.NoFastEnable || newConfig.MaxReconnectCount != oldConfig.MaxReconnectCount {
-		reloadProcesses = append(reloadProcesses, r.updateClustersWithGeneralConfig)
-	}
-
-	r.Config = newConfig
-	r.publicHost = r.Config.PublicHost
-	r.publicPort = r.Config.PublicPort
-	for _, proc := range reloadProcesses {
-		if err := proc(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return r.configHandler.doUpdateProcesses(ctx)
 }
 
 func (r *Runner) SetupLogger(ctx context.Context) error {
@@ -494,21 +493,23 @@ func (r *Runner) UpdateFileRecords(files map[string]*cluster.StorageFileInfo, ol
 	sem := limited.NewSemaphore(12)
 	log.Info("Begin to update file records")
 	for _, f := range files {
-		if strings.HasPrefix(f.Path, "/openbmclapi/download/") {
-			continue
+		for _, u := range f.URLs {
+			if strings.HasPrefix(u.Path, "/openbmclapi/download/") {
+				continue
+			}
+			if oldfileset[f.Hash] > 0 {
+				continue
+			}
+			sem.Acquire()
+			go func(rec database.FileRecord) {
+				defer sem.Release()
+				r.database.SetFileRecord(rec)
+			}(database.FileRecord{
+				Path: u.Path,
+				Hash: f.Hash,
+				Size: f.Size,
+			})
 		}
-		if oldfileset[f.Hash] > 0 {
-			continue
-		}
-		sem.Acquire()
-		go func(rec database.FileRecord) {
-			defer sem.Release()
-			r.database.SetFileRecord(rec)
-		}(database.FileRecord{
-			Path: f.Path,
-			Hash: f.Hash,
-			Size: f.Size,
-		})
 	}
 	sem.Wait()
 	log.Info("All file records are updated")
@@ -533,17 +534,20 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		heavyCheck = false
 	}
 
-	// if !r.Config.Advanced.SkipFirstSync {
-	// 	if !r.cluster.SyncFiles(ctx, fileMap, false) {
-	// 		return
-	// 	}
-	// 	go r.UpdateFileRecords(fileMap, nil)
+	// if !r.Config.Advanced.SkipFirstSync
+	{
+		slots := 10
+		if err := r.client.SyncFiles(ctx, r.storageManager, fileMap, false, slots); err != nil {
+			log.Errorf("Sync failed: %v", err)
+			return
+		}
+		go r.UpdateFileRecords(fileMap, nil)
 
-	// 	if !r.Config.Advanced.NoGC {
-	// 		go r.cluster.Gc()
-	// 	}
-	// } else
-	// if fl != nil {
+		// if !r.Config.Advanced.NoGC {
+		// 	go r.cluster.Gc()
+		// }
+	}
+	// else if fl != nil {
 	// 	if err := r.cluster.SetFilesetByExists(ctx, fl); err != nil {
 	// 		return
 	// 	}
@@ -564,12 +568,10 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		}
 
 		checkCount = (checkCount + 1) % heavyCheckInterval
-		oldfileset := r.cluster.CloneFileset()
-		if r.cluster.SyncFiles(ctx, fl, heavyCheck && checkCount == 0) {
-			go r.UpdateFileRecords(fl, oldfileset)
-			if !r.Config.Advanced.NoGC && !r.Config.OnlyGcWhenStart {
-				go r.cluster.Gc()
-			}
+		slots := 10
+		if err := r.client.SyncFiles(ctx, r.storageManager, fileMap, heavyCheck && (checkCount == 0), slots); err != nil {
+			log.Errorf("Sync failed: %v", err)
+			return
 		}
 	}, (time.Duration)(r.Config.SyncInterval)*time.Minute)
 }

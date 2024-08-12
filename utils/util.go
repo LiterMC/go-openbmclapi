@@ -21,8 +21,10 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -47,6 +49,12 @@ func (m *SyncMap[K, V]) RawMap() map[K]V {
 	return m.m
 }
 
+func (m *SyncMap[K, V]) Clear() {
+	m.l.Lock()
+	defer m.l.Unlock()
+	clear(m.m)
+}
+
 func (m *SyncMap[K, V]) Set(k K, v V) {
 	m.l.Lock()
 	defer m.l.Unlock()
@@ -59,7 +67,7 @@ func (m *SyncMap[K, V]) Get(k K) V {
 	return m.m[k]
 }
 
-func (m *SyncMap[K, V]) Has(k K) bool {
+func (m *SyncMap[K, V]) Contains(k K) bool {
 	m.l.RLock()
 	defer m.l.RUnlock()
 	_, ok := m.m[k]
@@ -81,6 +89,55 @@ func (m *SyncMap[K, V]) GetOrSet(k K, setter func() V) (v V, had bool) {
 		m.m[k] = v
 	}
 	return
+}
+
+type Set[T comparable] map[T]struct{}
+
+func NewSet[T comparable]() Set[T] {
+	return make(Set[T])
+}
+
+func (s Set[T]) Clear() {
+	clear(s)
+}
+
+func (s Set[T]) Put(v T) {
+	s[v] = struct{}{}
+}
+
+func (s Set[T]) Contains(v T) bool {
+	_, ok := s[v]
+	return ok
+}
+
+func (s Set[T]) Remove(v T) bool {
+	_, ok := s[v]
+	if ok {
+		delete(s, v)
+	}
+	return ok
+}
+
+func (s Set[T]) ToSlice(arr []T) []T {
+	for v, _ := range s {
+		arr = append(arr, v)
+	}
+	return arr
+}
+
+func (s Set[T]) String() string {
+	var b strings.Builder
+	b.WriteString("Set{")
+	first := true
+	for v := range s {
+		if first {
+			first = false
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%v", v)
+	}
+	b.WriteByte('}')
+	return b.String()
 }
 
 func WalkCacheDir(cacheDir string, walker func(hash string, size int64) (err error)) (err error) {

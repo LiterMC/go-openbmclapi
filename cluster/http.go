@@ -80,6 +80,14 @@ func redirectChecker(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
+func (cr *Cluster) getFullURL(relpath string) (u *url.URL, err error) {
+	if u, err = url.Parse(cr.opts.Server); err != nil {
+		return
+	}
+	u.Path = path.Join(u.Path, relpath)
+	return
+}
+
 func (cr *Cluster) makeReq(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
 	return cr.makeReqWithBody(ctx, method, relpath, query, nil)
 }
@@ -89,11 +97,10 @@ func (cr *Cluster) makeReqWithBody(
 	method string, relpath string,
 	query url.Values, body io.Reader,
 ) (req *http.Request, err error) {
-	var u *url.URL
-	if u, err = url.Parse(cr.opts.Server); err != nil {
+	u, err := cr.getFullURL(relpath)
+	if err != nil {
 		return
 	}
-	u.Path = path.Join(u.Path, relpath)
 	if query != nil {
 		u.RawQuery = query.Encode()
 	}

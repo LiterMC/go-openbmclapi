@@ -20,6 +20,7 @@
 package config
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"time"
 
@@ -94,10 +95,9 @@ func NewDefaultConfig() *Config {
 		Certificates: []CertificateConfig{},
 
 		Tunneler: TunnelConfig{
-			Enable:        false,
-			TunnelProg:    "./path/to/tunnel/program",
-			OutputRegex:   `\bNATedAddr\s+(?P<host>[0-9.]+|\[[0-9a-f:]+\]):(?P<port>\d+)$`,
-			TunnelTimeout: 0,
+			Enable:      false,
+			TunnelProg:  "./path/to/tunnel/program",
+			OutputRegex: `\bNATedAddr\s+(?P<host>[0-9.]+|\[[0-9a-f:]+\]):(?P<port>\d+)$`,
 		},
 
 		Cache: CacheConfig{
@@ -133,6 +133,8 @@ func NewDefaultConfig() *Config {
 
 		Dashboard: DashboardConfig{
 			Enable:        true,
+			Username:      "",
+			Password:      "",
 			PwaName:       "GoOpenBmclApi Dashboard",
 			PwaShortName:  "GOBA Dash",
 			PwaDesc:       "Go-Openbmclapi Internal Dashboard",
@@ -141,6 +143,7 @@ func NewDefaultConfig() *Config {
 
 		GithubAPI: GithubAPIConfig{
 			UpdateCheckInterval: (utils.YAMLDuration)(time.Hour),
+			Authorization:       "",
 		},
 
 		Database: DatabaseConfig{
@@ -177,6 +180,28 @@ func NewDefaultConfig() *Config {
 	}
 }
 
+func (config *Config) MarshalJSON() ([]byte, error) {
+	type T Config
+	return json.Marshal((*T)(config))
+}
+
+func (config *Config) UnmarshalJSON(data []byte) error {
+	type T Config
+	return json.Unmarshal(data, (*T)(config))
+}
+
 func (config *Config) UnmarshalText(data []byte) error {
 	return yaml.Unmarshal(data, config)
+}
+
+func (config *Config) Clone() *Config {
+	data, err := config.MarshalJSON()
+	if err != nil {
+		panic(err)
+	}
+	cloned := new(Config)
+	if err := cloned.UnmarshalJSON(data); err != nil {
+		panic(err)
+	}
+	return cloned
 }

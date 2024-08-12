@@ -21,16 +21,22 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 const DefaultBMCLAPIServer = "https://openbmclapi.bangbang93.com"
@@ -184,4 +190,150 @@ func readAndRewriteConfig() (cfg *config.Config, err error) {
 		return nil, errors.New("Please edit the config before continue!")
 	}
 	return
+}
+
+type ConfigHandler struct {
+	mux sync.RWMutex
+	r   *Runner
+
+	updateProcess []func(context.Context) error
+}
+
+var _ api.ConfigHandler = (*ConfigHandler)(nil)
+
+func (c *ConfigHandler) update(newConfig *config.Config) error {
+	r := c.r
+	oldConfig := r.Config
+	c.updateProcess = c.updateProcess[:0]
+
+	if newConfig.LogSlots != oldConfig.LogSlots || newConfig.NoAccessLog != oldConfig.NoAccessLog || newConfig.AccessLogSlots != oldConfig.AccessLogSlots || newConfig.Advanced.DebugLog != oldConfig.Advanced.DebugLog {
+		c.updateProcess = append(c.updateProcess, r.SetupLogger)
+	}
+	if newConfig.Host != oldConfig.Host || newConfig.Port != oldConfig.Port {
+		c.updateProcess = append(c.updateProcess, r.StartServer)
+	}
+	if newConfig.PublicHost != oldConfig.PublicHost || newConfig.PublicPort != oldConfig.PublicPort || newConfig.Advanced.NoFastEnable != oldConfig.Advanced.NoFastEnable || newConfig.MaxReconnectCount != oldConfig.MaxReconnectCount {
+		c.updateProcess = append(c.updateProcess, r.updateClustersWithGeneralConfig)
+	}
+	if newConfig.RateLimit != oldConfig.RateLimit {
+		c.updateProcess = append(c.updateProcess, r.updateRateLimit)
+	}
+	if newConfig.Notification != oldConfig.Notification {
+		// c.updateProcess = append(c.updateProcess, )
+	}
+
+	r.Config = newConfig
+	r.publicHost = r.Config.PublicHost
+	r.publicPort = r.Config.PublicPort
+	return nil
+}
+
+func (c *ConfigHandler) doUpdateProcesses(ctx context.Context) error {
+	for _, proc := range c.updateProcess {
+		if err := proc(ctx); err != nil {
+			return err
+		}
+	}
+	c.updateProcess = c.updateProcess[:0]
+	return nil
+}
+
+func (c *ConfigHandler) MarshalJSON() ([]byte, error) {
+	return c.r.Config.MarshalJSON()
+}
+
+func (c *ConfigHandler) UnmarshalJSON(data []byte) error {
+	c2 := c.r.Config.Clone()
+	if err := c2.UnmarshalJSON(data); err != nil {
+		return err
+	}
+	c.update(c2)
+	return nil
+}
+
+func (c *ConfigHandler) UnmarshalYAML(data []byte) error {
+	c2 := c.r.Config.Clone()
+	if err := c2.UnmarshalText(data); err != nil {
+		return err
+	}
+	c.update(c2)
+	return nil
+}
+
+func (c *ConfigHandler) MarshalJSONPath(path string) ([]byte, error) {
+	names := strings.Split(path, ".")
+	data, err := c.r.Config.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	accessed := ""
+	var x any = m
+	for _, n := range names {
+		mc, ok := x.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("Unexpected type %T on path %q, expect map[string]any", x, accessed)
+		}
+		accessed += n + "."
+		x = mc[n]
+	}
+	return json.Marshal(x)
+}
+
+func (c *ConfigHandler) UnmarshalJSONPath(path string, data []byte) error {
+	names := strings.Split(path, ".")
+	var d any
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+	accessed := ""
+	var m map[string]any
+	{
+		b, err := c.MarshalJSON()
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(b, &m); err != nil {
+			return err
+		}
+	}
+	x := m
+	for _, p := range names[:len(names)-1] {
+		accessed += p + "."
+		var ok bool
+		x, ok = x[p].(map[string]any)
+		if !ok {
+			return fmt.Errorf("Unexpected type %T on path %q, expect map[string]any", x, accessed)
+		}
+	}
+	x[names[len(names)-1]] = d
+	dt, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return c.UnmarshalJSON(dt)
+}
+
+func (c *ConfigHandler) Fingerprint() string {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
+	return c.fingerprintLocked()
+}
+
+func (c *ConfigHandler) fingerprintLocked() string {
+	data, err := c.MarshalJSON()
+	if err != nil {
+		log.Panicf("ConfigHandler.Fingerprint: MarshalJSON: %v", err)
+	}
+	return utils.BytesAsSha256(data)
+}
+
+func (c *ConfigHandler) DoLockedAction(fingerprint string, callback func(api.ConfigHandler) error) error {
+	if c.fingerprintLocked() != fingerprint {
+		return api.ErrPreconditionFailed
+	}
+	return callback(c)
 }

@@ -21,7 +21,10 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 )
+
+var ErrPreconditionFailed = errors.New("Precondition Failed")
 
 type ConfigHandler interface {
 	json.Marshaler
@@ -31,5 +34,6 @@ type ConfigHandler interface {
 	UnmarshalJSONPath(path string, data []byte) error
 
 	Fingerprint() string
+	// DoLockedAction will execute callback if the fingerprint matches, or return ErrPreconditionFailed
 	DoLockedAction(fingerprint string, callback func(ConfigHandler) error) error
 }

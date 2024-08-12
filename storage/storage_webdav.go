@@ -551,7 +551,7 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 }
 
 func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) error {
-	if s.measures.Has(size) {
+	if s.measures.Contains(size) {
 		// TODO: is this safe?
 		return nil
 	}

@@ -44,6 +44,7 @@ var (
 )
 
 type Cluster struct {
+	name string
 	opts config.ClusterOptions
 	gcfg config.ClusterGeneralConfig
 
@@ -69,7 +70,7 @@ type Cluster struct {
 }
 
 func NewCluster(
-	opts config.ClusterOptions, gcfg config.ClusterGeneralConfig,
+	name string, opts config.ClusterOptions, gcfg config.ClusterGeneralConfig,
 	storageManager *storage.Manager,
 	statManager *StatManager,
 ) (cr *Cluster) {
@@ -89,8 +90,15 @@ func NewCluster(
 }
 
 // ID returns the cluster id
+// The ID may not be unique in the openbmclapi cluster runtime
 func (cr *Cluster) ID() string {
 	return cr.opts.Id
+}
+
+// Name returns the cluster's alias name
+// The name must be unique in the openbmclapi cluster runtime
+func (cr *Cluster) Name() string {
+	return cr.name
 }
 
 // Secret returns the cluster secret

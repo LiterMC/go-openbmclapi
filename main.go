@@ -543,9 +543,9 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		}
 		go r.UpdateFileRecords(fileMap, nil)
 
-		// if !r.Config.Advanced.NoGC {
-		// 	go r.cluster.Gc()
-		// }
+		if !r.Config.Advanced.NoGC {
+			go r.client.Gc(context.TODO(), r.storageManager, fileMap)
+		}
 	}
 	// else if fl != nil {
 	// 	if err := r.cluster.SetFilesetByExists(ctx, fl); err != nil {

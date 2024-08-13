@@ -702,6 +702,31 @@ func (c *HTTPClient) fetchFileWithBuf(
 	return
 }
 
+func (c *HTTPClient) Gc(
+	ctx context.Context,
+	manager *storage.Manager,
+	files map[string]*StorageFileInfo,
+) error {
+	errs := make([]error, len(manager.Storages))
+	var wg sync.WaitGroup
+	for i, s := range manager.Storages {
+		wg.Add(1)
+		go func(i int, s storage.Storage) {
+			defer wg.Done()
+			errs[i] = s.WalkDir(func(hash string, size int64) error {
+				info, ok := files[hash]
+				ok = ok && slices.Contains(info.Storages, s)
+				if !ok {
+					s.Remove(hash)
+				}
+				return nil
+			})
+		}(i, s)
+	}
+	wg.Wait()
+	return errors.Join(errs...)
+}
+
 func getHashMethod(l int) (hashMethod crypto.Hash, err error) {
 	switch l {
 	case 32:

@@ -641,29 +641,22 @@ func (c *HTTPClient) fetchFileWithBuf(
 		return
 	}
 	defer res.Body.Close()
-	if err = ctx.Err(); err != nil {
-		return
-	}
 	if res.StatusCode != http.StatusOK {
-		err = utils.ErrorFromRedirect(utils.NewHTTPStatusErrorFromResponse(res), res)
-		return
+		err = utils.NewHTTPStatusErrorFromResponse(res)
+	}else {
+		switch ce := strings.ToLower(res.Header.Get("Content-Encoding")); ce {
+		case "":
+			r = res.Body
+		case "gzip":
+			r, err = gzip.NewReader(res.Body)
+		case "deflate":
+			r, err = zlib.NewReader(res.Body)
+		default:
+			err = fmt.Errorf("Unexpected Content-Encoding %q", ce)
+		}
 	}
-	switch ce := strings.ToLower(res.Header.Get("Content-Encoding")); ce {
-	case "":
-		r = res.Body
-	case "gzip":
-		if r, err = gzip.NewReader(res.Body); err != nil {
-			err = utils.ErrorFromRedirect(err, res)
-			return
-		}
-	case "deflate":
-		if r, err = zlib.NewReader(res.Body); err != nil {
-			err = utils.ErrorFromRedirect(err, res)
-			return
-		}
-	default:
-		err = utils.ErrorFromRedirect(fmt.Errorf("Unexpected Content-Encoding %q", ce), res)
-		return
+	if err != nil {
+		return "", utils.ErrorFromRedirect(err, res)
 	}
 	if wrapper != nil {
 		r = wrapper(r)

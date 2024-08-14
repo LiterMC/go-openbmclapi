@@ -90,13 +90,14 @@ func NewCluster(
 }
 
 // ID returns the cluster id
-// The ID may not be unique in the openbmclapi cluster runtime
+// The ID may not be unique in the OpenBMCLAPI cluster runtime.
+// To identify the cluster instance for analyzing, use Name instead.
 func (cr *Cluster) ID() string {
 	return cr.opts.Id
 }
 
 // Name returns the cluster's alias name
-// The name must be unique in the openbmclapi cluster runtime
+// The name must be unique in the OpenBMCLAPI cluster runtime.
 func (cr *Cluster) Name() string {
 	return cr.name
 }

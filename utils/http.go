@@ -506,30 +506,37 @@ func (c *connHeadReader) Read(buf []byte) (n int, err error) {
 	return c.Conn.Read(buf)
 }
 
+func GetRedirects(req *http.Request) []*url.URL {
+	redirects := make([]*url.URL, 0, 5)
+	for req != nil {
+		redirects = append(redirects, req.URL)
+		resp := req.Response
+		if resp == nil {
+			break
+		}
+		req = resp.Request
+	}
+	if len(redirects) == 0 {
+		return nil
+	}
+	slices.Reverse(redirects)
+	return redirects
+}
+
 type RedirectError struct {
 	Redirects []*url.URL
 	Err       error
 }
 
 func ErrorFromRedirect(err error, resp *http.Response) *RedirectError {
-	redirects := make([]*url.URL, 0, 4)
-	for resp != nil && resp.Request != nil {
-		redirects = append(redirects, resp.Request.URL)
-		resp = resp.Request.Response
-	}
-	if len(redirects) > 1 {
-		slices.Reverse(redirects)
-	} else {
-		redirects = nil
-	}
 	return &RedirectError{
-		Redirects: redirects,
+		Redirects: GetRedirects(resp.Request),
 		Err:       err,
 	}
 }
 
 func (e *RedirectError) Error() string {
-	if len(e.Redirects) == 0 {
+	if len(e.Redirects) <= 1 {
 		return e.Err.Error()
 	}
 

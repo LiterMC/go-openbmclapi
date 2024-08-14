@@ -115,7 +115,15 @@ func (cr *Cluster) makeReqWithBody(
 }
 
 func (cr *Cluster) makeReqWithAuth(ctx context.Context, method string, relpath string, query url.Values) (req *http.Request, err error) {
-	req, err = cr.makeReq(ctx, method, relpath, query)
+	return cr.makeReqWithAuthBody(ctx, method, relpath, query, nil)
+}
+
+func (cr *Cluster) makeReqWithAuthBody(
+	ctx context.Context,
+	method string, relpath string,
+	query url.Values, body io.Reader,
+) (req *http.Request, err error) {
+	req, err = cr.makeReqWithBody(ctx, method, relpath, query, nil)
 	if err != nil {
 		return
 	}

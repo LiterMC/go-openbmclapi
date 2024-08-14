@@ -259,3 +259,33 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 	}
 	return
 }
+
+func (cr *Cluster) ReportDownload(ctx context.Context, request *http.Request, err error) error {
+	type ReportPayload struct {
+		Urls  []string                                  `json:"urls"`
+		Error utils.EmbedJSON[struct{ Message string }] `json:"error"`
+	}
+	var payload ReportPayload
+	redirects := utils.GetRedirects(request)
+	payload.Urls = make([]string, len(redirects))
+	for i, u := range redirects {
+		payload.Urls[i] = u.String()
+	}
+	payload.Error.V.Message = err.Error()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := cr.makeReqWithAuthBody(ctx, http.MethodPost, "/openbmclapi/report", nil, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	resp, err := cr.client.Do(req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode/100 != 2 {
+		return utils.NewHTTPStatusErrorFromResponse(resp)
+	}
+	return nil
+}

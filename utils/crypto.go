@@ -82,7 +82,7 @@ func GenRandB64(n int) (s string, err error) {
 }
 
 func LoadOrCreateHmacKey(dataDir string, name string) (key []byte, err error) {
-	path := filepath.Join(dataDir, name + ".hmac.private_key")
+	path := filepath.Join(dataDir, name+".hmac.private_key")
 	buf, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {

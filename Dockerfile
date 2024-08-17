@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-ARG GO_VERSION=1.21
+ARG GO_VERSION=1.23
 ARG REPO=github.com/LiterMC/go-openbmclapi
 ARG NPM_DIR=dashboard
 

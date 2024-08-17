@@ -1,6 +1,6 @@
 module github.com/LiterMC/go-openbmclapi
 
-go 1.22.0
+go 1.23.0
 
 require (
 	github.com/LiterMC/socket.io v0.2.5

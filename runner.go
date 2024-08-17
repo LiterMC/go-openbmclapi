@@ -93,9 +93,10 @@ type Runner struct {
 	tunnelCancel context.CancelFunc
 }
 
-func NewRunner() *Runner {
+func NewRunner(cfg *config.Config) *Runner {
 	r := new(Runner)
 
+	r.Config = cfg
 	r.configHandler = &ConfigHandler{r: r}
 
 	var dialer *net.Dialer

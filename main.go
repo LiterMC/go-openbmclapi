@@ -98,17 +98,15 @@ func main() {
 	defer log.RecordPanic()
 	log.StartFlushLogFile()
 
-	r := NewRunner()
-
 	ctx, cancel := context.WithCancel(context.Background())
 
-	if config, err := readAndRewriteConfig(); err != nil {
+	config, err := readAndRewriteConfig()
+	if err != nil {
 		log.Errorf("Config error: %s", err)
 		os.Exit(1)
-	} else {
-		r.Config = config
 	}
 
+	r := NewRunner(cfg)
 	r.SetupLogger(ctx)
 
 	log.TrInfof("program.starting", build.ClusterVersion, build.BuildVersion)

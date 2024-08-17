@@ -260,13 +260,13 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 	return
 }
 
-func (cr *Cluster) ReportDownload(ctx context.Context, request *http.Request, err error) error {
+func (cr *Cluster) ReportDownload(ctx context.Context, response *http.Response, err error) error {
 	type ReportPayload struct {
 		Urls  []string                                  `json:"urls"`
 		Error utils.EmbedJSON[struct{ Message string }] `json:"error"`
 	}
 	var payload ReportPayload
-	redirects := utils.GetRedirects(request)
+	redirects := utils.GetRedirects(response.Request)
 	payload.Urls = make([]string, len(redirects))
 	for i, u := range redirects {
 		payload.Urls[i] = u.String()

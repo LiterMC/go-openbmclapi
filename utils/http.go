@@ -525,12 +525,14 @@ func GetRedirects(req *http.Request) []*url.URL {
 
 type RedirectError struct {
 	Redirects []*url.URL
+	Response  *http.Response
 	Err       error
 }
 
 func ErrorFromRedirect(err error, resp *http.Response) *RedirectError {
 	return &RedirectError{
 		Redirects: GetRedirects(resp.Request),
+		Response:  resp,
 		Err:       err,
 	}
 }
@@ -549,6 +551,10 @@ func (e *RedirectError) Error() string {
 	}
 	b.WriteString(e.Err.Error())
 	return b.String()
+}
+
+func (e *RedirectError) GetResponse() *http.Response {
+	return e.Response
 }
 
 func (e *RedirectError) Unwrap() error {

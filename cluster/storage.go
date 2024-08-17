@@ -75,7 +75,8 @@ type FileInfo struct {
 
 type RequestPath struct {
 	*http.Request
-	Path string
+	Cluster *Cluster
+	Path    string
 }
 
 type StorageFileInfo struct {
@@ -153,7 +154,11 @@ func (cr *Cluster) GetFileList(ctx context.Context, fileMap map[string]*StorageF
 			if err != nil {
 				return err
 			}
-			ff.URLs[req.URL.String()] = RequestPath{Request: req, Path: f.Path}
+			ff.URLs[req.URL.String()] = RequestPath{
+				Request: req,
+				Cluster: cr,
+				Path:    f.Path,
+			}
 			fileMap[f.Hash] = ff
 		}
 	}
@@ -548,9 +553,9 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 	}
 
 	reqInd := 0
-	reqs := make([]*http.Request, 0, len(f.URLs))
+	reqs := make([]RequestPath, 0, len(f.URLs))
 	for _, rq := range f.URLs {
-		reqs = append(reqs, rq.Request)
+		reqs = append(reqs, rq)
 	}
 
 	fileRes := make(chan *os.File, 1)
@@ -610,10 +615,18 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 			if _, err := fd.Seek(io.SeekStart, 0); err != nil {
 				return err
 			}
-			if err := c.fetchFileWithBuf(ctx, reqs[reqInd], f.Size, hashMethod, f.Hash, fd, buf, func(r io.Reader) io.Reader {
+			rp := reqs[reqInd]
+			if err := c.fetchFileWithBuf(ctx, rp.Request, f.Size, hashMethod, f.Hash, fd, buf, func(r io.Reader) io.Reader {
 				return utils.ProxyPBReader(r, bar, stats.totalBar, &stats.lastInc)
 			}); err != nil {
 				reqInd = (reqInd + 1) % len(reqs)
+				if rerr, ok := err.(*utils.RedirectError); ok {
+					go func() {
+						if err := rp.Cluster.ReportDownload(context.WithoutCancel(ctx), rerr.GetResponse(), rerr.Unwrap()); err != nil {
+							log.Warnf("Report API error: %v", err)
+						}
+					}()
+				}
 				return err
 			}
 			return nil

@@ -100,7 +100,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	config, err := readAndRewriteConfig()
+	cfg, err := readAndRewriteConfig()
 	if err != nil {
 		log.Errorf("Config error: %s", err)
 		os.Exit(1)

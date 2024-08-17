@@ -32,10 +32,6 @@ import (
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
-var (
-	ErrNotFound = errors.New("Item not found")
-)
-
 type SubscriptionManager interface {
 	GetWebPushKey() string
 

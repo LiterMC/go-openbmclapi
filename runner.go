@@ -111,7 +111,13 @@ func NewRunner() *Runner {
 		}
 	}
 
-	// r.userManager =
+	r.userManager = &singleUserManager{
+		user: &api.User{
+			Username:    r.Config.Dashboard.Username,
+			Password:    r.Config.Dashboard.Password,
+			Permissions: api.RootPerm,
+		},
+	}
 	if apiHMACKey, err := utils.LoadOrCreateHmacKey(dataDir, "server"); err != nil {
 		log.Errorf("Cannot load HMAC key: %v", err)
 		os.Exit(1)
@@ -717,4 +723,67 @@ type subscriptionManager struct {
 
 func (s *subscriptionManager) GetWebPushKey() string {
 	return base64.RawURLEncoding.EncodeToString(s.webpushPlg.GetPublicKey())
+}
+
+type singleUserManager struct {
+	user *api.User
+}
+
+func (m *singleUserManager) GetUsers() []*api.User {
+	return []*api.User{m.user}
+}
+
+func (m *singleUserManager) GetUser(id string) *api.User {
+	if id == m.user.Username {
+		return m.user
+	}
+	return nil
+}
+
+func (m *singleUserManager) AddUser(user *api.User) error {
+	if user.Username == m.user.Username {
+		return api.ErrExist
+	}
+	return errors.New("Not implemented")
+}
+
+func (m *singleUserManager) RemoveUser(id string) error {
+	if id != m.user.Username {
+		return api.ErrNotFound
+	}
+	return errors.New("Not implemented")
+}
+
+func (m *singleUserManager) ForEachUser(cb func(*api.User) error) error {
+	err := cb(m.user)
+	if err == api.ErrStopIter {
+		return nil
+	}
+	return err
+}
+
+func (m *singleUserManager) UpdateUserPassword(username string, password string) error {
+	if username != m.user.Username {
+		return api.ErrNotFound
+	}
+	m.user.Password = password
+	return nil
+}
+
+func (m *singleUserManager) UpdateUserPermissions(username string, permissions api.PermissionFlag) error {
+	if username != m.user.Username {
+		return api.ErrNotFound
+	}
+	m.user.Permissions = permissions
+	return nil
+}
+
+func (m *singleUserManager) VerifyUserPassword(userId string, comparator func(password string) bool) error {
+	if userId != m.user.Username {
+		return errors.New("Username or password is incorrect")
+	}
+	if !comparator(m.user.Password) {
+		return errors.New("Username or password is incorrect")
+	}
+	return nil
 }

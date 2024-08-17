@@ -283,7 +283,7 @@ func (db *SqlDB) RemoveJTI(jti string) (err error) {
 
 	if _, err = db.jtiStmts.remove.ExecContext(ctx, jti); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -411,7 +411,7 @@ func (db *SqlDB) GetFileRecord(path string) (rec *FileRecord, err error) {
 	rec.Path = path
 	if err = db.fileRecordStmts.get.QueryRowContext(ctx, &rec.Path).Scan(&rec.Hash, &rec.Size); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -436,7 +436,7 @@ func (db *SqlDB) RemoveFileRecord(path string) (err error) {
 
 	if _, err = db.fileRecordStmts.remove.ExecContext(ctx, path); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -457,7 +457,12 @@ func (db *SqlDB) ForEachFileRecord(cb func(*FileRecord) error) (err error) {
 		if err = rows.Scan(&rec.Path, &rec.Hash, &rec.Size); err != nil {
 			return
 		}
-		cb(&rec)
+		if err = cb(&rec); err != nil {
+			if err == api.ErrStopIter {
+				return nil
+			}
+			return
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return
@@ -623,7 +628,7 @@ func (db *SqlDB) GetSubscribe(user string, client string) (rec *api.SubscribeRec
 	rec.Client = client
 	if err = db.subscribeStmts.get.QueryRowContext(ctx, user, client).Scan(&rec.EndPoint, &rec.Keys, &rec.Scopes, &rec.ReportAt); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -661,14 +666,14 @@ func (db *SqlDB) SetSubscribe(rec api.SubscribeRecord) (err error) {
 	} else if rec.LastReport.Valid {
 		if _, err = tx.Stmt(db.subscribeStmts.setUpdateLastReportOnly).Exec(rec.LastReport, rec.User, rec.Client); err != nil {
 			if err == sql.ErrNoRows {
-				err = ErrNotFound
+				err = api.ErrNotFound
 			}
 			return
 		}
 	} else {
 		if _, err = tx.Stmt(db.subscribeStmts.setUpdateScopesOnly).Exec(rec.Scopes, rec.ReportAt, rec.User, rec.Client); err != nil {
 			if err == sql.ErrNoRows {
-				err = ErrNotFound
+				err = api.ErrNotFound
 			}
 			return
 		}
@@ -685,7 +690,7 @@ func (db *SqlDB) RemoveSubscribe(user string, client string) (err error) {
 
 	if _, err = db.subscribeStmts.remove.ExecContext(ctx, user, client); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -706,7 +711,12 @@ func (db *SqlDB) ForEachSubscribe(cb func(*api.SubscribeRecord) error) (err erro
 		if err = rows.Scan(&rec.User, &rec.Client, &rec.EndPoint, &rec.Keys, &rec.Scopes, &rec.ReportAt, &rec.LastReport); err != nil {
 			return
 		}
-		cb(&rec)
+		if err = cb(&rec); err != nil {
+			if err == api.ErrStopIter {
+				return nil
+			}
+			return
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return
@@ -866,7 +876,7 @@ func (db *SqlDB) GetEmailSubscription(user string, addr string) (rec *api.EmailS
 	rec.Addr = addr
 	if err = db.emailSubscriptionStmts.get.QueryRowContext(ctx, user, addr).Scan(&rec.Scopes, &rec.Enabled); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -909,7 +919,7 @@ func (db *SqlDB) RemoveEmailSubscription(user string, addr string) (err error) {
 
 	if _, err = db.emailSubscriptionStmts.remove.ExecContext(ctx, user, addr); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -930,7 +940,12 @@ func (db *SqlDB) ForEachEmailSubscription(cb func(*api.EmailSubscriptionRecord) 
 		if err = rows.Scan(&rec.User, &rec.Addr, &rec.Scopes, &rec.Enabled); err != nil {
 			return
 		}
-		cb(&rec)
+		if err = cb(&rec); err != nil {
+			if err == api.ErrStopIter {
+				return nil
+			}
+			return
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return
@@ -953,7 +968,12 @@ func (db *SqlDB) ForEachUsersEmailSubscription(user string, cb func(*api.EmailSu
 		if err = rows.Scan(&rec.Addr, &rec.Scopes, &rec.Enabled); err != nil {
 			return
 		}
-		cb(&rec)
+		if err = cb(&rec); err != nil {
+			if err == api.ErrStopIter {
+				return nil
+			}
+			return
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return
@@ -975,7 +995,12 @@ func (db *SqlDB) ForEachEnabledEmailSubscription(cb func(*api.EmailSubscriptionR
 		if err = rows.Scan(&rec.User, &rec.Addr, &rec.Scopes); err != nil {
 			return
 		}
-		cb(&rec)
+		if err = cb(&rec); err != nil {
+			if err == api.ErrStopIter {
+				return nil
+			}
+			return
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return
@@ -1153,7 +1178,7 @@ func (db *SqlDB) GetWebhook(user string, id uuid.UUID) (rec *api.WebhookRecord, 
 	rec.Id = id
 	if err = db.webhookStmts.get.QueryRowContext(ctx, user, hex.EncodeToString(id[:])).Scan(&rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes, &rec.Enabled); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -1205,7 +1230,7 @@ func (db *SqlDB) RemoveWebhook(user string, id uuid.UUID) (err error) {
 
 	if _, err = db.webhookStmts.remove.ExecContext(ctx, user, hex.EncodeToString(id[:])); err != nil {
 		if err == sql.ErrNoRows {
-			err = ErrNotFound
+			err = api.ErrNotFound
 		}
 		return
 	}
@@ -1226,7 +1251,12 @@ func (db *SqlDB) ForEachWebhook(cb func(*api.WebhookRecord) error) (err error) {
 		if err = rows.Scan(&rec.User, &rec.Id, &rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes, &rec.Enabled); err != nil {
 			return
 		}
-		cb(&rec)
+		if err = cb(&rec); err != nil {
+			if err == api.ErrStopIter {
+				return nil
+			}
+			return
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return
@@ -1249,7 +1279,12 @@ func (db *SqlDB) ForEachUsersWebhook(user string, cb func(*api.WebhookRecord) er
 		if err = rows.Scan(&rec.Id, &rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes, &rec.Enabled, &rec.User); err != nil {
 			return
 		}
-		cb(&rec)
+		if err = cb(&rec); err != nil {
+			if err == api.ErrStopIter {
+				return nil
+			}
+			return
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return
@@ -1271,7 +1306,12 @@ func (db *SqlDB) ForEachEnabledWebhook(cb func(*api.WebhookRecord) error) (err e
 		if err = rows.Scan(&rec.User, &rec.Id, &rec.Name, &rec.EndPoint, &rec.Auth, &rec.Scopes); err != nil {
 			return
 		}
-		cb(&rec)
+		if err = cb(&rec); err != nil {
+			if err == api.ErrStopIter {
+				return nil
+			}
+			return
+		}
 	}
 	if err = rows.Err(); err != nil {
 		return

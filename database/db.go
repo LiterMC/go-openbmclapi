@@ -20,18 +20,11 @@
 package database
 
 import (
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/LiterMC/go-openbmclapi/api"
-)
-
-var (
-	ErrStopIter = errors.New("stop iteration")
-	ErrNotFound = errors.New("no record was found")
-	ErrExists   = errors.New("record's key was already exists")
 )
 
 type DB interface {

@@ -38,142 +38,142 @@ var datas = func() [][]byte {
 	return datas
 }()
 
-func BenchmarkCreateAndRemoveFile(t *testing.B) {
-	t.ReportAllocs()
+func BenchmarkCreateAndRemoveFile(b *testing.B) {
+	b.ReportAllocs()
 	buf := make([]byte, 1024)
 	_ = buf
-	for i := 0; i < t.N; i++ {
+	for i := 0; i < b.N; i++ {
 		d := datas[i%len(datas)]
 		fd, err := os.CreateTemp("", "*.downloading")
 		if err != nil {
-			t.Fatalf("Cannot create temp file: %v", err)
+			b.Fatalf("Cannot create temp file: %v", err)
 		}
 		if _, err = fd.Write(d); err != nil {
-			t.Errorf("Cannot write file: %v", err)
+			b.Errorf("Cannot write file: %v", err)
 		} else if err = fd.Sync(); err != nil {
-			t.Errorf("Cannot write file: %v", err)
+			b.Errorf("Cannot write file: %v", err)
 		}
 		fd.Close()
 		os.Remove(fd.Name())
 		if err != nil {
-			t.FailNow()
+			b.FailNow()
 		}
 	}
 }
 
-func BenchmarkWriteAndTruncateFile(t *testing.B) {
-	t.ReportAllocs()
+func BenchmarkWriteAndTruncateFile(b *testing.B) {
+	b.ReportAllocs()
 	buf := make([]byte, 1024)
 	_ = buf
 	fd, err := os.CreateTemp("", "*.downloading")
 	if err != nil {
-		t.Fatalf("Cannot create temp file: %v", err)
+		b.Fatalf("Cannot create temp file: %v", err)
 	}
 	defer os.Remove(fd.Name())
-	for i := 0; i < t.N; i++ {
+	for i := 0; i < b.N; i++ {
 		d := datas[i%len(datas)]
 		if _, err := fd.Write(d); err != nil {
-			t.Fatalf("Cannot write file: %v", err)
+			b.Fatalf("Cannot write file: %v", err)
 		} else if err := fd.Sync(); err != nil {
-			t.Fatalf("Cannot write file: %v", err)
+			b.Fatalf("Cannot write file: %v", err)
 		} else if err := fd.Truncate(0); err != nil {
-			t.Fatalf("Cannot truncate file: %v", err)
+			b.Fatalf("Cannot truncate file: %v", err)
 		}
 	}
 }
 
-func BenchmarkWriteAndSeekFile(t *testing.B) {
-	t.ReportAllocs()
+func BenchmarkWriteAndSeekFile(b *testing.B) {
+	b.ReportAllocs()
 	buf := make([]byte, 1024)
 	_ = buf
 	fd, err := os.CreateTemp("", "*.downloading")
 	if err != nil {
-		t.Fatalf("Cannot create temp file: %v", err)
+		b.Fatalf("Cannot create temp file: %v", err)
 	}
 	defer os.Remove(fd.Name())
-	for i := 0; i < t.N; i++ {
+	for i := 0; i < b.N; i++ {
 		d := datas[i%len(datas)]
 		if _, err := fd.Write(d); err != nil {
-			t.Fatalf("Cannot write file: %v", err)
+			b.Fatalf("Cannot write file: %v", err)
 		} else if err := fd.Sync(); err != nil {
-			t.Fatalf("Cannot write file: %v", err)
+			b.Fatalf("Cannot write file: %v", err)
 		} else if _, err := fd.Seek(io.SeekStart, 0); err != nil {
-			t.Fatalf("Cannot seek file: %v", err)
+			b.Fatalf("Cannot seek file: %v", err)
 		}
 	}
 }
 
-func BenchmarkParallelCreateAndRemoveFile(t *testing.B) {
-	t.ReportAllocs()
-	t.SetParallelism(4)
+func BenchmarkParallelCreateAndRemoveFile(b *testing.B) {
+	b.ReportAllocs()
+	b.SetParallelism(4)
 	buf := make([]byte, 1024)
 	_ = buf
-	t.RunParallel(func(pb *testing.PB) {
+	b.RunParallel(func(pb *testing.PB) {
 		for i := 0; pb.Next(); i++ {
 			d := datas[i%len(datas)]
 			fd, err := os.CreateTemp("", "*.downloading")
 			if err != nil {
-				t.Fatalf("Cannot create temp file: %v", err)
+				b.Fatalf("Cannot create temp file: %v", err)
 			}
 			if _, err = fd.Write(d); err != nil {
-				t.Errorf("Cannot write file: %v", err)
+				b.Errorf("Cannot write file: %v", err)
 			} else if err = fd.Sync(); err != nil {
-				t.Errorf("Cannot write file: %v", err)
+				b.Errorf("Cannot write file: %v", err)
 			}
 			fd.Close()
 			if err := os.Remove(fd.Name()); err != nil {
-				t.Fatalf("Cannot remove file: %v", err)
+				b.Fatalf("Cannot remove file: %v", err)
 			}
 			if err != nil {
-				t.FailNow()
+				b.FailNow()
 			}
 		}
 	})
 }
 
-func BenchmarkParallelWriteAndTruncateFile(t *testing.B) {
-	t.ReportAllocs()
-	t.SetParallelism(4)
+func BenchmarkParallelWriteAndTruncateFile(b *testing.B) {
+	b.ReportAllocs()
+	b.SetParallelism(4)
 	buf := make([]byte, 1024)
 	_ = buf
-	t.RunParallel(func(pb *testing.PB) {
+	b.RunParallel(func(pb *testing.PB) {
 		fd, err := os.CreateTemp("", "*.downloading")
 		if err != nil {
-			t.Fatalf("Cannot create temp file: %v", err)
+			b.Fatalf("Cannot create temp file: %v", err)
 		}
 		defer os.Remove(fd.Name())
 		for i := 0; pb.Next(); i++ {
 			d := datas[i%len(datas)]
 			if _, err := fd.Write(d); err != nil {
-				t.Fatalf("Cannot write file: %v", err)
+				b.Fatalf("Cannot write file: %v", err)
 			} else if err := fd.Sync(); err != nil {
-				t.Fatalf("Cannot write file: %v", err)
+				b.Fatalf("Cannot write file: %v", err)
 			} else if err := fd.Truncate(0); err != nil {
-				t.Fatalf("Cannot truncate file: %v", err)
+				b.Fatalf("Cannot truncate file: %v", err)
 			}
 		}
 	})
 }
 
-func BenchmarkParallelWriteAndSeekFile(t *testing.B) {
-	t.ReportAllocs()
-	t.SetParallelism(4)
+func BenchmarkParallelWriteAndSeekFile(b *testing.B) {
+	b.ReportAllocs()
+	b.SetParallelism(4)
 	buf := make([]byte, 1024)
 	_ = buf
-	t.RunParallel(func(pb *testing.PB) {
+	b.RunParallel(func(pb *testing.PB) {
 		fd, err := os.CreateTemp("", "*.downloading")
 		if err != nil {
-			t.Fatalf("Cannot create temp file: %v", err)
+			b.Fatalf("Cannot create temp file: %v", err)
 		}
 		defer os.Remove(fd.Name())
 		for i := 0; pb.Next(); i++ {
 			d := datas[i%len(datas)]
 			if _, err := fd.Write(d); err != nil {
-				t.Fatalf("Cannot write file: %v", err)
+				b.Fatalf("Cannot write file: %v", err)
 			} else if err := fd.Sync(); err != nil {
-				t.Fatalf("Cannot write file: %v", err)
+				b.Fatalf("Cannot write file: %v", err)
 			} else if _, err := fd.Seek(io.SeekStart, 0); err != nil {
-				t.Fatalf("Cannot seel file: %v", err)
+				b.Fatalf("Cannot seel file: %v", err)
 			}
 		}
 	})

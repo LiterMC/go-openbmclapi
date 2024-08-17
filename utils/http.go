@@ -554,3 +554,22 @@ func (e *RedirectError) Error() string {
 func (e *RedirectError) Unwrap() error {
 	return e.Err
 }
+
+type redirectErrorWrapper struct {
+	rt http.RoundTripper
+}
+
+func (w *redirectErrorWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := w.rt.RoundTrip(req)
+	if err != nil {
+		if req.Response != nil {
+			return nil, ErrorFromRedirect(err, req.Response)
+		}
+		return nil, err
+	}
+	return resp, nil
+}
+
+func NewRoundTripRedirectErrorWrapper(rt http.RoundTripper) http.RoundTripper {
+	return &redirectErrorWrapper{rt: rt}
+}

@@ -454,24 +454,25 @@ func (c *HTTPClient) SyncFiles(
 
 	for _, info := range missingMap {
 		log.Debugf("File %s is for %s", info.Hash, joinStorageIDs(info.Storages))
-		pathRes, err := c.fetchFile(ctx, &stats, info)
+		fileRes, err := c.fetchFile(ctx, &stats, info)
 		if err != nil {
 			log.TrWarnf("warn.sync.interrupted")
 			return err
 		}
-		go func(info *StorageFileInfo, pathRes <-chan string) {
+		go func(info *StorageFileInfo, fileRes <-chan *os.File) {
 			defer log.RecordPanic()
 			select {
-			case path := <-pathRes:
+			case srcFd := <-fileRes:
 				// cr.syncProg.Add(1)
-				if path == "" {
+				if srcFd == nil {
 					select {
 					case done <- nil: // TODO: or all storage?
 					case <-ctx.Done():
 					}
 					return
 				}
-				defer os.Remove(path)
+				defer os.Remove(srcFd.Name())
+				defer srcFd.Close()
 				// acquire slot here
 				slotId, buf, free := stats.slots.Alloc(ctx)
 				if buf == nil {
@@ -479,15 +480,10 @@ func (c *HTTPClient) SyncFiles(
 				}
 				defer free()
 				_ = slotId
-				var srcFd *os.File
-				if srcFd, err = os.Open(path); err != nil {
-					return
-				}
-				defer srcFd.Close()
 				var failed []storage.Storage
 				for _, target := range info.Storages {
 					if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-						log.Errorf("Cannot seek file %q to start: %v", path, err)
+						log.Errorf("Cannot seek file %q to start: %v", srcFd.Name(), err)
 						continue
 					}
 					if err = target.Create(info.Hash, srcFd); err != nil {
@@ -498,7 +494,7 @@ func (c *HTTPClient) SyncFiles(
 				}
 				free()
 				srcFd.Close()
-				os.Remove(path)
+				os.Remove(srcFd.Name())
 				select {
 				case done <- failed:
 				case <-ctx.Done():
@@ -506,10 +502,10 @@ func (c *HTTPClient) SyncFiles(
 			case <-ctx.Done():
 				return
 			}
-		}(info, pathRes)
+		}(info, fileRes)
 	}
 
-	for i := len(missingMap); i > 0; i-- {
+	for range len(missingMap) {
 		select {
 		case failed := <-done:
 			for _, s := range failed {
@@ -538,7 +534,7 @@ func (c *HTTPClient) SyncFiles(
 	return nil
 }
 
-func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *StorageFileInfo) (<-chan string, error) {
+func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *StorageFileInfo) (<-chan *os.File, error) {
 	const maxRetryCount = 10
 
 	slotId, buf, free := stats.slots.Alloc(ctx)
@@ -546,17 +542,26 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 		return nil, ctx.Err()
 	}
 
-	pathRes := make(chan string, 1)
+	hashMethod, err := getHashMethod(len(f.Hash))
+	if err != nil {
+		return nil, err
+	}
+
+	reqInd := 0
+	reqs := make([]*http.Request, 0, len(f.URLs))
+	for _, rq := range f.URLs {
+		reqs = append(reqs, rq.Request)
+	}
+
+	fileRes := make(chan *os.File, 1)
 	go func() {
 		defer log.RecordPanic()
 		defer free()
-		defer close(pathRes)
+		defer close(fileRes)
 
 		var barUnit decor.SizeB1024
 		var tried atomic.Int32
 		tried.Store(1)
-
-		fPath := f.Hash // TODO: show downloading URL instead? Will it be too long?
 
 		bar := stats.pg.AddBar(f.Size,
 			mpb.BarRemoveOnComplete(),
@@ -570,7 +575,7 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 					}
 					return fmt.Sprintf("(%d/%d) ", tc, maxRetryCount)
 				}),
-				decor.Name(fPath, decor.WCSyncSpaceR),
+				decor.Name(f.Hash, decor.WCSyncSpaceR),
 			),
 			mpb.AppendDecorators(
 				decor.NewPercentage("%d", decor.WCSyncSpace),
@@ -583,58 +588,81 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 		)
 		defer bar.Abort(true)
 
+		fd, err := os.CreateTemp("", "*.downloading")
+		if err != nil {
+			log.Errorf("Cannot create temporary file: %s", err)
+			stats.failCount.Add(1)
+			return
+		}
+		successed := false
+		defer func(fd *os.File) {
+			if !successed {
+				fd.Close()
+				os.Remove(fd.Name())
+			}
+		}(fd)
+		// prealloc space
+		if err := fd.Truncate(f.Size); err != nil {
+			log.Warnf("File space pre-alloc failed: %v", err)
+		}
+
+		downloadOnce := func() error {
+			if _, err := fd.Seek(io.SeekStart, 0); err != nil {
+				return err
+			}
+			if err := c.fetchFileWithBuf(ctx, reqs[reqInd], f.Size, hashMethod, f.Hash, fd, buf, func(r io.Reader) io.Reader {
+				return utils.ProxyPBReader(r, bar, stats.totalBar, &stats.lastInc)
+			}); err != nil {
+				reqInd = (reqInd + 1) % len(reqs)
+				return err
+			}
+			return nil
+		}
+
 		interval := time.Second
 		for {
 			bar.SetCurrent(0)
-			hashMethod, err := getHashMethod(len(f.Hash))
+			err := downloadOnce()
 			if err == nil {
-				var path string
-				if path, err = c.fetchFileWithBuf(ctx, f, hashMethod, buf, func(r io.Reader) io.Reader {
-					return utils.ProxyPBReader(r, bar, stats.totalBar, &stats.lastInc)
-				}); err == nil {
-					pathRes <- path
-					stats.okCount.Add(1)
-					log.Infof(lang.Tr("info.sync.downloaded"), fPath,
-						utils.BytesToUnit((float64)(f.Size)),
-						(float64)(stats.totalBar.Current())/(float64)(stats.totalSize)*100)
-					return
-				}
+				break
 			}
 			bar.SetRefill(bar.Current())
 
 			c := tried.Add(1)
 			if c > maxRetryCount {
-				log.TrErrorf("error.sync.download.failed", fPath, err)
-				break
+				log.TrErrorf("error.sync.download.failed", f.Hash, err)
+				stats.failCount.Add(1)
+				return
 			}
-			log.TrErrorf("error.sync.download.failed.retry", fPath, interval, err)
+			log.TrErrorf("error.sync.download.failed.retry", f.Hash, interval, err)
 			select {
 			case <-time.After(interval):
-				interval *= 2
+				interval = min(interval*2, time.Minute*10)
 			case <-ctx.Done():
+				stats.failCount.Add(1)
 				return
 			}
 		}
-		stats.failCount.Add(1)
+		successed = true
+		fileRes <- fd
+		stats.okCount.Add(1)
+		log.Infof(lang.Tr("info.sync.downloaded"), f.Hash,
+			utils.BytesToUnit((float64)(f.Size)),
+			(float64)(stats.totalBar.Current())/(float64)(stats.totalSize)*100)
 	}()
-	return pathRes, nil
+	return fileRes, nil
 }
 
 func (c *HTTPClient) fetchFileWithBuf(
-	ctx context.Context, f *StorageFileInfo,
-	hashMethod crypto.Hash, buf []byte,
+	ctx context.Context, req *http.Request,
+	size int64, hashMethod crypto.Hash, hash string,
+	rw io.ReadWriteSeeker, buf []byte,
 	wrapper func(io.Reader) io.Reader,
-) (path string, err error) {
+) (err error) {
 	var (
-		req *http.Request
 		res *http.Response
-		fd  *os.File
 		r   io.Reader
 	)
-	for _, rq := range f.URLs {
-		req = rq.Request
-		break
-	}
 	req = req.Clone(ctx)
 	req.Header.Set("Accept-Encoding", "gzip, deflate")
 	if res, err = c.Do(req); err != nil {
@@ -643,10 +671,13 @@ func (c *HTTPClient) fetchFileWithBuf(
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		err = utils.NewHTTPStatusErrorFromResponse(res)
-	}else {
+	} else {
 		switch ce := strings.ToLower(res.Header.Get("Content-Encoding")); ce {
 		case "":
 			r = res.Body
+			if res.ContentLength >= 0 && res.ContentLength != size {
+				err = fmt.Errorf("File size wrong, got %d, expect %d", res.ContentLength, size)
+			}
 		case "gzip":
 			r, err = gzip.NewReader(res.Body)
 		case "deflate":
@@ -656,41 +687,26 @@ func (c *HTTPClient) fetchFileWithBuf(
 		}
 	}
 	if err != nil {
-		return "", utils.ErrorFromRedirect(err, res)
+		return utils.ErrorFromRedirect(err, res)
 	}
 	if wrapper != nil {
 		r = wrapper(r)
 	}
 
+	if n, err := io.CopyBuffer(rw, r, buf); err != nil {
+		return utils.ErrorFromRedirect(err, res)
+	} else if n != size {
+		return utils.ErrorFromRedirect(fmt.Errorf("File size wrong, got %d, expect %d", n, size), res)
+	}
+	if _, err := rw.Seek(io.SeekStart, 0); err != nil {
+		return err
+	}
 	hw := hashMethod.New()
-
-	if fd, err = os.CreateTemp("", "*.downloading"); err != nil {
-		return
+	if _, err := io.CopyBuffer(hw, rw, buf); err != nil {
+		return err
 	}
-	path = fd.Name()
-	defer func(path string) {
-		if err != nil {
-			os.Remove(path)
-		}
-	}(path)
-
-	_, err = io.CopyBuffer(io.MultiWriter(hw, fd), r, buf)
-	stat, err2 := fd.Stat()
-	fd.Close()
-	if err != nil {
-		err = utils.ErrorFromRedirect(err, res)
-		return
-	}
-	if err2 != nil {
-		err = err2
-		return
-	}
-	if t := stat.Size(); f.Size >= 0 && t != f.Size {
-		err = utils.ErrorFromRedirect(fmt.Errorf("File size wrong, got %d, expect %d", t, f.Size), res)
-		return
-	} else if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != f.Hash {
-		err = utils.ErrorFromRedirect(fmt.Errorf("File hash not match, got %s, expect %s", hs, f.Hash), res)
-		return
+	if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != hash {
+		return utils.ErrorFromRedirect(fmt.Errorf("File hash not match, got %s, expect %s", hs, hash), res)
 	}
 	return
 }

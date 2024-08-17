@@ -32,6 +32,7 @@ import (
 
 	gocache "github.com/LiterMC/go-openbmclapi/cache"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 type HTTPClient struct {
@@ -45,6 +46,7 @@ func NewHTTPClient(dialer *net.Dialer, cache gocache.Cache) *HTTPClient {
 			DialContext: dialer.DialContext,
 		}
 	}
+	transport = utils.NewRoundTripRedirectErrorWrapper(transport)
 	cachedTransport := transport
 	if cache != gocache.NoCache {
 		cachedTransport = &httpcache.Transport{
@@ -70,6 +72,14 @@ func (c *HTTPClient) Do(req *http.Request) (*http.Response, error) {
 
 func (c *HTTPClient) DoUseCache(req *http.Request) (*http.Response, error) {
 	return c.cachedCli.Do(req)
+}
+
+func (c *HTTPClient) Client() *http.Client {
+	return c.cli
+}
+
+func (c *HTTPClient) CachedClient() *http.Client {
+	return c.cachedCli
 }
 
 func redirectChecker(req *http.Request, via []*http.Request) error {

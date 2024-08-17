@@ -101,7 +101,7 @@ func (cr *Cluster) GetFileList(ctx context.Context, fileMap map[string]*StorageF
 	if err != nil {
 		return err
 	}
-	res, err := cr.cachedCli.Do(req)
+	res, err := cr.client.DoUseCache(req)
 	if err != nil {
 		return err
 	}

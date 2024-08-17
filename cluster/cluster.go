@@ -23,7 +23,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"regexp"
 	"runtime"
 	"strings"
@@ -61,8 +60,7 @@ type Cluster struct {
 	status       atomic.Int32
 	socketStatus atomic.Int32
 	socket       *socket.Socket
-	client       *http.Client
-	cachedCli    *http.Client
+	client       *HTTPClient
 
 	authTokenMux    sync.RWMutex
 	authToken       *ClusterToken
@@ -73,6 +71,7 @@ func NewCluster(
 	name string, opts config.ClusterOptions, gcfg config.ClusterGeneralConfig,
 	storageManager *storage.Manager,
 	statManager *StatManager,
+	client *HTTPClient,
 ) (cr *Cluster) {
 	storages := make([]int, len(opts.Storages))
 	for i, name := range opts.Storages {
@@ -85,6 +84,7 @@ func NewCluster(
 		storageManager: storageManager,
 		storages:       storages,
 		statManager:    statManager,
+		client:         client,
 	}
 	return
 }

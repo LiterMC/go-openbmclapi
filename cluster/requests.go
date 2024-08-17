@@ -209,7 +209,7 @@ func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, 
 	if err != nil {
 		return
 	}
-	res, err := cr.cachedCli.Do(req)
+	res, err := cr.client.DoUseCache(req)
 	if err != nil {
 		return
 	}

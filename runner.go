@@ -225,7 +225,7 @@ func (r *Runner) InitClusters(ctx context.Context) {
 	r.clusters = make(map[string]*cluster.Cluster)
 	gcfg := r.GetClusterGeneralConfig()
 	for name, opts := range r.Config.Clusters {
-		cr := cluster.NewCluster(name, opts, gcfg, r.storageManager, r.statManager)
+		cr := cluster.NewCluster(name, opts, gcfg, r.storageManager, r.statManager, r.client)
 		if err := cr.Init(ctx); err != nil {
 			log.TrErrorf("error.init.failed", err)
 		} else {

@@ -56,7 +56,7 @@ func migrateConfig(data []byte, cfg *config.Config) {
 	if v, ok := oldConfig["keepalive-timeout"].(int); ok {
 		cfg.Advanced.KeepaliveTimeout = v
 	}
-	if oldConfig["clusters"].(map[string]any) == nil {
+	if oldConfig["clusters"] == nil {
 		id, ok1 := oldConfig["cluster-id"].(string)
 		secret, ok2 := oldConfig["cluster-secret"].(string)
 		publicHost, ok3 := oldConfig["public-host"].(string)

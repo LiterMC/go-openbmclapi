@@ -24,6 +24,7 @@ type UserManager interface {
 	GetUser(id string) *User
 	AddUser(*User) error
 	RemoveUser(id string) error
+	ForEachUser(cb func(*User) error) error
 	UpdateUserPassword(username string, password string) error
 	UpdateUserPermissions(username string, permissions PermissionFlag) error
 

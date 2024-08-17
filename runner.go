@@ -53,8 +53,11 @@ import (
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/notify"
+	"github.com/LiterMC/go-openbmclapi/notify/email"
+	"github.com/LiterMC/go-openbmclapi/notify/webhook"
 	"github.com/LiterMC/go-openbmclapi/notify/webpush"
 	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/token"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -104,21 +107,48 @@ func NewRunner() *Runner {
 			r.database = database.NewMemoryDB()
 		} else if r.database, err = database.NewSqlDB(r.Config.Database.Driver, r.Config.Database.DSN); err != nil {
 			log.Errorf("Cannot connect to database: %v", err)
+			os.Exit(1)
 		}
 	}
 
 	// r.userManager =
-	// r.tokenManager =
-	webpushPlg := new(webpush.Plugin)
-	r.subManager = &subscriptionManager{
-		webpushPlg: webpushPlg,
-		DB:         r.database,
+	if apiHMACKey, err := utils.LoadOrCreateHmacKey(dataDir, "server"); err != nil {
+		log.Errorf("Cannot load HMAC key: %v", err)
+		os.Exit(1)
+	} else {
+		r.tokenManager = token.NewDBManager("go-openbmclapi", apiHMACKey, r.database)
 	}
-	r.notifyManager = notify.NewManager(dataDir, r.database, r.client.CachedClient(), "go-openbmclapi")
-	r.storageManager = storage.NewManager(storages)
+	{
+		r.notifyManager = notify.NewManager(dataDir, r.database, r.client.CachedClient(), "go-openbmclapi")
+		r.notifyManager.AddPlugin(new(webhook.Plugin))
+		if r.Config.Notification.EnableEmail {
+			emailPlg, err := email.NewSMTP(r.Config.Notification.EmailSMTP, r.Config.Notification.EmailSMTPEncryption,
+				r.Config.Notification.EmailSender, r.Config.Notification.EmailSenderPassword)
+			if err != nil {
+				log.Errorf("Cannot init SMTP client: %v", err)
+				os.Exit(1)
+			}
+			r.notifyManager.AddPlugin(emailPlg)
+		}
+		r.notifyManager.AddPlugin(new(email.Plugin))
+		webpushPlg := new(webpush.Plugin)
+		r.notifyManager.AddPlugin(webpushPlg)
+
+		r.subManager = &subscriptionManager{
+			webpushPlg: webpushPlg,
+			DB:         r.database,
+		}
+	}
+	{
+		storages := make([]storage.Storage, len(r.Config.Storages))
+		for i, s := range r.Config.Storages {
+			storages[i] = storage.NewStorage(s)
+		}
+		r.storageManager = storage.NewManager(storages)
+	}
 	r.statManager = cluster.NewStatManager()
 	if err := r.statManager.Load(dataDir); err != nil {
-		log.Errorf("Stat load failed:", err)
+		log.Errorf("Stat load failed: %v", err)
 	}
 	r.apiRateLimiter = limited.NewAPIRateMiddleWare(api.RealAddrCtxKey, "go-openbmclapi.cluster.logged.user" /* api/v0.loggedUserKey */)
 	return r

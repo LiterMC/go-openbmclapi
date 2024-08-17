@@ -51,6 +51,15 @@ type DB interface {
 	// the callback should not edit the record pointer
 	ForEachFileRecord(cb func(*FileRecord) error) error
 
+	// GetUsers() []*api.User
+	// GetUser(id string) *api.User
+	// AddUser(*api.User) error
+	// RemoveUser(id string) error
+	// ForEachUser(cb func(*api.User) error) error
+	// UpdateUserPassword(username string, password string) error
+	// UpdateUserPermissions(username string, permissions api.PermissionFlag) error
+	// VerifyUserPassword(userId string, comparator func(password string) bool) error
+
 	GetSubscribe(user string, client string) (*api.SubscribeRecord, error)
 	SetSubscribe(api.SubscribeRecord) error
 	RemoveSubscribe(user string, client string) error

@@ -22,7 +22,6 @@ package utils
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/tls"
 	"errors"
 	"io"

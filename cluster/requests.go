@@ -26,6 +26,7 @@ import (
 	"crypto/hmac"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -261,12 +262,18 @@ func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error
 }
 
 func (cr *Cluster) ReportDownload(ctx context.Context, response *http.Response, err error) error {
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+
 	type ReportPayload struct {
-		Urls  []string                                  `json:"urls"`
-		Error utils.EmbedJSON[struct{ Message string }] `json:"error"`
+		Urls  []string `json:"urls"`
+		Error utils.EmbedJSON[struct {
+			Message string `json:"message"`
+		}] `json:"error"`
 	}
 	var payload ReportPayload
-	redirects := utils.GetRedirects(response.Request)
+	redirects := utils.GetRedirects(response)
 	payload.Urls = make([]string, len(redirects))
 	for i, u := range redirects {
 		payload.Urls[i] = u.String()
@@ -280,6 +287,7 @@ func (cr *Cluster) ReportDownload(ctx context.Context, response *http.Response, 
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := cr.client.Do(req)
 	if err != nil {
 		return err

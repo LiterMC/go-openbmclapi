@@ -10,12 +10,12 @@ var areaCN = map[string]string{
 	"warn.exit.detected.windows.open.browser": "检测到您是新手 Windows 用户. 我们正在帮助您打开浏览器 ...",
 	"warn.cluster.detected.hash.mismatch":     "检测到文件哈希值不匹配, 正在删除 %s",
 
-	"info.filelist.fetching":      "获取文件列表中",
+	"info.filelist.fetching":      "为 %s 获取文件列表中",
 	"error.filelist.fetch.failed": "文件列表获取失败: %v",
 
 	"error.address.listen.failed": "无法监听地址 %s: %v",
 
-	"info.cert.requesting":              "请求证书中, 请稍候 ...",
+	"info.cert.requesting":              "正在为 %s 请求证书, 请稍候 ...",
 	"info.cert.requested":               "证书请求完毕, 域名为 %s",
 	"error.cert.not.set":                "配置文件内没有提供证书",
 	"error.cert.parse.failed":           "无法解析证书密钥对[%d]: %v",
@@ -27,7 +27,7 @@ var areaCN = map[string]string{
 	"info.wait.first.sync":                 "正在等待第一次同步 ...",
 	"info.cluster.enable.sending":          "正在发送启用数据包",
 	"info.cluster.enabled":                 "节点已启用",
-	"error.cluster.enable.failed":          "无法启用节点: %v",
+	"error.cluster.enable.failed":          "无法启用节点 %s: %v",
 	"error.cluster.disconnected":           "节点从主控断开. exit.",
 	"info.cluster.reconnect.keepalive":     "保活失败, 重连中 ...",
 	"info.cluster.reconnecting":            "重连中 ...",
@@ -49,8 +49,8 @@ var areaCN = map[string]string{
 	"warn.cluster.disabled":        "节点已禁用",
 	"warn.httpserver.closing":      "正在关闭 HTTP 服务器 ...",
 
-	"info.check.start":                "开始在 %s 检测文件. 强检查 = %v",
-	"info.check.done":                 "文件在 %s 检查完毕, 缺失 %d 个文件",
+	"info.check.start":                "开始检测文件. 强检查 = %v",
+	"info.check.done":                 "文件检查完毕, 缺失 %d 个文件",
 	"error.check.failed":              "无法检查 %s: %v",
 	"hint.check.checking":             "> 检查中 ",
 	"warn.check.modified.size":        "找到修改过的文件: %q 的大小为 %d, 预期 %d",

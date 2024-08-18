@@ -167,6 +167,9 @@ func main() {
 
 		log.TrInfof("info.wait.first.sync")
 		r.InitSynchronizer(ctx)
+		if ctx.Err() != nil {
+			return
+		}
 
 		r.EnableClusterAll(ctx)
 	}(ctx)

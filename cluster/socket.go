@@ -68,7 +68,7 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 		})
 	}
 	engio.OnConnect(func(s *engine.Socket) {
-		log.Info("Engine.IO %s connected for cluster %s", s.ID(), cr.ID())
+		log.Infof("Engine.IO %s connected for cluster %s", s.ID(), cr.ID())
 	})
 	engio.OnDisconnect(cr.onDisconnected)
 	engio.OnDialError(func(s *engine.Socket, err *engine.DialErrorContext) {
@@ -102,7 +102,7 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 			log.Infof("[remote]: %v", data[0])
 		}
 	})
-	log.Info("Connecting to socket.io namespace")
+	log.Infof("Cluster %s is connecting to socket.io namespace", cr.Name())
 	if err := cr.socket.Connect(""); err != nil {
 		return fmt.Errorf("Namespace connect error: %w", err)
 	}

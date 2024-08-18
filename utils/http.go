@@ -22,6 +22,7 @@ package utils
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -506,15 +507,16 @@ func (c *connHeadReader) Read(buf []byte) (n int, err error) {
 	return c.Conn.Read(buf)
 }
 
-func GetRedirects(req *http.Request) []*url.URL {
+func GetRedirects(resp *http.Response) []*url.URL {
 	redirects := make([]*url.URL, 0, 5)
-	for req != nil {
-		redirects = append(redirects, req.URL)
-		resp := req.Response
-		if resp == nil {
-			break
-		}
+	if u, _ := resp.Location(); u != nil {
+		redirects = append(redirects, u)
+	}
+	var req *http.Request
+	for resp != nil {
 		req = resp.Request
+		redirects = append(redirects, req.URL)
+		resp = req.Response
 	}
 	if len(redirects) == 0 {
 		return nil
@@ -531,7 +533,7 @@ type RedirectError struct {
 
 func ErrorFromRedirect(err error, resp *http.Response) *RedirectError {
 	return &RedirectError{
-		Redirects: GetRedirects(resp.Request),
+		Redirects: GetRedirects(resp),
 		Response:  resp,
 		Err:       err,
 	}

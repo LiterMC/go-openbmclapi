@@ -42,6 +42,8 @@ var (
 	reFileHashMismatchError = regexp.MustCompile(` hash mismatch, expected ([0-9a-f]+), got ([0-9a-f]+)`)
 )
 
+const DefaultBMCLAPIServer = "https://openbmclapi.bangbang93.com"
+
 type Cluster struct {
 	name string
 	opts config.ClusterOptions
@@ -77,7 +79,11 @@ func NewCluster(
 	for i, name := range opts.Storages {
 		storages[i] = storageManager.GetIndex(name)
 	}
+	if opts.Server == "" {
+		opts.Server = DefaultBMCLAPIServer
+	}
 	cr = &Cluster{
+		name: name,
 		opts: opts,
 		gcfg: gcfg,
 

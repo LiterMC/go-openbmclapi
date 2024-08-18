@@ -33,13 +33,12 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/LiterMC/go-openbmclapi/api"
+	"github.com/LiterMC/go-openbmclapi/cluster"
 	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
-
-const DefaultBMCLAPIServer = "https://openbmclapi.bangbang93.com"
 
 func migrateConfig(data []byte, cfg *config.Config) {
 	var oldConfig map[string]any
@@ -97,7 +96,7 @@ func readAndRewriteConfig() (cfg *config.Config, err error) {
 					Id:                 "${CLUSTER_ID}",
 					Secret:             "${CLUSTER_SECRET}",
 					PublicHosts:        []string{},
-					Server:             DefaultBMCLAPIServer,
+					Server:             cluster.DefaultBMCLAPIServer,
 					SkipSignatureCheck: false,
 				},
 			}

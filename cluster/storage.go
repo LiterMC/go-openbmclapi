@@ -174,23 +174,6 @@ func storageIdSortFunc(a, b storage.Storage) int {
 	return 1
 }
 
-// func SyncFiles(ctx context.Context, manager *storage.Manager, files map[string]*StorageFileInfo, heavyCheck bool) bool {
-// 	log.TrInfof("info.sync.prepare", len(files))
-
-// 	slices.SortFunc(files, func(a, b *StorageFileInfo) int { return a.Size - b.Size })
-// 	if cr.syncFiles(ctx, files, heavyCheck) != nil {
-// 		return false
-// 	}
-
-// 	cr.filesetMux.Lock()
-// 	for _, f := range files {
-// 		cr.fileset[f.Hash] = f.Size
-// 	}
-// 	cr.filesetMux.Unlock()
-
-// 	return true
-// }
-
 var emptyStr string
 
 func checkFile(
@@ -393,12 +376,15 @@ func (c *HTTPClient) SyncFiles(
 		return err
 	}
 
-	totalFiles := len(files)
+	totalFiles := len(missingMap)
 
 	var stats syncStats
 	stats.pg = pg
 	stats.slots = limited.NewBufSlots(slots)
 	stats.totalFiles = totalFiles
+	for _, f := range missingMap {
+		stats.totalSize += f.Size
+	}
 
 	var barUnit decor.SizeB1024
 	stats.lastInc.Store(time.Now().UnixNano())
@@ -620,7 +606,8 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 				return utils.ProxyPBReader(r, bar, stats.totalBar, &stats.lastInc)
 			}); err != nil {
 				reqInd = (reqInd + 1) % len(reqs)
-				if rerr, ok := err.(*utils.RedirectError); ok {
+				var rerr *utils.RedirectError
+				if errors.As(err, &rerr) {
 					go func() {
 						if err := rp.Cluster.ReportDownload(context.WithoutCancel(ctx), rerr.GetResponse(), rerr.Unwrap()); err != nil {
 							log.Warnf("Report API error: %v", err)
@@ -642,7 +629,7 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 			bar.SetRefill(bar.Current())
 
 			c := tried.Add(1)
-			if c > maxRetryCount {
+			if c > maxRetryCount || errors.Is(err, context.Canceled) {
 				log.TrErrorf("error.sync.download.failed", f.Hash, err)
 				stats.failCount.Add(1)
 				return

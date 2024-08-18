@@ -10,12 +10,12 @@ var areaUS = map[string]string{
 	"warn.exit.detected.windows.open.browser": "Detected that you are in windows environment, we are helping you to open the browser",
 	"warn.cluster.detected.hash.mismatch":     "Detected hash mismatch error, removing bad file %s",
 
-	"info.filelist.fetching":      "Fetching file list",
+	"info.filelist.fetching":      "Fetching file list for %s",
 	"error.filelist.fetch.failed": "Cannot fetch cluster file list: %v",
 
 	"error.address.listen.failed": "Cannot listen address %s: %v",
 
-	"info.cert.requesting":              "Requesting certificates, please wait ...",
+	"info.cert.requesting":              "Requesting certificates for %s, please wait ...",
 	"info.cert.requested":               "Requested certificate for %s",
 	"error.cert.not.set":                "No certificates was set in the config",
 	"error.cert.parse.failed":           "Cannot parse certificate key pair[%d]: %v",
@@ -27,7 +27,7 @@ var areaUS = map[string]string{
 	"info.wait.first.sync":                 "Waiting for the first sync ...",
 	"info.cluster.enable.sending":          "Sending enable packet",
 	"info.cluster.enabled":                 "Cluster enabled",
-	"error.cluster.enable.failed":          "Cannot enable cluster: %v",
+	"error.cluster.enable.failed":          "Cannot enable cluster %s: %v",
 	"error.cluster.disconnected":           "Cluster disconnected from remote. exit.",
 	"info.cluster.reconnect.keepalive":     "Reconnecting due to keepalive failed",
 	"info.cluster.reconnecting":            "Reconnecting ...",
@@ -49,8 +49,8 @@ var areaUS = map[string]string{
 	"warn.cluster.disabled":        "Cluster disabled",
 	"warn.httpserver.closing":      "Closing HTTP server ...",
 
-	"info.check.start":                "Start checking files for %s, heavy = %v",
-	"info.check.done":                 "File check finished for %s, missing %d files",
+	"info.check.start":                "Start checking files, heavy = %v",
+	"info.check.done":                 "File check finished, missing %d files",
 	"error.check.failed":              "Failed to check %s: %v",
 	"hint.check.checking":             "> Checking ",
 	"warn.check.modified.size":        "Found modified file: size of %q is %d, expect %d",

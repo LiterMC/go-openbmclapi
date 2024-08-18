@@ -158,6 +158,7 @@ func NewRunner(cfg *config.Config) *Runner {
 		log.Errorf("Stat load failed: %v", err)
 	}
 	r.apiRateLimiter = limited.NewAPIRateMiddleWare(api.RealAddrCtxKey, "go-openbmclapi.cluster.logged.user" /* api/v0.loggedUserKey */)
+	r.certificates = make(map[string]*tls.Certificate)
 	return r
 }
 
@@ -227,25 +228,11 @@ func (r *Runner) InitClusters(ctx context.Context) {
 	for name, opts := range r.Config.Clusters {
 		cr := cluster.NewCluster(name, opts, gcfg, r.storageManager, r.statManager, r.client)
 		if err := cr.Init(ctx); err != nil {
-			log.TrErrorf("error.init.failed", err)
-		} else {
-			r.clusters[name] = cr
+			log.TrErrorf("error.init.failed", cr.Name(), err)
+			continue
 		}
+		r.clusters[name] = cr
 	}
-
-	// r.cluster = NewCluster(ctx,
-	// 	ClusterServerURL,
-	// 	baseDir,
-	// 	config.PublicHost, r.getPublicPort(),
-	// 	config.ClusterId, config.ClusterSecret,
-	// 	config.Byoc, dialer,
-	// 	config.Storages,
-	// 	cache,
-	// )
-	// if err := r.cluster.Init(ctx); err != nil {
-	// 	log.TrErrorf("error.init.failed"), err)
-	// 	os.Exit(1)
-	// }
 }
 
 func (r *Runner) ListenSignals(ctx context.Context, cancel context.CancelFunc) int {
@@ -363,7 +350,6 @@ func (r *Runner) SetupLogger(ctx context.Context) error {
 }
 
 func (r *Runner) StopServer(ctx context.Context) {
-	r.tunnelCancel()
 	shutCtx, cancelShut := context.WithTimeout(context.Background(), time.Second*15)
 	defer cancelShut()
 	log.TrWarnf("warn.server.closing")
@@ -373,6 +359,7 @@ func (r *Runner) StopServer(ctx context.Context) {
 		defer cancelShut()
 		var wg sync.WaitGroup
 		for _, cr := range r.clusters {
+			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				cr.Disable(shutCtx)
@@ -381,6 +368,9 @@ func (r *Runner) StopServer(ctx context.Context) {
 		wg.Wait()
 		log.TrWarnf("warn.httpserver.closing")
 		r.server.Shutdown(shutCtx)
+		if r.tunnelCancel != nil {
+			r.tunnelCancel()
+		}
 		r.listener.Close()
 		r.listener = nil
 	}()

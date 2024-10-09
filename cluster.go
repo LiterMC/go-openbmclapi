@@ -159,9 +159,11 @@ func NewCluster(
 
 		client: &http.Client{
 			Transport: transport,
+			CheckRedirect: redirectChecker,
 		},
 		cachedCli: &http.Client{
 			Transport: cachedTransport,
+			CheckRedirect: redirectChecker,
 		},
 
 		wsUpgrader: &websocket.Upgrader{
@@ -191,6 +193,14 @@ func NewCluster(
 		cr.storageTotalWeight = n
 	}
 	return
+}
+
+func redirectChecker(req *http.Request, via []*http.Request) error {
+	req.Header.Del("Referer")
+	if len(via) > 10 {
+		return errors.New("More than 10 redirects detected")
+	}
+	return nil
 }
 
 func (cr *Cluster) Init(ctx context.Context) (err error) {

@@ -50,6 +50,7 @@ type Config struct {
 	AccessLogSlots int  `yaml:"access-log-slots"`
 
 	Clusters     map[string]ClusterOptions      `yaml:"clusters"`
+	Storages     []storage.StorageOption        `yaml:"storages"`
 	Certificates []CertificateConfig            `yaml:"certificates"`
 	Tunneler     TunnelConfig                   `yaml:"tunneler"`
 	Cache        CacheConfig                    `yaml:"cache"`
@@ -60,7 +61,6 @@ type Config struct {
 	GithubAPI    GithubAPIConfig                `yaml:"github-api"`
 	Database     DatabaseConfig                 `yaml:"database"`
 	Hijack       HijackConfig                   `yaml:"hijack"`
-	Storages     []storage.StorageOption        `yaml:"storages"`
 	WebdavUsers  map[string]*storage.WebDavUser `yaml:"webdav-users"`
 	Advanced     AdvancedConfig                 `yaml:"advanced"`
 }
@@ -91,6 +91,8 @@ func NewDefaultConfig() *Config {
 		AccessLogSlots: 16,
 
 		Clusters: map[string]ClusterOptions{},
+
+		Storages: nil,
 
 		Certificates: []CertificateConfig{},
 
@@ -163,8 +165,6 @@ func NewDefaultConfig() *Config {
 				},
 			},
 		},
-
-		Storages: nil,
 
 		WebdavUsers: map[string]*storage.WebDavUser{},
 

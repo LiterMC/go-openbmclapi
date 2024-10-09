@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package notify
+package cluster
 
 import (
 	"encoding/json"
@@ -27,9 +27,147 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
+
+const statsOverallFileName = "stat.json"
+
+type StatManager struct {
+	mux sync.RWMutex
+
+	Overall  *StatData
+	Clusters map[string]*StatData
+	Storages map[string]*StatData
+}
+
+var _ json.Marshaler = (*StatManager)(nil)
+
+func NewStatManager() *StatManager {
+	return &StatManager{
+		Overall:  new(StatData),
+		Clusters: make(map[string]*StatData),
+		Storages: make(map[string]*StatData),
+	}
+}
+
+func (m *StatManager) AddHit(bytes int64, cluster, storage string, userAgent string) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	data := &statInstData{
+		Hits:  1,
+		Bytes: bytes,
+	}
+	m.Overall.update(data)
+	if userAgent != "" {
+		m.Overall.Accesses[userAgent]++
+	}
+	if cluster != "" {
+		d := m.Clusters[cluster]
+		if d == nil {
+			d = NewStatData()
+			m.Clusters[cluster] = d
+		}
+		d.update(data)
+		if userAgent != "" {
+			d.Accesses[userAgent]++
+		}
+	}
+	if storage != "" {
+		d := m.Storages[storage]
+		if d == nil {
+			d = NewStatData()
+			m.Storages[storage] = d
+		}
+		d.update(data)
+		if userAgent != "" {
+			d.Accesses[userAgent]++
+		}
+	}
+}
+
+func (m *StatManager) Load(dir string) error {
+	clustersDir, storagesDir := filepath.Join(dir, "clusters"), filepath.Join(dir, "storages")
+
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	*m.Overall = StatData{}
+	clear(m.Clusters)
+	clear(m.Storages)
+
+	if err := m.Overall.load(filepath.Join(dir, statsOverallFileName)); err != nil {
+		return err
+	}
+	if entries, err := os.ReadDir(clustersDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if name, ok := strings.CutSuffix(entry.Name(), ".json"); ok {
+				d := new(StatData)
+				if err := d.load(filepath.Join(clustersDir, entry.Name())); err != nil {
+					return err
+				}
+				m.Clusters[name] = d
+			}
+		}
+	}
+	if entries, err := os.ReadDir(storagesDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if name, ok := strings.CutSuffix(entry.Name(), ".json"); ok {
+				d := new(StatData)
+				if err := d.load(filepath.Join(storagesDir, entry.Name())); err != nil {
+					return err
+				}
+				m.Storages[name] = d
+			}
+		}
+	}
+	return nil
+}
+
+func (m *StatManager) Save(dir string) error {
+	clustersDir, storagesDir := filepath.Join(dir, "clusters"), filepath.Join(dir, "storages")
+
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+
+	if err := m.Overall.save(filepath.Join(dir, statsOverallFileName)); err != nil {
+		return err
+	}
+	if err := os.Mkdir(clustersDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	if err := os.Mkdir(storagesDir, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	for name, data := range m.Clusters {
+		if err := data.save(filepath.Join(clustersDir, name+".json")); err != nil {
+			return err
+		}
+	}
+	for name, data := range m.Storages {
+		if err := data.save(filepath.Join(storagesDir, name+".json")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *StatManager) MarshalJSON() ([]byte, error) {
+	m.mux.RLock()
+	defer m.mux.RUnlock()
+
+	return json.Marshal(map[string]any{
+		"overall":  m.Overall,
+		"clusters": m.Clusters,
+		"storages": m.Storages,
+	})
+}
 
 type statInstData struct {
 	Hits  int32 `json:"hits"`
@@ -84,6 +222,12 @@ type StatData struct {
 	Accesses map[string]int `json:"accesses"`
 }
 
+func NewStatData() *StatData {
+	return &StatData{
+		Years:    make(map[string]statInstData, 2),
+		Accesses: make(map[string]int, 5),
+	}
+}
 func (d *StatData) Clone() *StatData {
 	cloned := new(StatData)
 	*cloned = *d
@@ -216,44 +360,11 @@ func (d *StatData) update(newData *statInstData) {
 	d.Date = now
 }
 
-type Stats struct {
-	sync.RWMutex
-	StatData
-
-	subStat map[string]*StatData
-
-	hits atomic.Int32
-	bts  atomic.Int64
-}
-
-const statsDirName = "stats"
-const statsFileName = "stat.json"
-
-func (s *Stats) Clone() *StatData {
-	s.RLock()
-	defer s.RUnlock()
-	return s.StatData.Clone()
-}
-
-func (s *Stats) MarshalJSON() ([]byte, error) {
-	s.RLock()
-	defer s.RUnlock()
-
-	return json.Marshal(&s.StatData)
-}
-
-func (s *Stats) MarshalSubStat(name string) ([]byte, error) {
-	s.RLock()
-	defer s.RUnlock()
-
-	return json.Marshal(s.subStat[name])
-}
-
-func (s *StatData) load(name string) (err error) {
-	if err = parseFileOrOld(name, func(buf []byte) error {
+func (s *StatData) load(name string) error {
+	if err := parseFileOrOld(name, func(buf []byte) error {
 		return json.Unmarshal(buf, s)
 	}); err != nil {
-		return
+		return err
 	}
 
 	if s.Years == nil {
@@ -262,91 +373,18 @@ func (s *StatData) load(name string) (err error) {
 	if s.Accesses == nil {
 		s.Accesses = make(map[string]int, 5)
 	}
-	return
+	return nil
 }
 
-func (s *Stats) Load(dir string) (err error) {
-	s.Lock()
-	defer s.Unlock()
-
-	if err = s.StatData.load(filepath.Join(dir, statsFileName)); err != nil {
-		return
-	}
-	s.subStat = make(map[string]*StatData)
-
-	if entries, err := os.ReadDir(filepath.Join(dir, statsDirName)); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			if name, ok := strings.CutSuffix(entry.Name(), ".json"); ok {
-				data := new(StatData)
-				if err := data.load(filepath.Join(dir, statsDirName, entry.Name())); err != nil {
-					return err
-				}
-				s.subStat[name] = data
-			}
-		}
-	}
-	return
-}
-
-// Save
-func (s *Stats) Save(dir string) (err error) {
-	s.RLock()
-	defer s.RUnlock()
-
-	var buf []byte
-	if buf, err = json.Marshal(&s.StatData); err != nil {
-		return
-	}
-	if err = writeFileWithOld(filepath.Join(dir, statsFileName), buf, 0644); err != nil {
-		return
-	}
-
-	if err := os.Mkdir(filepath.Join(dir, statsDirName), 0755); err != nil && !errors.Is(err, os.ErrExist) {
+func (s *StatData) save(name string) error {
+	buf, err := json.Marshal(s)
+	if err != nil {
 		return err
 	}
-	for name, data := range s.subStat {
-		if buf, err = json.Marshal(data); err != nil {
-			return
-		}
-		if err = writeFileWithOld(filepath.Join(dir, statsDirName, name+".json"), buf, 0644); err != nil {
-			return
-		}
+	if err := writeFileWithOld(name, buf, 0644); err != nil {
+		return err
 	}
-	return
-}
-
-func (s *Stats) GetTmpHits() (hits int32, bts int64) {
-	return s.hits.Load(), s.bts.Load()
-}
-
-func (s *Stats) AddHits(hits int32, bytes int64, name string) {
-	s.hits.Add(hits)
-	s.bts.Add(bytes)
-
-	s.Lock()
-	defer s.Unlock()
-
-	data := &statInstData{
-		Hits:  hits,
-		Bytes: bytes,
-	}
-	s.update(data)
-	if name != "" {
-		ss := s.subStat[name]
-		if ss == nil {
-			ss = new(StatData)
-			ss.Years = make(map[string]statInstData, 2)
-			ss.Accesses = make(map[string]int, 5)
-			if s.subStat == nil {
-				s.subStat = make(map[string]*StatData)
-			}
-			s.subStat[name] = ss
-		}
-		ss.update(data)
-	}
+	return nil
 }
 
 func parseFileOrOld(path string, parser func(buf []byte) error) error {

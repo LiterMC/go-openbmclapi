@@ -38,9 +38,8 @@ type RateLimit struct {
 }
 
 type limitSet struct {
-	Limit RateLimit
-
 	mux        sync.RWMutex
+	limit      RateLimit
 	cleanCount int // min clean mask: 0xffff; hour clean mask: 0xff0000
 	accessMin  map[string]*atomic.Int64
 	accessHour map[string]*atomic.Int64
@@ -54,8 +53,26 @@ func makeLimitSet() limitSet {
 	}
 }
 
+func (s *limitSet) GetLimit() RateLimit {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	return s.limit
+}
+
+func (s *limitSet) SetLimit(limit RateLimit) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	s.limit = limit
+}
+
 func (s *limitSet) try(id string) (leftHour, leftMin int64, cleanId int) {
-	checkHour, checkMin := s.Limit.PerHour > 0, s.Limit.PerMin > 0
+	var (
+		hour, min *atomic.Int64
+		ok1, ok2  bool
+	)
+
+	s.mux.RLock()
+	checkHour, checkMin := s.limit.PerHour > 0, s.limit.PerMin > 0
 	if !checkHour {
 		leftHour = -1
 	}
@@ -67,12 +84,6 @@ func (s *limitSet) try(id string) (leftHour, leftMin int64, cleanId int) {
 		return
 	}
 
-	var (
-		hour, min *atomic.Int64
-		ok1, ok2  bool
-	)
-
-	s.mux.RLock()
 	cleanId = s.cleanCount
 	if checkHour {
 		hour, ok1 = s.accessHour[id]
@@ -99,7 +110,7 @@ func (s *limitSet) try(id string) (leftHour, leftMin int64, cleanId int) {
 			}
 			s.mux.Unlock()
 		}
-		leftHour = s.Limit.PerHour - hour.Add(1)
+		leftHour = s.limit.PerHour - hour.Add(1)
 		if leftHour < 0 {
 			hour.Add(-1)
 			leftHour = 0
@@ -118,7 +129,7 @@ func (s *limitSet) try(id string) (leftHour, leftMin int64, cleanId int) {
 			}
 			s.mux.Unlock()
 		}
-		leftMin = s.Limit.PerMin - min.Add(1)
+		leftMin = s.limit.PerMin - min.Add(1)
 		if leftMin < 0 {
 			hour.Add(-1)
 			min.Add(-1)
@@ -134,12 +145,12 @@ func (s *limitSet) release(id string, cleanId int) {
 	if cleanId <= 0 {
 		return
 	}
-	checkHour, checkMin := s.Limit.PerHour > 0, s.Limit.PerMin > 0
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	checkHour, checkMin := s.limit.PerHour > 0, s.limit.PerMin > 0
 	if !checkHour && !checkMin {
 		return
 	}
-	s.mux.Lock()
-	defer s.mux.Unlock()
 	releaseHour := checkHour && cleanId&0xff0000 == s.cleanCount&0xff0000
 	releaseMin := checkMin && cleanId&0xffff == s.cleanCount&0xffff
 	if releaseHour {
@@ -176,6 +187,8 @@ type APIRateMiddleWare struct {
 	startAt     time.Time
 }
 
+var _ utils.MiddleWare = (*APIRateMiddleWare)(nil)
+
 func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMiddleWare) {
 	a = &APIRateMiddleWare{
 		loggedContextKey: loggedContextKey,
@@ -184,9 +197,9 @@ func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMid
 		cleanTicker:      time.NewTicker(time.Minute),
 		startAt:          time.Now(),
 	}
-	go func() {
+	go func(ticker *time.Ticker) {
 		count := 0
-		for range a.cleanTicker.C {
+		for range ticker.C {
 			count++
 			ishour := count > 60
 			if ishour {
@@ -195,11 +208,9 @@ func NewAPIRateMiddleWare(realIPContextKey, loggedContextKey any) (a *APIRateMid
 			a.clean(ishour)
 		}
 		log.Debugf("cleaner exited")
-	}()
+	}(a.cleanTicker)
 	return
 }
-
-var _ utils.MiddleWare = (*APIRateMiddleWare)(nil)
 
 const (
 	RateLimitOverrideContextKey = "go-openbmclapi.limited.rate.api.override"
@@ -219,19 +230,19 @@ func SetSkipRateLimit(req *http.Request) *http.Request {
 }
 
 func (a *APIRateMiddleWare) AnonymousRateLimit() RateLimit {
-	return a.annoySet.Limit
+	return a.annoySet.GetLimit()
 }
 
 func (a *APIRateMiddleWare) SetAnonymousRateLimit(v RateLimit) {
-	a.annoySet.Limit = v
+	a.annoySet.SetLimit(v)
 }
 
 func (a *APIRateMiddleWare) LoggedRateLimit() RateLimit {
-	return a.loggedSet.Limit
+	return a.loggedSet.GetLimit()
 }
 
 func (a *APIRateMiddleWare) SetLoggedRateLimit(v RateLimit) {
-	a.loggedSet.Limit = v
+	a.loggedSet.SetLimit(v)
 }
 
 func (a *APIRateMiddleWare) Destroy() {
@@ -265,6 +276,7 @@ func (a *APIRateMiddleWare) ServeMiddle(rw http.ResponseWriter, req *http.Reques
 		}
 		set = &a.annoySet
 	}
+	limit := set.GetLimit()
 	hourLeft, minLeft, cleanId := set.try(id)
 	now := time.Now()
 	var retryAfter int
@@ -274,8 +286,8 @@ func (a *APIRateMiddleWare) ServeMiddle(rw http.ResponseWriter, req *http.Reques
 		retryAfter = 60 - (int)(now.Sub(a.startAt)/time.Second%60)
 	}
 	resetAfter := now.Add((time.Duration)(retryAfter) * time.Second).Unix()
-	rw.Header().Set("X-Ratelimit-Limit-Minute", strconv.FormatInt(set.Limit.PerMin, 10))
-	rw.Header().Set("X-Ratelimit-Limit-Hour", strconv.FormatInt(set.Limit.PerHour, 10))
+	rw.Header().Set("X-Ratelimit-Limit-Minute", strconv.FormatInt(limit.PerMin, 10))
+	rw.Header().Set("X-Ratelimit-Limit-Hour", strconv.FormatInt(limit.PerHour, 10))
 	rw.Header().Set("X-Ratelimit-Remaining-Minute", strconv.FormatInt(minLeft, 10))
 	rw.Header().Set("X-Ratelimit-Remaining-Hour", strconv.FormatInt(hourLeft, 10))
 	rw.Header().Set("X-Ratelimit-Reset-After", strconv.FormatInt(resetAfter, 10))

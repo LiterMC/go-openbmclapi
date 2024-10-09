@@ -21,13 +21,22 @@ package utils
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"runtime"
+	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
 )
 
@@ -116,12 +125,22 @@ type HttpMiddleWareHandler struct {
 	middles []MiddleWare
 }
 
-func NewHttpMiddleWareHandler(final http.Handler) *HttpMiddleWareHandler {
+var _ http.Handler = (*HttpMiddleWareHandler)(nil)
+
+func NewHttpMiddleWareHandler(final http.Handler, middles ...MiddleWare) *HttpMiddleWareHandler {
 	return &HttpMiddleWareHandler{
-		final: final,
+		final:   final,
+		middles: middles,
 	}
 }
 
+// Handler returns the final http.Handler
+func (m *HttpMiddleWareHandler) Handler() http.Handler {
+	return m.final
+}
+
+// ServeHTTP implements http.Handler
+// It will invoke the middlewares in order
 func (m *HttpMiddleWareHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	i := 0
 	var getNext func() http.Handler
@@ -149,12 +168,415 @@ func (m *HttpMiddleWareHandler) ServeHTTP(rw http.ResponseWriter, req *http.Requ
 	getNext().ServeHTTP(rw, req)
 }
 
+// Use append MiddleWares to the middleware chain
 func (m *HttpMiddleWareHandler) Use(mids ...MiddleWare) {
 	m.middles = append(m.middles, mids...)
 }
 
+// UseFunc append MiddleWareFuncs to the middleware chain
 func (m *HttpMiddleWareHandler) UseFunc(fns ...MiddleWareFunc) {
 	for _, fn := range fns {
 		m.middles = append(m.middles, fn)
 	}
+}
+
+// HttpMethodHandler pass down http requests to different handler based on the request methods
+// The HttpMethodHandler should not be modified after called ServeHTTP
+type HttpMethodHandler struct {
+	Get     http.Handler
+	Head    bool
+	Post    http.Handler
+	Put     http.Handler
+	Patch   http.Handler
+	Delete  http.Handler
+	Connect http.Handler
+	Options http.Handler
+	Trace   http.Handler
+
+	allows     string
+	allowsOnce sync.Once
+}
+
+var _ http.Handler = (*HttpMethodHandler)(nil)
+
+// ServeHTTP implements http.Handler
+// Once ServeHTTP is called the HttpMethodHandler should not be modified
+func (m *HttpMethodHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case http.MethodHead:
+		if !m.Head {
+			break
+		}
+		fallthrough
+	case http.MethodGet:
+		if m.Get != nil {
+			m.Get.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodPost:
+		if m.Post != nil {
+			m.Post.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodPut:
+		if m.Put != nil {
+			m.Put.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodPatch:
+		if m.Patch != nil {
+			m.Patch.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodDelete:
+		if m.Delete != nil {
+			m.Delete.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodConnect:
+		if m.Connect != nil {
+			m.Connect.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodOptions:
+		if m.Options != nil {
+			m.Options.ServeHTTP(rw, req)
+			return
+		}
+	case http.MethodTrace:
+		if m.Trace != nil {
+			m.Trace.ServeHTTP(rw, req)
+			return
+		}
+	}
+	m.allowsOnce.Do(func() {
+		allows := make([]string, 0, 5)
+		if m.Get != nil {
+			allows = append(allows, http.MethodGet)
+			if m.Head {
+				allows = append(allows, http.MethodGet)
+			}
+		}
+		if m.Post != nil {
+			allows = append(allows, http.MethodPost)
+		}
+		if m.Put != nil {
+			allows = append(allows, http.MethodPut)
+		}
+		if m.Patch != nil {
+			allows = append(allows, http.MethodPatch)
+		}
+		if m.Delete != nil {
+			allows = append(allows, http.MethodDelete)
+		}
+		if m.Connect != nil {
+			allows = append(allows, http.MethodConnect)
+		}
+		if m.Options != nil {
+			allows = append(allows, http.MethodOptions)
+		}
+		if m.Trace != nil {
+			allows = append(allows, http.MethodTrace)
+		}
+		m.allows = strings.Join(allows, ", ")
+	})
+	rw.Header().Set("Allow", m.allows)
+	rw.WriteHeader(http.StatusMethodNotAllowed)
+}
+
+// HTTPTLSListener will serve a http or a tls connection
+// When Accept was called, if a pure http request is received,
+// it will response and redirect the client to the https protocol.
+// Else it will just return the tls connection
+type HTTPTLSListener struct {
+	net.Listener
+	TLSConfig     atomic.Pointer[tls.Config]
+	DoRedirect    bool
+	AllowUnsecure bool
+
+	accepting  atomic.Bool
+	acceptedCh chan net.Conn
+	errCh      chan error
+}
+
+var _ net.Listener = (*HTTPTLSListener)(nil)
+
+func NewHttpTLSListener(l net.Listener, cfg *tls.Config) *HTTPTLSListener {
+	h := &HTTPTLSListener{
+		Listener:      l,
+		DoRedirect:    true,
+		AllowUnsecure: false,
+
+		acceptedCh: make(chan net.Conn, 1),
+		errCh:      make(chan error, 1),
+	}
+	h.TLSConfig.Store(cfg)
+	return h
+}
+
+func (s *HTTPTLSListener) Close() (err error) {
+	err = s.Listener.Close()
+	select {
+	case conn := <-s.acceptedCh:
+		conn.Close()
+	default:
+	}
+	select {
+	case <-s.errCh:
+	default:
+	}
+	return
+}
+
+func (s *HTTPTLSListener) maybeHTTPConn(c *connHeadReader) (ishttp bool) {
+	var buf [4096]byte
+	i, n := 0, 0
+READ_HEAD:
+	for {
+		m, err := c.ReadForHead(buf[i:])
+		if err != nil {
+			return false
+		}
+		n += m
+		for ; i < n; i++ {
+			b := buf[i]
+			switch {
+			case b == '\r': // first line of HTTP request end
+				break READ_HEAD
+			case b < 0x20 || 0x7e < b: // not in ascii printable range
+				return false
+			}
+		}
+	}
+	// check if it's actually a HTTP request, not something else
+	method, rest, _ := bytes.Cut(buf[:i], ([]byte)(" "))
+	uurl, proto, _ := bytes.Cut(rest, ([]byte)(" "))
+	if len(method) == 0 || len(uurl) == 0 || len(proto) == 0 {
+		return false
+	}
+	_, _, ok := http.ParseHTTPVersion((string)(proto))
+	if !ok {
+		return false
+	}
+	_, err := url.ParseRequestURI((string)(uurl))
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func (s *HTTPTLSListener) accepter() {
+	for s.accepting.CompareAndSwap(false, true) {
+		conn, err := s.Listener.Accept()
+		s.accepting.Store(false)
+		if err != nil {
+			s.errCh <- err
+			return
+		}
+		tlsCfg := s.TLSConfig.Load()
+		if tlsCfg == nil {
+			s.acceptedCh <- conn
+			return
+		}
+		go s.accepter()
+		hr := &connHeadReader{Conn: conn}
+		hr.SetReadDeadline(time.Now().Add(time.Second * 5))
+		ishttp := s.maybeHTTPConn(hr)
+		hr.SetReadDeadline(time.Time{})
+		if !ishttp {
+			// if it's not a http connection, it must be a tls connection
+			s.acceptedCh <- tls.Server(hr, tlsCfg)
+			return
+		}
+		if s.AllowUnsecure {
+			s.acceptedCh <- hr
+			return
+		}
+		go s.serveHTTP(hr)
+	}
+}
+
+func (s *HTTPTLSListener) serveHTTP(conn net.Conn) {
+	defer conn.Close()
+
+	conn.SetReadDeadline(time.Now().Add(time.Second * 15))
+	req, err := http.ReadRequest(bufio.NewReader(conn))
+	if err != nil {
+		return
+	}
+	conn.SetReadDeadline(time.Time{})
+	// host, _, err := net.SplitHostPort(req.Host)
+	// if err != nil {
+	// 	host = req.Host
+	// }
+	u := *req.URL
+	u.Scheme = "https"
+	if !s.DoRedirect {
+		body := strings.NewReader("Sent http request on https server")
+		resp := &http.Response{
+			StatusCode: http.StatusBadRequest,
+			ProtoMajor: req.ProtoMajor,
+			ProtoMinor: req.ProtoMinor,
+			Request:    req,
+			Header: http.Header{
+				"Content-Type": {"text/plain"},
+				"X-Powered-By": {build.HeaderXPoweredBy},
+			},
+			ContentLength: (int64)(body.Len()),
+		}
+		conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
+		resp.Write(conn)
+		io.Copy(conn, body)
+		return
+	}
+	// u.Host = net.JoinHostPort(host, s.GetPublicPort())
+	resp := &http.Response{
+		StatusCode: http.StatusPermanentRedirect,
+		ProtoMajor: req.ProtoMajor,
+		ProtoMinor: req.ProtoMinor,
+		Request:    req,
+		Header: http.Header{
+			"Location":     {u.String()},
+			"X-Powered-By": {build.HeaderXPoweredBy},
+		},
+	}
+	conn.SetWriteDeadline(time.Now().Add(time.Second * 10))
+	resp.Write(conn)
+}
+
+func (s *HTTPTLSListener) Accept() (conn net.Conn, err error) {
+	select {
+	case conn = <-s.acceptedCh:
+		return
+	case err = <-s.errCh:
+		return
+	default:
+	}
+	go s.accepter()
+	select {
+	case conn = <-s.acceptedCh:
+	case err = <-s.errCh:
+	}
+	return
+}
+
+// connHeadReader is used by HTTPTLSListener
+// it wraps a net.Conn, and the first few bytes can be read multiple times
+// the head buf will be discard when the main content starts to be read
+type connHeadReader struct {
+	net.Conn
+	head     []byte
+	headi    int
+	headDone bool // the main content had start been read
+}
+
+func (c *connHeadReader) Head() []byte {
+	return c.head
+}
+
+// ReadForHead will read the underlying net.Conn,
+// and append the data to its internal head buffer
+func (c *connHeadReader) ReadForHead(buf []byte) (n int, err error) {
+	if c.headDone {
+		panic("connHeadReader: Content is already started to read")
+	}
+	n, err = c.Conn.Read(buf)
+	c.head = append(c.head, buf[:n]...)
+	return
+}
+
+type connReaderForHead struct {
+	c *connHeadReader
+}
+
+func (c *connReaderForHead) Read(buf []byte) (n int, err error) {
+	return c.c.ReadForHead(buf)
+}
+
+func (c *connHeadReader) Read(buf []byte) (n int, err error) {
+	if c.headi < len(c.head) {
+		n = copy(buf, c.head[c.headi:])
+		c.headi += n
+		return
+	}
+	if !c.headDone {
+		c.head = nil
+		c.headDone = true
+	}
+	return c.Conn.Read(buf)
+}
+
+func GetRedirects(resp *http.Response) []*url.URL {
+	redirects := make([]*url.URL, 0, 5)
+	if u, _ := resp.Location(); u != nil {
+		redirects = append(redirects, u)
+	}
+	var req *http.Request
+	for resp != nil {
+		req = resp.Request
+		redirects = append(redirects, req.URL)
+		resp = req.Response
+	}
+	if len(redirects) == 0 {
+		return nil
+	}
+	slices.Reverse(redirects)
+	return redirects
+}
+
+type RedirectError struct {
+	Redirects []*url.URL
+	Response  *http.Response
+	Err       error
+}
+
+func ErrorFromRedirect(err error, resp *http.Response) *RedirectError {
+	return &RedirectError{
+		Redirects: GetRedirects(resp),
+		Response:  resp,
+		Err:       err,
+	}
+}
+
+func (e *RedirectError) Error() string {
+	if len(e.Redirects) <= 1 {
+		return e.Err.Error()
+	}
+
+	var b strings.Builder
+	b.WriteString("Redirect from:\n\t")
+	for _, r := range e.Redirects {
+		b.WriteString("- ")
+		b.WriteString(r.String())
+		b.WriteString("\n\t")
+	}
+	b.WriteString(e.Err.Error())
+	return b.String()
+}
+
+func (e *RedirectError) GetResponse() *http.Response {
+	return e.Response
+}
+
+func (e *RedirectError) Unwrap() error {
+	return e.Err
+}
+
+type redirectErrorWrapper struct {
+	rt http.RoundTripper
+}
+
+func (w *redirectErrorWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := w.rt.RoundTrip(req)
+	if err != nil {
+		if req.Response != nil {
+			return nil, ErrorFromRedirect(err, req.Response)
+		}
+		return nil, err
+	}
+	return resp, nil
+}
+
+func NewRoundTripRedirectErrorWrapper(rt http.RoundTripper) http.RoundTripper {
+	return &redirectErrorWrapper{rt: rt}
 }

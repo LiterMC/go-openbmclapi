@@ -42,28 +42,36 @@ type LocalStorageOption struct {
 }
 
 type LocalStorage struct {
-	opt LocalStorageOption
+	basicOpt StorageOption
+	opt      LocalStorageOption
 }
 
 var _ Storage = (*LocalStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageLocal, StorageFactory{
-		New:       func() Storage { return new(LocalStorage) },
+		New:       func(opt StorageOption) Storage { return NewLocalStorage(opt) },
 		NewConfig: func() any { return new(LocalStorageOption) },
 	})
+}
+
+func NewLocalStorage(opt StorageOption) *LocalStorage {
+	return &LocalStorage{
+		basicOpt: opt,
+		opt:      *(opt.Data.(*LocalStorageOption)),
+	}
 }
 
 func (s *LocalStorage) String() string {
 	return fmt.Sprintf("<LocalStorage cache=%q>", s.opt.CachePath)
 }
 
-func (s *LocalStorage) Options() any {
-	return &s.opt
+func (s *LocalStorage) Id() string {
+	return s.basicOpt.Id
 }
 
-func (s *LocalStorage) SetOptions(newOpts any) {
-	s.opt = *(newOpts.(*LocalStorageOption))
+func (s *LocalStorage) Options() *StorageOption {
+	return &s.basicOpt
 }
 
 func (s *LocalStorage) Init(context.Context) (err error) {

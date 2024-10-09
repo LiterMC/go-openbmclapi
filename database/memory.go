@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -41,13 +42,13 @@ type MemoryDB struct {
 	tokens   map[string]time.Time
 
 	subscribeMux     sync.RWMutex
-	subscribeRecords map[[2]string]*SubscribeRecord
+	subscribeRecords map[[2]string]*api.SubscribeRecord
 
 	emailSubMux     sync.RWMutex
-	emailSubRecords map[[2]string]*EmailSubscriptionRecord
+	emailSubRecords map[[2]string]*api.EmailSubscriptionRecord
 
 	webhookMux     sync.RWMutex
-	webhookRecords map[webhookMemKey]*WebhookRecord
+	webhookRecords map[webhookMemKey]*api.WebhookRecord
 }
 
 var _ DB = (*MemoryDB)(nil)
@@ -56,7 +57,7 @@ func NewMemoryDB() *MemoryDB {
 	return &MemoryDB{
 		fileRecords:      make(map[string]*FileRecord),
 		tokens:           make(map[string]time.Time),
-		subscribeRecords: make(map[[2]string]*SubscribeRecord),
+		subscribeRecords: make(map[[2]string]*api.SubscribeRecord),
 	}
 }
 
@@ -72,7 +73,7 @@ func (m *MemoryDB) ValidJTI(jti string) (bool, error) {
 
 	expire, ok := m.tokens[jti]
 	if !ok {
-		return false, ErrNotFound
+		return false, api.ErrNotFound
 	}
 	if time.Now().After(expire) {
 		return false, nil
@@ -84,7 +85,7 @@ func (m *MemoryDB) AddJTI(jti string, expire time.Time) error {
 	m.tokenMux.Lock()
 	defer m.tokenMux.Unlock()
 	if _, ok := m.tokens[jti]; ok {
-		return ErrExists
+		return api.ErrExist
 	}
 	m.tokens[jti] = expire
 	return nil
@@ -95,13 +96,13 @@ func (m *MemoryDB) RemoveJTI(jti string) error {
 	_, ok := m.tokens[jti]
 	m.tokenMux.RUnlock()
 	if !ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 
 	m.tokenMux.Lock()
 	defer m.tokenMux.Unlock()
 	if _, ok := m.tokens[jti]; !ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 	delete(m.tokens, jti)
 	return nil
@@ -113,7 +114,7 @@ func (m *MemoryDB) GetFileRecord(path string) (*FileRecord, error) {
 
 	record, ok := m.fileRecords[path]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, api.ErrNotFound
 	}
 	return record, nil
 }
@@ -135,7 +136,7 @@ func (m *MemoryDB) RemoveFileRecord(path string) error {
 	defer m.fileRecMux.Unlock()
 
 	if _, ok := m.fileRecords[path]; !ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 	delete(m.fileRecords, path)
 	return nil
@@ -147,7 +148,7 @@ func (m *MemoryDB) ForEachFileRecord(cb func(*FileRecord) error) error {
 
 	for _, v := range m.fileRecords {
 		if err := cb(v); err != nil {
-			if err == ErrStopIter {
+			if err == api.ErrStopIter {
 				break
 			}
 			return err
@@ -156,18 +157,18 @@ func (m *MemoryDB) ForEachFileRecord(cb func(*FileRecord) error) error {
 	return nil
 }
 
-func (m *MemoryDB) GetSubscribe(user string, client string) (*SubscribeRecord, error) {
+func (m *MemoryDB) GetSubscribe(user string, client string) (*api.SubscribeRecord, error) {
 	m.subscribeMux.RLock()
 	defer m.subscribeMux.RUnlock()
 
 	record, ok := m.subscribeRecords[[2]string{user, client}]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, api.ErrNotFound
 	}
 	return record, nil
 }
 
-func (m *MemoryDB) SetSubscribe(record SubscribeRecord) error {
+func (m *MemoryDB) SetSubscribe(record api.SubscribeRecord) error {
 	m.subscribeMux.Lock()
 	defer m.subscribeMux.Unlock()
 
@@ -175,7 +176,7 @@ func (m *MemoryDB) SetSubscribe(record SubscribeRecord) error {
 	if record.EndPoint == "" {
 		old, ok := m.subscribeRecords[key]
 		if !ok {
-			return ErrNotFound
+			return api.ErrNotFound
 		}
 		record.EndPoint = old.EndPoint
 	}
@@ -190,19 +191,19 @@ func (m *MemoryDB) RemoveSubscribe(user string, client string) error {
 	key := [2]string{user, client}
 	_, ok := m.subscribeRecords[key]
 	if !ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 	delete(m.subscribeRecords, key)
 	return nil
 }
 
-func (m *MemoryDB) ForEachSubscribe(cb func(*SubscribeRecord) error) error {
+func (m *MemoryDB) ForEachSubscribe(cb func(*api.SubscribeRecord) error) error {
 	m.subscribeMux.RLock()
 	defer m.subscribeMux.RUnlock()
 
 	for _, v := range m.subscribeRecords {
 		if err := cb(v); err != nil {
-			if err == ErrStopIter {
+			if err == api.ErrStopIter {
 				break
 			}
 			return err
@@ -211,37 +212,37 @@ func (m *MemoryDB) ForEachSubscribe(cb func(*SubscribeRecord) error) error {
 	return nil
 }
 
-func (m *MemoryDB) GetEmailSubscription(user string, addr string) (*EmailSubscriptionRecord, error) {
+func (m *MemoryDB) GetEmailSubscription(user string, addr string) (*api.EmailSubscriptionRecord, error) {
 	m.emailSubMux.RLock()
 	defer m.emailSubMux.RUnlock()
 
 	record, ok := m.emailSubRecords[[2]string{user, addr}]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, api.ErrNotFound
 	}
 	return record, nil
 }
 
-func (m *MemoryDB) AddEmailSubscription(record EmailSubscriptionRecord) error {
+func (m *MemoryDB) AddEmailSubscription(record api.EmailSubscriptionRecord) error {
 	m.emailSubMux.Lock()
 	defer m.emailSubMux.Unlock()
 
 	key := [2]string{record.User, record.Addr}
 	if _, ok := m.emailSubRecords[key]; ok {
-		return ErrExists
+		return api.ErrExist
 	}
 	m.emailSubRecords[key] = &record
 	return nil
 }
 
-func (m *MemoryDB) UpdateEmailSubscription(record EmailSubscriptionRecord) error {
+func (m *MemoryDB) UpdateEmailSubscription(record api.EmailSubscriptionRecord) error {
 	m.emailSubMux.Lock()
 	defer m.emailSubMux.Unlock()
 
 	key := [2]string{record.User, record.Addr}
 	old, ok := m.emailSubRecords[key]
 	if ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 	_ = old
 	m.emailSubRecords[key] = &record
@@ -254,19 +255,19 @@ func (m *MemoryDB) RemoveEmailSubscription(user string, addr string) error {
 
 	key := [2]string{user, addr}
 	if _, ok := m.emailSubRecords[key]; ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 	delete(m.emailSubRecords, key)
 	return nil
 }
 
-func (m *MemoryDB) ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) error) error {
+func (m *MemoryDB) ForEachEmailSubscription(cb func(*api.EmailSubscriptionRecord) error) error {
 	m.emailSubMux.RLock()
 	defer m.emailSubMux.RUnlock()
 
 	for _, v := range m.emailSubRecords {
 		if err := cb(v); err != nil {
-			if err == ErrStopIter {
+			if err == api.ErrStopIter {
 				break
 			}
 			return err
@@ -275,7 +276,7 @@ func (m *MemoryDB) ForEachEmailSubscription(cb func(*EmailSubscriptionRecord) er
 	return nil
 }
 
-func (m *MemoryDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubscriptionRecord) error) error {
+func (m *MemoryDB) ForEachUsersEmailSubscription(user string, cb func(*api.EmailSubscriptionRecord) error) error {
 	m.emailSubMux.RLock()
 	defer m.emailSubMux.RUnlock()
 
@@ -284,7 +285,7 @@ func (m *MemoryDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubs
 			continue
 		}
 		if err := cb(v); err != nil {
-			if err == ErrStopIter {
+			if err == api.ErrStopIter {
 				break
 			}
 			return err
@@ -293,7 +294,7 @@ func (m *MemoryDB) ForEachUsersEmailSubscription(user string, cb func(*EmailSubs
 	return nil
 }
 
-func (m *MemoryDB) ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRecord) error) error {
+func (m *MemoryDB) ForEachEnabledEmailSubscription(cb func(*api.EmailSubscriptionRecord) error) error {
 	m.emailSubMux.RLock()
 	defer m.emailSubMux.RUnlock()
 
@@ -302,7 +303,7 @@ func (m *MemoryDB) ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRec
 			continue
 		}
 		if err := cb(v); err != nil {
-			if err == ErrStopIter {
+			if err == api.ErrStopIter {
 				break
 			}
 			return err
@@ -311,13 +312,13 @@ func (m *MemoryDB) ForEachEnabledEmailSubscription(cb func(*EmailSubscriptionRec
 	return nil
 }
 
-func (m *MemoryDB) GetWebhook(user string, id uuid.UUID) (*WebhookRecord, error) {
+func (m *MemoryDB) GetWebhook(user string, id uuid.UUID) (*api.WebhookRecord, error) {
 	m.webhookMux.RLock()
 	defer m.webhookMux.RUnlock()
 
 	record, ok := m.webhookRecords[webhookMemKey{user, id}]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, api.ErrNotFound
 	}
 	return record, nil
 }
@@ -327,7 +328,7 @@ var (
 	emptyStrPtr = &emptyStr
 )
 
-func (m *MemoryDB) AddWebhook(record WebhookRecord) (err error) {
+func (m *MemoryDB) AddWebhook(record api.WebhookRecord) (err error) {
 	m.webhookMux.Lock()
 	defer m.webhookMux.Unlock()
 
@@ -337,7 +338,7 @@ func (m *MemoryDB) AddWebhook(record WebhookRecord) (err error) {
 
 	key := webhookMemKey{record.User, record.Id}
 	if _, ok := m.webhookRecords[key]; ok {
-		return ErrExists
+		return api.ErrExist
 	}
 	if record.Auth == nil {
 		record.Auth = emptyStrPtr
@@ -349,14 +350,14 @@ func (m *MemoryDB) AddWebhook(record WebhookRecord) (err error) {
 	return nil
 }
 
-func (m *MemoryDB) UpdateWebhook(record WebhookRecord) error {
+func (m *MemoryDB) UpdateWebhook(record api.WebhookRecord) error {
 	m.webhookMux.Lock()
 	defer m.webhookMux.Unlock()
 
 	key := webhookMemKey{record.User, record.Id}
 	old, ok := m.webhookRecords[key]
 	if ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 	if record.Auth == nil {
 		record.Auth = old.Auth
@@ -375,7 +376,7 @@ func (m *MemoryDB) UpdateEnableWebhook(user string, id uuid.UUID, enabled bool) 
 	key := webhookMemKey{user, id}
 	old, ok := m.webhookRecords[key]
 	if ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 	record := *old
 	record.Enabled = enabled
@@ -389,19 +390,19 @@ func (m *MemoryDB) RemoveWebhook(user string, id uuid.UUID) error {
 
 	key := webhookMemKey{user, id}
 	if _, ok := m.webhookRecords[key]; ok {
-		return ErrNotFound
+		return api.ErrNotFound
 	}
 	delete(m.webhookRecords, key)
 	return nil
 }
 
-func (m *MemoryDB) ForEachWebhook(cb func(*WebhookRecord) error) error {
+func (m *MemoryDB) ForEachWebhook(cb func(*api.WebhookRecord) error) error {
 	m.webhookMux.RLock()
 	defer m.webhookMux.RUnlock()
 
 	for _, v := range m.webhookRecords {
 		if err := cb(v); err != nil {
-			if err == ErrStopIter {
+			if err == api.ErrStopIter {
 				break
 			}
 			return err
@@ -410,7 +411,7 @@ func (m *MemoryDB) ForEachWebhook(cb func(*WebhookRecord) error) error {
 	return nil
 }
 
-func (m *MemoryDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) error) error {
+func (m *MemoryDB) ForEachUsersWebhook(user string, cb func(*api.WebhookRecord) error) error {
 	m.webhookMux.RLock()
 	defer m.webhookMux.RUnlock()
 
@@ -419,7 +420,7 @@ func (m *MemoryDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) erro
 			continue
 		}
 		if err := cb(v); err != nil {
-			if err == ErrStopIter {
+			if err == api.ErrStopIter {
 				break
 			}
 			return err
@@ -428,7 +429,7 @@ func (m *MemoryDB) ForEachUsersWebhook(user string, cb func(*WebhookRecord) erro
 	return nil
 }
 
-func (m *MemoryDB) ForEachEnabledWebhook(cb func(*WebhookRecord) error) error {
+func (m *MemoryDB) ForEachEnabledWebhook(cb func(*api.WebhookRecord) error) error {
 	m.webhookMux.RLock()
 	defer m.webhookMux.RUnlock()
 
@@ -437,7 +438,7 @@ func (m *MemoryDB) ForEachEnabledWebhook(cb func(*WebhookRecord) error) error {
 			continue
 		}
 		if err := cb(v); err != nil {
-			if err == ErrStopIter {
+			if err == api.ErrStopIter {
 				break
 			}
 			return err

@@ -60,10 +60,16 @@ func AsSha256Hex(s string) string {
 }
 
 func HMACSha256Hex(key, data string) string {
+	return (string)(HMACSha256HexBytes(key, data))
+}
+
+func HMACSha256HexBytes(key, data string) []byte {
 	m := hmac.New(sha256.New, ([]byte)(key))
 	m.Write(([]byte)(data))
 	buf := m.Sum(nil)
-	return hex.EncodeToString(buf[:])
+	value := make([]byte, hex.EncodedLen(len(buf)))
+	hex.Encode(value, buf[:])
+	return value
 }
 
 func GenRandB64(n int) (s string, err error) {
@@ -75,8 +81,8 @@ func GenRandB64(n int) (s string, err error) {
 	return
 }
 
-func LoadOrCreateHmacKey(dataDir string) (key []byte, err error) {
-	path := filepath.Join(dataDir, "server.hmac.private_key")
+func LoadOrCreateHmacKey(dataDir string, name string) (key []byte, err error) {
+	path := filepath.Join(dataDir, name+".hmac.private_key")
 	buf, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {

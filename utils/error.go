@@ -38,7 +38,7 @@ func NewHTTPStatusErrorFromResponse(res *http.Response) (e *HTTPStatusError) {
 		e.URL = res.Request.URL.String()
 	}
 	if res.Body != nil {
-		var buf [512]byte
+		var buf [1024]byte
 		n, _ := res.Body.Read(buf[:])
 		msg := (string)(buf[:n])
 		for _, b := range msg {

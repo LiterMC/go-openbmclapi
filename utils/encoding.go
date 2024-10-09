@@ -20,6 +20,7 @@
 package utils
 
 import (
+	"encoding/json"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -106,4 +107,29 @@ func (d *YAMLDuration) UnmarshalYAML(n *yaml.Node) (err error) {
 	}
 	*d = (YAMLDuration)(td)
 	return nil
+}
+
+type EmbedJSON[T any] struct {
+	V T
+}
+
+var (
+	_ json.Marshaler   = EmbedJSON[any]{}
+	_ json.Unmarshaler = (*EmbedJSON[any])(nil)
+)
+
+func (e EmbedJSON[T]) MarshalJSON() ([]byte, error) {
+	data, err := json.Marshal(e.V)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal((string)(data))
+}
+
+func (e *EmbedJSON[T]) UnmarshalJSON(data []byte) error {
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	return json.Unmarshal(([]byte)(str), &e.V)
 }

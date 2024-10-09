@@ -17,13 +17,13 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package database_test
+package api_test
 
 import (
 	"encoding/json"
 	"time"
 
-	. "github.com/LiterMC/go-openbmclapi/database"
+	. "github.com/LiterMC/go-openbmclapi/api"
 	"testing"
 )
 

@@ -208,7 +208,7 @@ func (h *Handler) routeLogin(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := h.tokens.VerifyChallengeToken(cli, data.Challenge, "login"); err != nil {
+	if err := h.tokens.VerifyChallengeToken(cli, "login", data.Challenge); err != nil {
 		writeJson(rw, http.StatusUnauthorized, Map{
 			"error": "Invalid challenge",
 		})

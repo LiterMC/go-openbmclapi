@@ -26,9 +26,12 @@ import (
 
 type StatsManager interface {
 	GetStatus() StatusData
+	// returns a cluster's stat data
+	// if name is empty then gets the overall access data
+	GetClusterAccessStat(name string) *AccessStatData
 	// returns a storage's stat data
 	// if name is empty then gets the overall access data
-	GetAccessStat(name string) *AccessStatData
+	GetStorageAccessStat(name string) *AccessStatData
 }
 
 type StatusData struct {

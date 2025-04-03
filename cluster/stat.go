@@ -72,13 +72,12 @@ func (m *StatManager) GetStatus() api.StatusData {
 	}
 }
 
-func (m *StatManager) GetAccessStat(name string) *api.AccessStatData {
-	data := m.Storages[name]
-	if data == nil {
-		return nil
-	}
-	clone := (api.AccessStatData)(*data)
-	return &clone
+func (m *StatManager) GetClusterAccessStat(name string) *api.AccessStatData {
+	return m.Clusters[name]
+}
+
+func (m *StatManager) GetStorageAccessStat(name string) *api.AccessStatData {
+	return m.Storages[name]
 }
 
 func (m *StatManager) AddHit(bytes int64, cluster, storage string, userAgent string) {

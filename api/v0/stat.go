@@ -30,7 +30,8 @@ import (
 func (h *Handler) buildStatRoute(mux *http.ServeMux) {
 	mux.HandleFunc("GET /ping", h.routePing)
 	mux.HandleFunc("GET /status", h.routeStatus)
-	mux.HandleFunc("GET /stat/{name}", h.routeStat)
+	mux.HandleFunc("GET /stat/cluster/{name}", h.routeStatCluster)
+	mux.HandleFunc("GET /stat/storage/{name}", h.routeStatStorage)
 }
 
 func (h *Handler) routePing(rw http.ResponseWriter, req *http.Request) {
@@ -48,10 +49,24 @@ func (h *Handler) routeStatus(rw http.ResponseWriter, req *http.Request) {
 	writeJson(rw, http.StatusOK, h.stats.GetStatus())
 }
 
-func (h *Handler) routeStat(rw http.ResponseWriter, req *http.Request) {
+func (h *Handler) routeStatCluster(rw http.ResponseWriter, req *http.Request) {
 	limited.SetSkipRateLimit(req)
 	name := req.PathValue("name")
-	data := h.stats.GetAccessStat(name)
+	data := h.stats.GetClusterAccessStat(name)
+	if data == nil {
+		writeJson(rw, http.StatusNotFound, Map{
+			"error": "AccessStatNotFound",
+			"name":  name,
+		})
+		return
+	}
+	writeJson(rw, http.StatusOK, data)
+}
+
+func (h *Handler) routeStatStorage(rw http.ResponseWriter, req *http.Request) {
+	limited.SetSkipRateLimit(req)
+	name := req.PathValue("name")
+	data := h.stats.GetStorageAccessStat(name)
 	if data == nil {
 		writeJson(rw, http.StatusNotFound, Map{
 			"error": "AccessStatNotFound",

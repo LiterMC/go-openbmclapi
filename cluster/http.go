@@ -133,7 +133,7 @@ func (cr *Cluster) makeReqWithAuthBody(
 	method string, relpath string,
 	query url.Values, body io.Reader,
 ) (req *http.Request, err error) {
-	req, err = cr.makeReqWithBody(ctx, method, relpath, query, nil)
+	req, err = cr.makeReqWithBody(ctx, method, relpath, query, body)
 	if err != nil {
 		return
 	}

@@ -93,6 +93,7 @@ func LoadOrCreateHmacKey(dataDir string, name string) (key []byte, err error) {
 			return
 		}
 		buf = ([]byte)(sbuf)
+		os.Mkdir(dataDir, 0755)
 		if err = os.WriteFile(path, buf, 0600); err != nil {
 			return
 		}

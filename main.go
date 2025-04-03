@@ -46,8 +46,6 @@ var (
 	KeepAliveInterval = time.Second * 59
 )
 
-var startTime = time.Now()
-
 const baseDir = "."
 const dataDir = "data"
 
@@ -132,7 +130,7 @@ func main() {
 			for _, cr := range r.clusters {
 				go func(cr *cluster.Cluster) {
 					defer log.RecordPanic()
-					if err := cr.Connect(ctx); err != nil {
+					if err := cr.Connect(context.WithValue(ctx, "cluster.options.engine-io.debug", true)); err != nil {
 						log.Errorf("Failed to connect cluster %s to server %q: %v", cr.ID(), cr.Options().Server, err)
 						resCh <- clusterSetupRes{cluster: cr, err: err}
 						return
@@ -149,7 +147,9 @@ func main() {
 			for range len(r.clusters) {
 				select {
 				case res := <-resCh:
-					r.certificates[res.cluster.Name()] = res.cert
+					if res.err == nil {
+						r.certificates[res.cluster.Name()] = res.cert
+					}
 				case <-ctx.Done():
 					return
 				}

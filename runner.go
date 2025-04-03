@@ -116,7 +116,7 @@ func NewRunner(cfg *config.Config) *Runner {
 		user: &api.User{
 			Username:    r.Config.Dashboard.Username,
 			Password:    r.Config.Dashboard.Password,
-			Permissions: api.RootPerm,
+			Permissions: api.AllPerm,
 		},
 	}
 	if apiHMACKey, err := utils.LoadOrCreateHmacKey(dataDir, "server"); err != nil {
@@ -498,6 +498,7 @@ func (r *Runner) CreateHTTPListener(ctx context.Context) (*utils.HTTPTLSListener
 			return nil, err
 		}
 	}
+	log.Infof("HTTP server listening at %s", addr)
 	return utils.NewHttpTLSListener(listener, r.tlsConfig), nil
 }
 
@@ -582,6 +583,9 @@ func (r *Runner) updateClustersWithGeneralConfig(ctx context.Context) error {
 func (r *Runner) EnableClusterAll(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, cr := range r.clusters {
+		if r.certificates[cr.Name()] == nil {
+			continue
+		}
 		wg.Add(1)
 		go func(cr *cluster.Cluster) {
 			defer wg.Done()

@@ -81,7 +81,7 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 			s.Close()
 		}
 	})
-	log.Infof("Dialing %s for cluster %s", engio.URL().String(), cr.ID())
+	log.Infof("Dialing %s for cluster %s(%s)", engio.URL().String(), cr.Name(), cr.ID())
 	if err := engio.Dial(ctx); err != nil {
 		return fmt.Errorf("Dial error: %w", err)
 	}

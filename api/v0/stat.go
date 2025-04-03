@@ -54,7 +54,7 @@ func (h *Handler) routeStat(rw http.ResponseWriter, req *http.Request) {
 	data := h.stats.GetAccessStat(name)
 	if data == nil {
 		writeJson(rw, http.StatusNotFound, Map{
-			"error": "AccessStatNotFoudn",
+			"error": "AccessStatNotFound",
 			"name":  name,
 		})
 		return

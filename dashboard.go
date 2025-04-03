@@ -31,6 +31,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
@@ -79,7 +80,7 @@ func (r *Runner) serveDashboard(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 		rw.Header().Set("Content-Type", "application/manifest+json")
-		http.ServeContent(rw, req, "manifest.webmanifest", startTime, bytes.NewReader(buf))
+		http.ServeContent(rw, req, "manifest.webmanifest", build.StartAt, bytes.NewReader(buf))
 		return
 	case "sw.js":
 		// Must not cache service worker
@@ -112,15 +113,15 @@ func (r *Runner) serveDashboard(rw http.ResponseWriter, req *http.Request) {
 				if _, err := io.Copy(gw, fd); err == nil {
 					if err = gw.Close(); err == nil {
 						rw.Header().Set("Content-Encoding", "gzip")
-						http.ServeContent(rw, req, name, startTime, bytes.NewReader(buf.Bytes()))
+						http.ServeContent(rw, req, name, build.StartAt, bytes.NewReader(buf.Bytes()))
 						return
 					}
 				}
 			}
-			http.ServeContent(rw, req, name, startTime, fd.(io.ReadSeeker))
+			http.ServeContent(rw, req, name, build.StartAt, fd.(io.ReadSeeker))
 			return
 		}
 	}
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeContent(rw, req, "index.html", startTime, strings.NewReader(dsbIndexHtml))
+	http.ServeContent(rw, req, "index.html", build.StartAt, strings.NewReader(dsbIndexHtml))
 }

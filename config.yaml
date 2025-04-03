@@ -1,18 +1,33 @@
+public-host: ""
+public-port: 0
+host: 0.0.0.0
+port: 4000
+use-cert: false
+trusted-x-forwarded-for: false
+only-gc-when-start: false
+sync-interval: 10
+download-max-conn: 16
+max-reconnect-count: 10
 log-slots: 7
 no-access-log: false
 access-log-slots: 16
-byoc: false
-use-cert: false
-trusted-x-forwarded-for: false
-public-host: ""
-public-port: 0
-port: 4000
-cluster-id: ${CLUSTER_ID}
-cluster-secret: ${CLUSTER_SECRET}
-sync-interval: 10
-only-gc-when-start: false
-download-max-conn: 16
-max-reconnect-count: 10
+clusters:
+  main:
+    id: ${CLUSTER_ID}
+    secret: ${CLUSTER_SECRET}
+    byoc: false
+    public-hosts:
+      - ""
+    server: ""
+    skip-signature-check: false
+    storages: []
+storages:
+  - type: local
+    id: local-storage-0
+    weight: 100
+    data:
+      cache-path: _cache
+      compressor: ""
 certificates:
   - cert: /path/to/cert.pem
     key: /path/to/key.pem
@@ -20,7 +35,6 @@ tunneler:
   enable: false
   tunnel-program: ./path/to/tunnel/program
   output-regex: \bNATedAddr\s+(?<host>[0-9.]+|\[[0-9a-f:]+\]):(?<port>\d+)$
-  tunnel-timeout: 0
 cache:
   type: inmem
 serve-limit:
@@ -63,13 +77,6 @@ hijack:
   auth-users:
     - username: example-username
       password: example-password
-storages:
-  - type: local
-    id: local-storage-0
-    weight: 100
-    data:
-      cache-path: _cache
-      compressor: ""
 webdav-users:
   example-user:
     endpoint: https://webdav.example.com/path/to/endpoint/
@@ -82,9 +89,6 @@ advanced:
   no-gc: false
   heavy-check-interval: 120
   keepalive-timeout: 10
-  skip-first-sync: false
-  skip-signature-check: false
   no-fast-enable: false
   wait-before-enable: 0
-  do-NOT-redirect-https-to-SECURE-hostname: false
   do-not-open-faq-on-windows: false

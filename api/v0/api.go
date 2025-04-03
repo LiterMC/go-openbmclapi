@@ -52,6 +52,7 @@ func NewHandler(
 	users api.UserManager,
 	tokenManager api.TokenManager,
 	subManager api.SubscriptionManager,
+	statsManager api.StatsManager,
 ) *Handler {
 	mux := http.NewServeMux()
 	h := &Handler{
@@ -62,6 +63,7 @@ func NewHandler(
 		users:         users,
 		tokens:        tokenManager,
 		subscriptions: subManager,
+		stats:         statsManager,
 	}
 	h.buildRoute()
 	h.handler.UseFunc(cliIdMiddleWare, h.authMiddleWare)
@@ -82,10 +84,11 @@ func (h *Handler) buildRoute() {
 		})
 	})
 
-	h.buildStatRoute(mux)
 	h.buildAuthRoute(mux)
-	h.buildSubscriptionRoute(mux)
 	h.buildConfigureRoute(mux)
+	h.buildDebugRoute(mux)
+	h.buildStatRoute(mux)
+	h.buildSubscriptionRoute(mux)
 }
 
 func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {

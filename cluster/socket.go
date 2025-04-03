@@ -100,6 +100,10 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 	cr.socket.OnMessage(func(event string, data []any) {
 		if event == "message" {
 			log.Infof("[remote]: %v", data[0])
+		} else if event == "exception" {
+			log.Errorf("[remote exception]: %v", data[0])
+		} else if event == "warden-error" {
+			log.Errorf("[warden]: %v", data[0])
 		}
 	})
 	log.Infof("Cluster %s is connecting to socket.io namespace", cr.Name())

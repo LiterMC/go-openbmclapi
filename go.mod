@@ -3,7 +3,7 @@ module github.com/LiterMC/go-openbmclapi
 go 1.23.0
 
 require (
-	github.com/LiterMC/socket.io v0.2.6
+	github.com/LiterMC/socket.io v0.2.7
 	github.com/crow-misia/http-ece v0.0.2
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-sql-driver/mysql v1.9.1

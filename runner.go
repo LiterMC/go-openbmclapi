@@ -146,14 +146,18 @@ func NewRunner(cfg *config.Config) *Runner {
 			DB:         r.database,
 		}
 	}
+	r.statManager = cluster.NewStatManager()
+	for name, _ := range r.Config.Clusters {
+		r.statManager.AddCluster(name)
+	}
 	{
 		storages := make([]storage.Storage, len(r.Config.Storages))
 		for i, s := range r.Config.Storages {
 			storages[i] = storage.NewStorage(s)
+			r.statManager.AddStorage(s.Id)
 		}
 		r.storageManager = storage.NewManager(storages)
 	}
-	r.statManager = cluster.NewStatManager()
 	if err := r.statManager.Load(dataDir); err != nil {
 		log.Errorf("Stat load failed: %v", err)
 	}

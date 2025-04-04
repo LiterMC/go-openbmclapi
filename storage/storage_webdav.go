@@ -629,7 +629,7 @@ func (s *WebDavStorage) checkAlive(ctx context.Context, size int) (err error) {
 }
 
 func (s *WebDavStorage) CheckUpload(ctx context.Context) (err error) {
-	const fileName = ".check"
+	const fileName = ".upload_check"
 	log.Infof("Checking upload at %s ...", s.String())
 
 	data := strconv.FormatInt(time.Now().UnixMilli(), 10)

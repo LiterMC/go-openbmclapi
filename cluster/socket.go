@@ -103,7 +103,7 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 		} else if event == "exception" {
 			log.Errorf("[remote exception]: %v", data[0])
 		} else if event == "warden-error" {
-			log.Errorf("[warden]: %v", data[0])
+			log.Warnf("[warden]: %v", data[0])
 		}
 	})
 	log.Infof("Cluster %s is connecting to socket.io namespace", cr.Name())

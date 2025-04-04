@@ -80,8 +80,10 @@ func SetLang(code string) {
 	var lang, area string
 	if len(code) == 2 {
 		lang = code
-	} else if len(code) == 5 && (code[2] == '-' || code[2] == '_') {
+	} else if len(code) >= 5 && (code[2] == '-' || code[2] == '_') {
 		lang, area = code[:2], code[3:]
+	} else {
+		return
 	}
 	if lang == "" {
 		return

@@ -113,7 +113,7 @@ export async function getStatus(token?: string | null): Promise<StatusRes> {
 }
 
 export async function getStat(name: string, token?: string | null): Promise<Stats | null> {
-	const res = await axios.get<Stats | null>(`/api/v0/stat/${name}`, {
+	const res = await axios.get<Stats | null>(`/api/v0/stat/storage/${name}`, {
 		headers: {
 			Authorization: token ? `Bearer ${token}` : undefined,
 		},

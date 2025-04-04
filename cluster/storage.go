@@ -411,8 +411,8 @@ func (c *HTTPClient) SyncFiles(
 	start := time.Now()
 
 	done := make(chan []storage.Storage, 1)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	stLen := len(manager.Storages)
 	aliveStorages := make(map[storage.Storage]struct{}, stLen)
@@ -443,58 +443,62 @@ func (c *HTTPClient) SyncFiles(
 		}
 	}
 
-	for _, info := range missingMap {
-		log.Debugf("File %s is for %s", info.Hash, joinStorageIDs(info.Storages))
-		fileRes, err := c.fetchFile(ctx, &stats, info)
-		if err != nil {
-			log.TrWarnf("warn.sync.interrupted")
-			return err
-		}
-		go func(info *StorageFileInfo, fileRes <-chan *os.File) {
-			defer log.RecordPanic()
-			select {
-			case srcFd := <-fileRes:
-				// cr.syncProg.Add(1)
-				if srcFd == nil {
-					select {
-					case done <- nil: // TODO: or all storage?
-					case <-ctx.Done():
-					}
-					return
+	go func() {
+		for _, info := range missingMap {
+			log.Debugf("File %s is for %s", info.Hash, joinStorageIDs(info.Storages))
+			fileRes, err := c.fetchFile(ctx, &stats, info)
+			if err != nil {
+				if err != ctx.Err() {
+					cancel(err)
 				}
-				defer os.Remove(srcFd.Name())
-				defer srcFd.Close()
-				// acquire slot here
-				slotId, buf, free := stats.slots.Alloc(ctx)
-				if buf == nil {
-					return
-				}
-				defer free()
-				_ = slotId
-				var failed []storage.Storage
-				for _, target := range info.Storages {
-					if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
-						log.Errorf("Cannot seek file %q to start: %v", srcFd.Name(), err)
-						continue
-					}
-					if err = target.Create(info.Hash, srcFd); err != nil {
-						failed = append(failed, target)
-						log.TrErrorf("error.sync.create.failed", target.String(), info.Hash, err)
-						continue
-					}
-				}
-				free()
-				srcFd.Close()
-				os.Remove(srcFd.Name())
-				select {
-				case done <- failed:
-				case <-ctx.Done():
-				}
-			case <-ctx.Done():
 				return
 			}
-		}(info, fileRes)
-	}
+			go func(info *StorageFileInfo, fileRes <-chan *os.File) {
+				defer log.RecordPanic()
+				select {
+				case srcFd := <-fileRes:
+					// cr.syncProg.Add(1)
+					if srcFd == nil {
+						select {
+						case done <- nil: // TODO: or all storage?
+						case <-ctx.Done():
+						}
+						return
+					}
+					defer os.Remove(srcFd.Name())
+					defer srcFd.Close()
+					// acquire slot here
+					slotId, buf, free := stats.slots.Alloc(ctx)
+					if buf == nil {
+						return
+					}
+					defer free()
+					_ = slotId
+					var failed []storage.Storage
+					for _, target := range info.Storages {
+						if _, err = srcFd.Seek(0, io.SeekStart); err != nil {
+							log.Errorf("Cannot seek file %q to start: %v", srcFd.Name(), err)
+							continue
+						}
+						if err = target.Create(info.Hash, srcFd); err != nil {
+							failed = append(failed, target)
+							log.TrErrorf("error.sync.create.failed", target.String(), info.Hash, err)
+							continue
+						}
+					}
+					free()
+					srcFd.Close()
+					os.Remove(srcFd.Name())
+					select {
+					case done <- failed:
+					case <-ctx.Done():
+					}
+				case <-ctx.Done():
+					return
+				}
+			}(info, fileRes)
+		}
+	}()
 
 	for range len(missingMap) {
 		select {
@@ -504,7 +508,7 @@ func (c *HTTPClient) SyncFiles(
 					delete(aliveStorages, s)
 					log.Debugf("Broken storage %d / %d", stLen-len(aliveStorages), stLen)
 					if len(aliveStorages) == 0 {
-						cancel()
+						cancel(nil)
 						err := errors.New("All storages are broken")
 						log.TrErrorf("error.sync.failed", err)
 						return err
@@ -528,14 +532,14 @@ func (c *HTTPClient) SyncFiles(
 func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *StorageFileInfo) (<-chan *os.File, error) {
 	const maxRetryCount = 10
 
-	slotId, buf, free := stats.slots.Alloc(ctx)
-	if buf == nil {
-		return nil, ctx.Err()
-	}
-
 	hashMethod, err := getHashMethod(len(f.Hash))
 	if err != nil {
 		return nil, err
+	}
+
+	slotId, buf, free := stats.slots.Alloc(ctx)
+	if buf == nil {
+		return nil, ctx.Err()
 	}
 
 	reqInd := 0
@@ -607,12 +611,12 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 			}); err != nil {
 				reqInd = (reqInd + 1) % len(reqs)
 				var rerr *utils.RedirectError
-				if errors.As(err, &rerr) {
-					go func() {
-						if err := rp.Cluster.ReportDownload(context.WithoutCancel(ctx), rerr.GetResponse(), rerr.Unwrap()); err != nil {
+				if ctx.Err() == nil && errors.As(err, &rerr) {
+					go func(ctx context.Context) {
+						if err := rp.Cluster.ReportDownload(ctx, rerr.GetResponse(), rerr.Unwrap()); err != nil {
 							log.Warnf("Report API error: %v", err)
 						}
-					}()
+					}(context.WithoutCancel(ctx))
 				}
 				return err
 			}

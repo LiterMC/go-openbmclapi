@@ -24,6 +24,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 
@@ -35,6 +37,9 @@ const statsOverallFileName = "stat.json"
 
 type StatManager struct {
 	mux sync.RWMutex
+
+	clusters []string
+	storages []string
 
 	Overall  *api.AccessStatData
 	Clusters map[string]*api.AccessStatData
@@ -55,29 +60,119 @@ func (m *StatManager) GetStatus() api.StatusData {
 	m.mux.RLock()
 	defer m.mux.RUnlock()
 
-	clusters := make([]string, 0, len(m.Clusters))
-	for name, _ := range m.Clusters {
-		clusters = append(clusters, name)
-	}
-
-	storages := make([]string, 0, len(m.Storages))
-	for name, _ := range m.Storages {
-		storages = append(storages, name)
-	}
-
 	return api.StatusData{
 		StartAt:  build.StartAt,
-		Clusters: clusters,
-		Storages: storages,
+		Clusters: m.clusters,
+		Storages: m.storages,
 	}
 }
 
+func (m *StatManager) AddCluster(name string) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	i := sort.SearchStrings(m.clusters, name)
+	if i == len(m.clusters) || m.clusters[i] != name {
+		m.clusters = slices.Insert(m.clusters, i, name)
+	}
+}
+
+func (m *StatManager) AddStorage(name string) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	i := sort.SearchStrings(m.storages, name)
+	if i == len(m.storages) || m.storages[i] != name {
+		m.storages = slices.Insert(m.storages, i, name)
+	}
+}
+
+func (m *StatManager) RemoveCluster(name string) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	i := sort.SearchStrings(m.clusters, name)
+	if i < len(m.clusters) && m.clusters[i] == name {
+		m.clusters = slices.Delete(m.clusters, i, i + 1)
+	}
+}
+
+func (m *StatManager) RemoveStorage(name string) {
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	i := sort.SearchStrings(m.storages, name)
+	if i < len(m.storages) && m.storages[i] == name {
+		m.storages = slices.Delete(m.storages, i, i + 1)
+	}
+}
+
+func (m *StatManager) RenameCluster(oldName, newName string) {
+	if oldName == newName {
+		return
+	}
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	oldInd := sort.SearchStrings(m.clusters, oldName)
+	if oldInd == len(m.clusters) || m.clusters[oldInd] != oldName {
+		return
+	}
+	newInd := sort.SearchStrings(m.clusters, newName)
+	if oldInd == newInd || oldInd + 1 == newInd {
+		m.clusters[oldInd] = newName
+	} else if oldInd < newInd {
+		copy(m.clusters[oldInd:], m.clusters[oldInd + 1:newInd])
+		m.clusters[newInd - 1] = newName
+	} else /*if oldInd > newInd*/ {
+		copy(m.clusters[newInd + 1:], m.clusters[newInd:oldInd])
+		m.clusters[newInd] = newName
+	}
+	m.Clusters[newName] = m.Clusters[oldName]
+	delete(m.Clusters, oldName)
+}
+
+func (m *StatManager) RenameStorage(oldName, newName string) {
+	if oldName == newName {
+		return
+	}
+	m.mux.Lock()
+	defer m.mux.Unlock()
+
+	oldInd := sort.SearchStrings(m.storages, oldName)
+	if oldInd == len(m.storages) || m.storages[oldInd] != oldName {
+		return
+	}
+	newInd := sort.SearchStrings(m.storages, newName)
+	if oldInd == newInd || oldInd + 1 == newInd {
+		m.storages[oldInd] = newName
+	} else if oldInd < newInd {
+		copy(m.storages[oldInd:], m.storages[oldInd + 1:newInd])
+		m.storages[newInd - 1] = newName
+	} else /*if oldInd > newInd*/ {
+		copy(m.storages[newInd + 1:], m.storages[newInd:oldInd])
+		m.storages[newInd] = newName
+	}
+	m.Storages[newName] = m.Storages[oldName]
+	delete(m.Storages, oldName)
+}
+
+var emptyStat = api.NewAccessStatData()
+
 func (m *StatManager) GetClusterAccessStat(name string) *api.AccessStatData {
-	return m.Clusters[name]
+	d := m.Clusters[name]
+	if d == nil {
+		return emptyStat
+	}
+	return d
 }
 
 func (m *StatManager) GetStorageAccessStat(name string) *api.AccessStatData {
-	return m.Storages[name]
+	d := m.Storages[name]
+	if d == nil {
+		return emptyStat
+	}
+	return d
 }
 
 func (m *StatManager) AddHit(bytes int64, cluster, storage string, userAgent string) {

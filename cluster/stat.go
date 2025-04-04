@@ -93,7 +93,7 @@ func (m *StatManager) RemoveCluster(name string) {
 
 	i := sort.SearchStrings(m.clusters, name)
 	if i < len(m.clusters) && m.clusters[i] == name {
-		m.clusters = slices.Delete(m.clusters, i, i + 1)
+		m.clusters = slices.Delete(m.clusters, i, i+1)
 	}
 }
 
@@ -103,7 +103,7 @@ func (m *StatManager) RemoveStorage(name string) {
 
 	i := sort.SearchStrings(m.storages, name)
 	if i < len(m.storages) && m.storages[i] == name {
-		m.storages = slices.Delete(m.storages, i, i + 1)
+		m.storages = slices.Delete(m.storages, i, i+1)
 	}
 }
 
@@ -119,13 +119,13 @@ func (m *StatManager) RenameCluster(oldName, newName string) {
 		return
 	}
 	newInd := sort.SearchStrings(m.clusters, newName)
-	if oldInd == newInd || oldInd + 1 == newInd {
+	if oldInd == newInd || oldInd+1 == newInd {
 		m.clusters[oldInd] = newName
 	} else if oldInd < newInd {
-		copy(m.clusters[oldInd:], m.clusters[oldInd + 1:newInd])
-		m.clusters[newInd - 1] = newName
+		copy(m.clusters[oldInd:], m.clusters[oldInd+1:newInd])
+		m.clusters[newInd-1] = newName
 	} else /*if oldInd > newInd*/ {
-		copy(m.clusters[newInd + 1:], m.clusters[newInd:oldInd])
+		copy(m.clusters[newInd+1:], m.clusters[newInd:oldInd])
 		m.clusters[newInd] = newName
 	}
 	m.Clusters[newName] = m.Clusters[oldName]
@@ -144,13 +144,13 @@ func (m *StatManager) RenameStorage(oldName, newName string) {
 		return
 	}
 	newInd := sort.SearchStrings(m.storages, newName)
-	if oldInd == newInd || oldInd + 1 == newInd {
+	if oldInd == newInd || oldInd+1 == newInd {
 		m.storages[oldInd] = newName
 	} else if oldInd < newInd {
-		copy(m.storages[oldInd:], m.storages[oldInd + 1:newInd])
-		m.storages[newInd - 1] = newName
+		copy(m.storages[oldInd:], m.storages[oldInd+1:newInd])
+		m.storages[newInd-1] = newName
 	} else /*if oldInd > newInd*/ {
-		copy(m.storages[newInd + 1:], m.storages[newInd:oldInd])
+		copy(m.storages[newInd+1:], m.storages[newInd:oldInd])
 		m.storages[newInd] = newName
 	}
 	m.Storages[newName] = m.Storages[oldName]

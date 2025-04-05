@@ -33,16 +33,16 @@ const loading = ref(false)
 const config = ref<Config | null>(null)
 const changingConfig = ref<Config | null>(null)
 
-changingConfig.value = config.value = {
-	clusters: {
-		'test-cluster': {
-			id: '11123344',
-			secret: 'a-secret',
-			byoc: true,
-			public_hosts: ['localhost', 'some.example.com'],
-		},
-	},
-}
+// changingConfig.value = config.value = {
+// 	clusters: {
+// 		'test-cluster': {
+// 			id: '11123344',
+// 			secret: 'a-secret',
+// 			byoc: true,
+// 			public_hosts: ['localhost', 'some.example.com'],
+// 		},
+// 	},
+// }
 
 const configChanged = computed(
 	() => JSON.stringify(changingConfig.value) !== JSON.stringify(config.value),
@@ -74,7 +74,7 @@ onMounted(() => {
 		<div v-if="loading">
 			<i>Loading ...</i>
 		</div>
-		<template v-else-if="config">
+		<template v-else-if="config && changingConfig">
 			<Card class="configure-group">
 				<template #title>
 					<div class="flex-row-center configure-group-title">
@@ -236,7 +236,10 @@ onMounted(() => {
 					<div class="configure-elem">
 						<div class="configure-button-elem">
 							<label>{{ tr('title.configures.item.enable_access_log') }}</label>
-							<InputSwitch v-model="changingConfig.enable_access_log" />
+							<InputSwitch
+								:modelValue="!changingConfig.no_access_log"
+								@update:modelValue="(v) => changingConfig && (changingConfig.no_access_log = !v)"
+							/>
 						</div>
 						<Message size="small" severity="secondary" variant="simple">
 							{{ tr('description.configures.item.enable_access_log') }}

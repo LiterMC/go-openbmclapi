@@ -421,6 +421,15 @@ func (r *Runner) UpdateFileRecords(files map[string]*cluster.StorageFileInfo, ol
 }
 
 func (r *Runner) InitSynchronizer(ctx context.Context) {
+	for _, s := range r.storageManager.Storages {
+		if s.Inited() {
+			continue
+		}
+		if err := s.Init(ctx); err != nil {
+			log.Errorf("Storage %s initialize error: %v", s.String(), err)
+		}
+	}
+
 	fileMap := make(map[string]*cluster.StorageFileInfo)
 	for _, cr := range r.clusters {
 		log.TrInfof("info.filelist.fetching", cr.ID())

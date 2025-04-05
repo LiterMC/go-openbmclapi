@@ -47,24 +47,24 @@ import (
 )
 
 type WebDavStorageOption struct {
-	MaxConn           int                `yaml:"max-conn"`
-	MaxUploadRate     int                `yaml:"max-upload-rate"`
-	MaxDownloadRate   int                `yaml:"max-download-rate"`
-	PreGenMeasures    bool               `yaml:"pre-gen-measures"`
-	FollowRedirect    bool               `yaml:"follow-redirect"`
-	RedirectLinkCache utils.YAMLDuration `yaml:"redirect-link-cache"`
+	MaxConn           int                `json:"max_conn" yaml:"max-conn"`
+	MaxUploadRate     int                `json:"max_upload_rate" yaml:"max-upload-rate"`
+	MaxDownloadRate   int                `json:"max_download_rate" yaml:"max-download-rate"`
+	PreGenMeasures    bool               `json:"pre_gen_measures" yaml:"pre-gen-measures"`
+	FollowRedirect    bool               `json:"follow_redirect" yaml:"follow-redirect"`
+	RedirectLinkCache utils.YAMLDuration `json:"redirect_link_cache" yaml:"redirect-link-cache"`
 
-	Alias      string `yaml:"alias,omitempty"`
-	WebDavUser `yaml:",inline,omitempty"`
+	Alias      string `json:"alias,omitempty" yaml:"alias,omitempty"`
+	WebDavUser `json:",inline,omitempty" yaml:",inline,omitempty"`
 
-	AliasUser    *WebDavUser `yaml:"-"`
-	FullEndPoint string      `yaml:"-"`
+	AliasUser    *WebDavUser `json:"-" yaml:"-"`
+	FullEndPoint string      `json:"-" yaml:"-"`
 }
 
 type WebDavUser struct {
-	EndPoint string `yaml:"endpoint,omitempty"`
-	Username string `yaml:"username,omitempty"`
-	Password string `yaml:"password,omitempty"`
+	EndPoint string `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Username string `json:"username,omitempty" yaml:"username,omitempty"`
+	Password string `json:"password,omitempty" yaml:"password,omitempty"`
 }
 
 var (
@@ -134,6 +134,7 @@ type WebDavStorage struct {
 	working   atomic.Int32
 	checkMux  sync.RWMutex
 	lastCheck time.Time
+	inited    bool
 }
 
 var _ Storage = (*WebDavStorage)(nil)
@@ -220,7 +221,12 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		log.Info("Measure files created")
 	}
 	s.working.Store(1)
+	s.inited = true
 	return
+}
+
+func (s *WebDavStorage) Inited() bool {
+	return s.inited
 }
 
 func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {

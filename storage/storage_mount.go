@@ -43,9 +43,9 @@ import (
 var ErrNotWorking = errors.New("storage is down")
 
 type MountStorageOption struct {
-	Path           string `yaml:"path"`
-	RedirectBase   string `yaml:"redirect-base"`
-	PreGenMeasures bool   `yaml:"pre-gen-measures"`
+	Path           string `json:"path" yaml:"path"`
+	RedirectBase   string `json:"redirect_base" yaml:"redirect-base"`
+	PreGenMeasures bool   `json:"pre_gen_measures" yaml:"pre-gen-measures"`
 }
 
 func (opt *MountStorageOption) CachePath() string {
@@ -60,6 +60,7 @@ type MountStorage struct {
 	working      atomic.Int32
 	checkMux     sync.RWMutex
 	lastCheck    time.Time
+	inited       bool
 }
 
 var _ Storage = (*MountStorage)(nil)
@@ -123,7 +124,12 @@ func (s *MountStorage) Init(ctx context.Context) (err error) {
 	}
 	s.supportRange.Store(supportRange)
 	s.working.Store(1)
+	s.inited = true
 	return
+}
+
+func (s *MountStorage) Inited() bool {
+	return s.inited
 }
 
 func (s *MountStorage) hashToPath(hash string) string {

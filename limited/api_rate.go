@@ -33,8 +33,8 @@ import (
 )
 
 type RateLimit struct {
-	PerMin  int64 `json:"per-minute" yaml:"per-minute"`
-	PerHour int64 `json:"per-hour" yaml:"per-hour"`
+	PerMin  int64 `json:"per_minute" yaml:"per-minute"`
+	PerHour int64 `json:"per_hour" yaml:"per-hour"`
 }
 
 type limitSet struct {

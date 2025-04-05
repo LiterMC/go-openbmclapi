@@ -40,6 +40,7 @@ type Storage interface {
 	Options() *StorageOption
 	// Init will be called before start to use a storage
 	Init(context.Context) error
+	Inited() bool
 	CheckUpload(context.Context) error
 
 	Size(hash string) (int64, error)
@@ -94,14 +95,14 @@ func (e *UnexpectedStorageTypeError) Error() string {
 }
 
 type BasicStorageOption struct {
-	Type   string `yaml:"type"`
-	Id     string `yaml:"id"`
-	Weight uint   `yaml:"weight"`
+	Type   string `json:"type" yaml:"type"`
+	Id     string `json:"id" yaml:"id"`
+	Weight uint   `json:"weight" yaml:"weight"`
 }
 
 type StorageOption struct {
-	BasicStorageOption `yaml:",inline"`
-	Data               any `yaml:"data"`
+	BasicStorageOption `json:",inline" yaml:",inline"`
+	Data               any `json:"data" yaml:"data"`
 }
 
 func (o *StorageOption) UnmarshalYAML(n *yaml.Node) (err error) {

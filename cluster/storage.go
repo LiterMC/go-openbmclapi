@@ -108,7 +108,6 @@ func (cr *Cluster) GetFileList(ctx context.Context, fileMap map[string]*StorageF
 	defer res.Body.Close()
 	switch res.StatusCode {
 	case http.StatusOK:
-		//
 	case http.StatusNoContent, http.StatusNotModified:
 		return nil
 	default:
@@ -417,6 +416,10 @@ func (c *HTTPClient) SyncFiles(
 	stLen := len(manager.Storages)
 	aliveStorages := make(map[storage.Storage]struct{}, stLen)
 	for _, s := range manager.Storages {
+		if !s.Inited() {
+			log.Errorf("Storage %s is not initialized", s.String())
+			continue
+		}
 		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
 		err := s.CheckUpload(tctx)
 		cancel()

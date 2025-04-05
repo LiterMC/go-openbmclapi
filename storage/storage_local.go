@@ -37,13 +37,14 @@ import (
 )
 
 type LocalStorageOption struct {
-	CachePath  string     `yaml:"cache-path"`
-	Compressor Compressor `yaml:"compressor"`
+	CachePath  string     `json:"cache_path" yaml:"cache-path"`
+	Compressor Compressor `json:"compressor" yaml:"compressor"`
 }
 
 type LocalStorage struct {
 	basicOpt StorageOption
 	opt      LocalStorageOption
+	inited   bool
 }
 
 var _ Storage = (*LocalStorage)(nil)
@@ -78,7 +79,12 @@ func (s *LocalStorage) Init(context.Context) (err error) {
 	if err = initCache(s.opt.CachePath); err != nil {
 		return
 	}
+	s.inited = true
 	return
+}
+
+func (s *LocalStorage) Inited() bool {
+	return s.inited
 }
 
 func initCache(base string) (err error) {

@@ -35,11 +35,11 @@ type RedisCache struct {
 var _ Cache = (*RedisCache)(nil)
 
 type RedisOptions struct {
-	Network    string `yaml:"network"`
-	Addr       string `yaml:"addr"`
-	ClientName string `yaml:"client-name"`
-	Username   string `yaml:"username"`
-	Password   string `yaml:"password"`
+	Network    string `json:"network" yaml:"network"`
+	Addr       string `json:"addr" yaml:"addr"`
+	ClientName string `json:"client_name" yaml:"client-name"`
+	Username   string `json:"username" yaml:"username"`
+	Password   string `json:"password" yaml:"password"`
 }
 
 func (o RedisOptions) ToRedis() *redis.Options {

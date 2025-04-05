@@ -36,13 +36,13 @@ const getChartData = () => {
 	})
 
 	const colors = [
-		documentStyle.getPropertyValue('--red-500'),
-		documentStyle.getPropertyValue('--orange-500'),
-		documentStyle.getPropertyValue('--yellow-500'),
-		documentStyle.getPropertyValue('--green-500'),
-		documentStyle.getPropertyValue('--cyan-500'),
-		documentStyle.getPropertyValue('--blue-500'),
-		documentStyle.getPropertyValue('--purple-500'),
+		documentStyle.getPropertyValue('--p-red-500'),
+		documentStyle.getPropertyValue('--p-orange-500'),
+		documentStyle.getPropertyValue('--p-yellow-500'),
+		documentStyle.getPropertyValue('--p-green-500'),
+		documentStyle.getPropertyValue('--p-cyan-500'),
+		documentStyle.getPropertyValue('--p-blue-500'),
+		documentStyle.getPropertyValue('--p-purple-500'),
 	]
 	return {
 		labels: labels,
@@ -60,9 +60,9 @@ const getChartData = () => {
 
 const getChartOptions = () => {
 	const documentStyle = getComputedStyle(document.documentElement)
-	const textColor = documentStyle.getPropertyValue('--text-color')
-	const textColorSecondary = documentStyle.getPropertyValue('--text-color-secondary')
-	const surfaceBorder = documentStyle.getPropertyValue('--surface-border')
+	const textColor = documentStyle.getPropertyValue('--p-text-color')
+	const textColorSecondary = documentStyle.getPropertyValue('--p-text-color-secondary')
+	const surfaceBorder = documentStyle.getPropertyValue('--p-surface-border')
 
 	return {
 		indexAxis: 'y',

@@ -131,6 +131,9 @@ func (h *Handler) authMiddleWare(rw http.ResponseWriter, req *http.Request, next
 			ctx = context.WithValue(ctx, loggedUserKey, user)
 			ctx = context.WithValue(ctx, tokenIdKey, id)
 			req = req.WithContext(ctx)
+			if user.HasPerm(api.RootPerm) {
+				req = limited.SetSkipRateLimit(req)
+			}
 		}
 	}
 	next.ServeHTTP(rw, req)

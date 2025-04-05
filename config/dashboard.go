@@ -24,26 +24,26 @@ import (
 )
 
 type APIRateLimitConfig struct {
-	Anonymous limited.RateLimit `yaml:"anonymous"`
-	Logged    limited.RateLimit `yaml:"logged"`
+	Anonymous limited.RateLimit `json:"anonymous" yaml:"anonymous"`
+	Logged    limited.RateLimit `json:"logged" yaml:"logged"`
 }
 
 type NotificationConfig struct {
-	EnableEmail         bool   `yaml:"enable-email"`
-	EmailSMTP           string `yaml:"email-smtp"`
-	EmailSMTPEncryption string `yaml:"email-smtp-encryption"`
-	EmailSender         string `yaml:"email-sender"`
-	EmailSenderPassword string `yaml:"email-sender-password"`
-	EnableWebhook       bool   `yaml:"enable-webhook"`
+	EnableEmail         bool   `json:"enable_email" yaml:"enable-email"`
+	EmailSMTP           string `json:"email_smtp" yaml:"email-smtp"`
+	EmailSMTPEncryption string `json:"email_smtp_encryption" yaml:"email-smtp-encryption"`
+	EmailSender         string `json:"email_sender" yaml:"email-sender"`
+	EmailSenderPassword string `json:"email_sender_password" yaml:"email-sender-password"`
+	EnableWebhook       bool   `json:"enable_webhook" yaml:"enable-webhook"`
 }
 
 type DashboardConfig struct {
-	Enable       bool   `yaml:"enable"`
-	Username     string `yaml:"username"`
-	Password     string `yaml:"password"`
-	PwaName      string `yaml:"pwa-name"`
-	PwaShortName string `yaml:"pwa-short_name"`
-	PwaDesc      string `yaml:"pwa-description"`
+	Enable       bool   `json:"enable" yaml:"enable"`
+	Username     string `json:"username" yaml:"username"`
+	Password     string `json:"password" yaml:"password"`
+	PwaName      string `json:"pwa_name" yaml:"pwa-name"`
+	PwaShortName string `json:"pwa_short_name" yaml:"pwa-short_name"`
+	PwaDesc      string `json:"pwa_description" yaml:"pwa-description"`
 
-	NotifySubject string `yaml:"notification-subject"`
+	NotifySubject string `json:"notification_subject" yaml:"notification-subject"`
 }

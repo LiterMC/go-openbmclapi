@@ -59,6 +59,42 @@
 			"scopes": "Scopes",
 			"auth-header": "Auth Header",
 			"configure": "Configure webhook"
+		},
+
+		"configure": "Configure",
+		"configures": {
+			"hostport": "Host and Port",
+			"sync": "Synchronize",
+			"logs": "Logs",
+			"clusters": "Clusters",
+			"storages": "Storages",
+			"item": {
+				"public_host": "Public Host",
+				"public_port": "Public Port",
+				"host": "Host",
+				"port": "Port",
+				"use_cert": "Use Certification",
+				"trusted_x_forwarded_for": "Using Proxy",
+
+				"only_gc_when_start": "Only cleanup when start",
+				"sync_interval": "Synchronize Interval",
+				"download_max_conn": "Max Download Connection",
+				"max_reconnect_count": "Max Reconnect Count",
+
+				"log_slots": "Log Slots",
+				"enable_access_log": "Enable Access Log",
+				"access_log_slots": "Access Log Slots",
+
+				"cluster": {
+					"id": "Cluster ID",
+					"secret": "Cluster Secret",
+					"byoc": "Custom Certificate",
+					"public_hosts": "Public Hostnames",
+					"server": "Central Server",
+					"skip_signature_check": "Skip Signature Check",
+					"storages": "Storages"
+				}
+			}
 		}
 	},
 	"button": {

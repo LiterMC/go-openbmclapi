@@ -447,3 +447,176 @@ export async function getLogFileURL(
 	u.searchParams.set('_t', tk)
 	return u.toString()
 }
+
+export interface Config {
+	public_host: string
+	public_port: number
+	host: string
+	port: number
+	use_cert: boolean
+	trusted_x_forwarded_for: boolean
+
+	only_gc_when_start: boolean
+	sync_interval: number
+	download_max_conn: number
+	max_reconnect_count: number
+
+	log_slots: number
+	no_access_log: boolean
+	access_log_slots: number
+
+	clusters: { [name: string]: ClusterOptions }
+	storages: StorageOption[]
+	certificates: CertificateConfig[]
+	tunneler: TunnelConfig
+	cache: CacheConfig
+	serve_limit: ServeLimitConfig
+	api_rate_limit: APIRateLimitConfig
+	notification: NotificationConfig
+	dashboard: DashboardConfig
+	github_api: GithubAPIConfig
+	database: DatabaseConfig
+	hijack: HijackConfig
+	webdav_users: { [name: string]: WebDavUser }
+	advanced: AdvancedConfig
+}
+
+export interface ClusterOptions {
+	id: string
+	secret: string
+	byoc: boolean
+	public_hosts: string[]
+	server: string
+	skip_signature_check: boolean
+	storages: string[]
+}
+
+interface LocalStorageOption {
+	type: 'local'
+	cache_path: string
+	compressor: string
+}
+
+interface MountStorageOption {
+	type: 'mount'
+	path: string
+	redirect_base: string
+	pre_gen_measures: boolean
+}
+
+type WebDavStorageOption = {
+	type: 'webdav'
+	max_conn: number
+	max_upload_rate: number
+	max_download_rate: number
+	pre_gen_measures: boolean
+	follow_redirect: boolean
+	redirect_link_cache: number
+	alias?: string
+} & WebDavUser
+
+export interface WebDavUser {
+	endpoint?: string
+	username?: string
+	password?: string
+}
+
+export type StorageOption = {
+	id: string
+	weight: number
+} & (LocalStorageOption | MountStorageOption | WebDavStorageOption)
+
+export interface CertificateConfig {
+	cert: string
+	key: string
+}
+
+export interface TunnelConfig {
+	enable: boolean
+	tunnel_program: string
+	output_regex: string
+}
+
+export type CacheConfig =
+	| {
+			type: 'no-cache' | 'memory'
+	  }
+	| {
+			type: 'redis'
+			network: string
+			addr: string
+			client_name: string
+			username: string
+			password: string
+	  }
+
+export interface ServeLimitConfig {
+	enable: boolean
+	max_conn: number
+	upload_rate: number
+}
+
+export interface RateLimit {
+	per_minute: number
+	per_hour: number
+}
+
+export interface APIRateLimitConfig {
+	anonymous: RateLimit
+	logged: RateLimit
+}
+
+export interface NotificationConfig {
+	enable_email: boolean
+	email_smtp: string
+	email_smtp_encryption: string
+	email_sender: string
+	email_sender_password: string
+	enable_webhook: boolean
+}
+
+export interface DashboardConfig {
+	enable: boolean
+	username: string
+	password: string
+	pwa_name: string
+	pwa_short_name: string
+	pwa_description: string
+	notification_subject: string
+}
+
+export interface GithubAPIConfig {
+	update_check_interval: number
+	authorization: string
+}
+
+export interface DatabaseConfig {
+	driver: string
+	data_source_name: string
+}
+
+export interface UserItem {
+	username: string
+	password: string
+}
+
+export interface HijackConfig {
+	enable: boolean
+	enable_local_cache: boolean
+	local_cache_path: string
+	require_auth: boolean
+	auth_users: UserItem[]
+}
+
+export interface AdvancedConfig {
+	// Unsupported
+}
+
+export async function getConfig(token: string): Promise<Config> {
+	const res = await axios.get<Config>(`/api/v0/config`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+	return res.data
+}

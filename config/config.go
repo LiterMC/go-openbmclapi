@@ -33,36 +33,36 @@ import (
 )
 
 type Config struct {
-	PublicHost           string `yaml:"public-host"`
-	PublicPort           uint16 `yaml:"public-port"`
-	Host                 string `yaml:"host"`
-	Port                 uint16 `yaml:"port"`
-	UseCert              bool   `yaml:"use-cert"`
-	TrustedXForwardedFor bool   `yaml:"trusted-x-forwarded-for"`
+	PublicHost           string `json:"public_host" yaml:"public-host"`
+	PublicPort           uint16 `json:"public_port" yaml:"public-port"`
+	Host                 string `json:"host" yaml:"host"`
+	Port                 uint16 `json:"port" yaml:"port"`
+	UseCert              bool   `json:"use_cert" yaml:"use-cert"`
+	TrustedXForwardedFor bool   `json:"trusted_x_forwarded_for" yaml:"trusted-x-forwarded-for"`
 
-	OnlyGcWhenStart   bool `yaml:"only-gc-when-start"`
-	SyncInterval      int  `yaml:"sync-interval"`
-	DownloadMaxConn   int  `yaml:"download-max-conn"`
-	MaxReconnectCount int  `yaml:"max-reconnect-count"`
+	OnlyGcWhenStart   bool `json:"only_gc_when_start" yaml:"only-gc-when-start"`
+	SyncInterval      int  `json:"sync_interval" yaml:"sync-interval"`
+	DownloadMaxConn   int  `json:"download_max_conn" yaml:"download-max-conn"`
+	MaxReconnectCount int  `json:"max_reconnect_count" yaml:"max-reconnect-count"`
 
-	LogSlots       int  `yaml:"log-slots"`
-	NoAccessLog    bool `yaml:"no-access-log"`
-	AccessLogSlots int  `yaml:"access-log-slots"`
+	LogSlots       int  `json:"log_slots" yaml:"log-slots"`
+	NoAccessLog    bool `json:"no_access_log" yaml:"no-access-log"`
+	AccessLogSlots int  `json:"access_log_slots" yaml:"access-log-slots"`
 
-	Clusters     map[string]ClusterOptions      `yaml:"clusters"`
-	Storages     []storage.StorageOption        `yaml:"storages"`
-	Certificates []CertificateConfig            `yaml:"certificates"`
-	Tunneler     TunnelConfig                   `yaml:"tunneler"`
-	Cache        CacheConfig                    `yaml:"cache"`
-	ServeLimit   ServeLimitConfig               `yaml:"serve-limit"`
-	RateLimit    APIRateLimitConfig             `yaml:"api-rate-limit"`
-	Notification NotificationConfig             `yaml:"notification"`
-	Dashboard    DashboardConfig                `yaml:"dashboard"`
-	GithubAPI    GithubAPIConfig                `yaml:"github-api"`
-	Database     DatabaseConfig                 `yaml:"database"`
-	Hijack       HijackConfig                   `yaml:"hijack"`
-	WebdavUsers  map[string]*storage.WebDavUser `yaml:"webdav-users"`
-	Advanced     AdvancedConfig                 `yaml:"advanced"`
+	Clusters     map[string]ClusterOptions      `json:"clusters" yaml:"clusters"`
+	Storages     []storage.StorageOption        `json:"storages" yaml:"storages"`
+	Certificates []CertificateConfig            `json:"certificates" yaml:"certificates"`
+	Tunneler     TunnelConfig                   `json:"tunneler" yaml:"tunneler"`
+	Cache        CacheConfig                    `json:"cache" yaml:"cache"`
+	ServeLimit   ServeLimitConfig               `json:"serve_limit" yaml:"serve-limit"`
+	RateLimit    APIRateLimitConfig             `json:"api_rate_limit" yaml:"api-rate-limit"`
+	Notification NotificationConfig             `json:"notification" yaml:"notification"`
+	Dashboard    DashboardConfig                `json:"dashboard" yaml:"dashboard"`
+	GithubAPI    GithubAPIConfig                `json:"github_api" yaml:"github-api"`
+	Database     DatabaseConfig                 `json:"database" yaml:"database"`
+	Hijack       HijackConfig                   `json:"hijack" yaml:"hijack"`
+	WebdavUsers  map[string]*storage.WebDavUser `json:"webdav_users" yaml:"webdav-users"`
+	Advanced     AdvancedConfig                 `json:"advanced" yaml:"advanced"`
 }
 
 func (cfg *Config) ApplyWebManifest(manifest map[string]any) {

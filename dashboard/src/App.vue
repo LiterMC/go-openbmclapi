@@ -74,6 +74,9 @@ const selectedLang = computed({
 		<RouterLink class="flex-row-center button-link" to="/">
 			<Button icon="pi pi-home" aria-label="Home" />
 		</RouterLink>
+		<RouterLink v-if="token" class="flex-row-center button-link" to="/configure">
+			<Button icon="pi pi-wrench" aria-label="Configure" severity="info" />
+		</RouterLink>
 		<RouterLink class="flex-row-center button-link" to="/settings">
 			<Button icon="pi pi-cog" aria-label="Settings" severity="secondary" />
 		</RouterLink>
@@ -115,7 +118,7 @@ const selectedLang = computed({
 	height: 4rem;
 	padding-left: 2rem;
 	padding-right: 1rem;
-	background-color: color-mix(in srgb, var(--primary-50) 30%, transparent);
+	background-color: color-mix(in srgb, var(--p-primary-50) 30%, transparent);
 	box-shadow: #0008 0 0 1rem -0.5rem;
 	backdrop-filter: blur(0.4rem);
 }
@@ -135,7 +138,7 @@ const selectedLang = computed({
 }
 
 .nav-login {
-	color: var(--primary-color);
+	color: var(--p-primary-color);
 	text-decoration: none;
 }
 
@@ -193,9 +196,9 @@ const selectedLang = computed({
 
 #footer {
 	padding: 2rem;
-	font-family: var(--font-family);
-	color: var(--primary-color-text);
-	background-color: var(--primary-color);
+	font-family: var(--p-font-family);
+	color: var(--p-primary-color-text);
+	background-color: var(--p-primary-color);
 }
 
 #footer > * {
@@ -203,20 +206,20 @@ const selectedLang = computed({
 }
 
 #footer a {
-	color: var(--primary-100);
+	color: var(--p-primary-100);
 	text-decoration: none;
 	transition: 0.4s color, 0.2s background-color ease;
 }
 
 #footer a:hover {
-	color: var(--highlight-text-color);
-	background-color: var(--highlight-bg);
+	color: var(--p-highlight-color);
+	background-color: var(--p-highlight-background);
 	text-decoration: underline;
 }
 
 @media (prefers-color-scheme: dark) {
 	#header {
-		background-color: color-mix(in srgb, var(--primary-50) 10%, transparent);
+		background-color: color-mix(in srgb, var(--p-primary-50) 10%, transparent);
 	}
 }
 

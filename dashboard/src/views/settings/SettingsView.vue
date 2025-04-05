@@ -204,15 +204,16 @@ onMounted(() => {
 			<i class="pi pi-cog" style="font-size: 0.85em"></i>
 			{{ tr('title.settings') }}
 		</h1>
+
 		<Card class="settings-group">
 			<template #title>
 				<div class="flex-row-center settings-group-title">
-					<lable>{{ tr('title.i18n') }}</lable>
+					<label>{{ tr('title.i18n') }}</label>
 				</div>
 			</template>
 			<template #content>
 				<div class="flex-row-center settings-elem">
-					<lable class="settings-label">{{ tr('title.language') }}</lable>
+					<label class="settings-label">{{ tr('title.language') }}</label>
 					<Dropdown
 						v-model="selectedLang"
 						class="lang-selector"
@@ -235,7 +236,7 @@ onMounted(() => {
 		<Card class="settings-group">
 			<template #title>
 				<div class="flex-row-center settings-group-title">
-					<lable>{{ tr('title.debugs_and_logs') }}</lable>
+					<label>{{ tr('title.debugs_and_logs') }}</label>
 				</div>
 			</template>
 			<template #content>
@@ -249,7 +250,7 @@ onMounted(() => {
 		<Card class="settings-group">
 			<template #title>
 				<div class="flex-row-center settings-group-title">
-					<lable>{{ tr('title.notification') }}</lable>
+					<label>{{ tr('title.notification') }}</label>
 					<InputSwitch
 						v-model="enableNotify"
 						@click.prevent="onEnableNotify"
@@ -259,44 +260,44 @@ onMounted(() => {
 			</template>
 			<template #content>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.when.disabled') }}</lable>
+					<label class="settings-label">{{ tr('title.notify.when.disabled') }}</label>
 					<InputSwitch
 						v-model="settings.notifyWhenDisabled"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.when.enabled') }}</lable>
+					<label class="settings-label">{{ tr('title.notify.when.enabled') }}</label>
 					<InputSwitch
 						v-model="settings.notifyWhenEnabled"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.when.sync.done') }}</lable>
+					<label class="settings-label">{{ tr('title.notify.when.sync.done') }}</label>
 					<InputSwitch
 						v-model="settings.notifyWhenSyncFinished"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.when.update.available') }}</lable>
+					<label class="settings-label">{{ tr('title.notify.when.update.available') }}</label>
 					<InputSwitch
 						v-model="settings.notifyUpdates"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.report.daily') }}</lable>
+					<label class="settings-label">{{ tr('title.notify.report.daily') }}</label>
 					<InputSwitch
 						v-model="settings.dailyReport"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label" style="margin-left: 1.5rem">{{
+					<label class="settings-label" style="margin-left: 1.5rem">{{
 						tr('title.notify.report.at')
-					}}</lable>
+					}}</label>
 					<Calendar
 						class="time-input"
 						v-model="dailyReportAt"
@@ -319,7 +320,7 @@ onMounted(() => {
 		</Card>
 	</div>
 </template>
-<style>
+<style scoped>
 .settings-group {
 	width: 30rem;
 	font-size: 1rem;
@@ -339,11 +340,11 @@ onMounted(() => {
 	justify-content: space-between;
 	width: 100%;
 	padding: 0.4rem 1rem;
-	background-color: var(--surface-c);
+	background-color: var(--p-surface-100);
 }
 
 .settings-elem:nth-child(even) {
-	background-color: var(--surface-d);
+	background-color: var(--p-surface-200);
 }
 
 .settings-label {
@@ -367,7 +368,7 @@ onMounted(() => {
 		width: 100%;
 	}
 
-	.settings-group > .p-card-body {
+	.settings-group:deep() > .p-card-body {
 		padding-left: 0;
 		padding-right: 0;
 	}

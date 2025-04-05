@@ -61,3 +61,7 @@ type User struct {
 	Password    string // as sha256
 	Permissions PermissionFlag
 }
+
+func (u *User) HasPerm(perm PermissionFlag) bool {
+	return u.Permissions&perm == perm
+}

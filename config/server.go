@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -35,47 +34,47 @@ type ClusterOptions struct {
 	Id                 string   `json:"id" yaml:"id"`
 	Secret             string   `json:"secret" yaml:"secret"`
 	Byoc               bool     `json:"byoc"`
-	PublicHosts        []string `json:"public-hosts" yaml:"public-hosts"`
+	PublicHosts        []string `json:"public_hosts" yaml:"public-hosts"`
 	Server             string   `json:"server" yaml:"server"`
-	SkipSignatureCheck bool     `json:"skip-signature-check" yaml:"skip-signature-check"`
+	SkipSignatureCheck bool     `json:"skip_signature_check" yaml:"skip-signature-check"`
 	Storages           []string `json:"storages" yaml:"storages"`
 }
 
 type ClusterGeneralConfig struct {
-	PublicHost        string `json:"public-host"`
-	PublicPort        uint16 `json:"public-port"`
-	NoFastEnable      bool   `json:"no-fast-enable"`
-	MaxReconnectCount int    `json:"max-reconnect-count"`
+	PublicHost        string `json:"public_host"`
+	PublicPort        uint16 `json:"public_port"`
+	NoFastEnable      bool   `json:"no_fast_enable"`
+	MaxReconnectCount int    `json:"max_reconnect_count"`
 }
 
 type UserItem struct {
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	Username string `json:"username" yaml:"username"`
+	Password string `json:"password" yaml:"password"`
 }
 
 type CertificateConfig struct {
-	Cert string `yaml:"cert"`
-	Key  string `yaml:"key"`
+	Cert string `json:"cert" yaml:"cert"`
+	Key  string `json:"key" yaml:"key"`
 }
 
 type DatabaseConfig struct {
-	Driver string `yaml:"driver"`
-	DSN    string `yaml:"data-source-name"`
+	Driver string `json:"driver" yaml:"driver"`
+	DSN    string `json:"data_source_name" yaml:"data-source-name"`
 }
 
 type HijackConfig struct {
-	Enable           bool       `yaml:"enable"`
-	EnableLocalCache bool       `yaml:"enable-local-cache"`
-	LocalCachePath   string     `yaml:"local-cache-path"`
-	RequireAuth      bool       `yaml:"require-auth"`
-	AuthUsers        []UserItem `yaml:"auth-users"`
+	Enable           bool       `json:"enable" yaml:"enable"`
+	EnableLocalCache bool       `json:"enable_local_cache" yaml:"enable-local-cache"`
+	LocalCachePath   string     `json:"local_cache_path" yaml:"local-cache-path"`
+	RequireAuth      bool       `json:"require_auth" yaml:"require-auth"`
+	AuthUsers        []UserItem `json:"auth_users" yaml:"auth-users"`
 }
 
 type CacheConfig struct {
-	Type string `yaml:"type"`
-	Data any    `yaml:"data,omitempty"`
+	Type string `json:"type" yaml:"type"`
+	Data any    `json:"data" yaml:"data,omitempty"`
 
-	newCache func() cache.Cache `yaml:"-"`
+	newCache func() cache.Cache `json:"-" yaml:"-"`
 }
 
 func (c *CacheConfig) NewCache() cache.Cache {
@@ -92,10 +91,10 @@ func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 	}
 	c.Type = cfg.Type
 	c.Data = nil
-	switch strings.ToLower(c.Type) {
-	case "no", "off", "disabled", "nocache", "no-cache":
+	switch c.Type {
+	case "no-cache":
 		c.newCache = func() cache.Cache { return cache.NoCache }
-	case "mem", "memory", "inmem":
+	case "memory":
 		c.newCache = func() cache.Cache { return cache.NewInMemCache() }
 	case "redis":
 		opt := new(cache.RedisOptions)
@@ -111,20 +110,20 @@ func (c *CacheConfig) UnmarshalYAML(n *yaml.Node) (err error) {
 }
 
 type ServeLimitConfig struct {
-	Enable     bool `yaml:"enable"`
-	MaxConn    int  `yaml:"max-conn"`
-	UploadRate int  `yaml:"upload-rate"`
+	Enable     bool `json:"enable" yaml:"enable"`
+	MaxConn    int  `json:"max_conn" yaml:"max-conn"`
+	UploadRate int  `json:"upload_rate" yaml:"upload-rate"`
 }
 
 type GithubAPIConfig struct {
-	UpdateCheckInterval utils.YAMLDuration `yaml:"update-check-interval"`
-	Authorization       string             `yaml:"authorization"`
+	UpdateCheckInterval utils.YAMLDuration `json:"update_check_interval" yaml:"update-check-interval"`
+	Authorization       string             `json:"authorization" yaml:"authorization"`
 }
 
 type TunnelConfig struct {
-	Enable      bool   `yaml:"enable"`
-	TunnelProg  string `yaml:"tunnel-program"`
-	OutputRegex string `yaml:"output-regex"`
+	Enable      bool   `json:"enable" yaml:"enable"`
+	TunnelProg  string `json:"tunnel_program" yaml:"tunnel-program"`
+	OutputRegex string `json:"output_regex" yaml:"output-regex"`
 
 	outputRegex *regexp.Regexp
 	hostOut     int

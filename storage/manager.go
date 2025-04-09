@@ -29,21 +29,23 @@ import (
 // Manager manages a list of storages
 type Manager struct {
 	Storages          []Storage
-	weights           []uint
-	totalWeight       uint
+	weights           []int
+	totalWeight       int
 	totalWeightsCache *utils.SyncMap[int, *weightCache]
 }
 
 func NewManager(storages []Storage) (m *Manager) {
 	m = new(Manager)
 	m.Storages = storages
-	m.weights = make([]uint, len(storages))
+	m.weights = make([]int, len(storages))
 	m.totalWeight = 0
 	m.totalWeightsCache = utils.NewSyncMap[int, *weightCache]()
 	for i, s := range storages {
 		w := s.Options().Weight
 		m.weights[i] = w
-		m.totalWeight += w
+		if w > 0 {
+			m.totalWeight += w
+		}
 	}
 	return
 }
@@ -90,8 +92,8 @@ func (m *Manager) GetFlavorString(storages []int) string {
 }
 
 type weightCache struct {
-	weights []uint
-	total   uint
+	weights []int
+	total   int
 }
 
 func calcStoragesCacheKey(storages []int) int {
@@ -106,7 +108,7 @@ func (m *Manager) ForEachFromRandom(storages []int, cb func(s Storage) (done boo
 	cacheKey := calcStoragesCacheKey(storages)
 	data, _ := m.totalWeightsCache.GetOrSet(cacheKey, func() (c *weightCache) {
 		c = new(weightCache)
-		c.weights = make([]uint, len(storages))
+		c.weights = make([]int, len(storages))
 		for i, j := range storages {
 			w := m.weights[j]
 			c.weights[i] = w
@@ -137,7 +139,7 @@ func forEachFromRandomIndex(leng int, cb func(i int) (done bool)) (done bool) {
 	return false
 }
 
-func forEachFromRandomIndexWithPossibility(poss []uint, total uint, cb func(i int) (done bool)) (done bool) {
+func forEachFromRandomIndexWithPossibility(poss []int, total int, cb func(i int) (done bool)) (done bool) {
 	leng := len(poss)
 	if leng == 0 {
 		return false
@@ -145,9 +147,12 @@ func forEachFromRandomIndexWithPossibility(poss []uint, total uint, cb func(i in
 	if total == 0 {
 		return forEachFromRandomIndex(leng, cb)
 	}
-	n := (uint)(utils.RandIntn((int)(total)))
+	n := utils.RandIntn(total)
 	start := 0
 	for i, p := range poss {
+		if p <= 0 {
+			continue
+		}
 		if n < p {
 			start = i
 			break
@@ -155,12 +160,12 @@ func forEachFromRandomIndexWithPossibility(poss []uint, total uint, cb func(i in
 		n -= p
 	}
 	for i := start; i < leng; i++ {
-		if cb(i) {
+		if poss[i] >= 0 && cb(i) {
 			return true
 		}
 	}
 	for i := 0; i < start; i++ {
-		if cb(i) {
+		if poss[i] >= 0 && cb(i) {
 			return true
 		}
 	}

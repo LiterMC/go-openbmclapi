@@ -97,7 +97,7 @@ func (e *UnexpectedStorageTypeError) Error() string {
 type BasicStorageOption struct {
 	Type   string `json:"type" yaml:"type"`
 	Id     string `json:"id" yaml:"id"`
-	Weight uint   `json:"weight" yaml:"weight"`
+	Weight int    `json:"weight" yaml:"weight"`
 }
 
 type StorageOption struct {

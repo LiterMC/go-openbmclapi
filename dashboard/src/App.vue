@@ -3,7 +3,8 @@ import { computed, inject, nextTick, type Ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import axios from 'axios'
 import Button from 'primevue/button'
-import Dropdown from 'primevue/dropdown'
+import ScrollTop from 'primevue/scrolltop'
+import Select from 'primevue/select'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { type Lang, avaliableLangs, getLang, setLang, tr, langNameMap } from '@/lang'
@@ -54,7 +55,7 @@ const selectedLang = computed({
 		</RouterLink>
 
 		<div class="lang-selector-box">
-			<Dropdown
+			<Select
 				v-model="selectedLang"
 				class="lang-selector"
 				:options="languages"
@@ -69,17 +70,23 @@ const selectedLang = computed({
 				<template #option="slotProps">
 					{{ langNameMap[slotProps.option.toString()] }}
 				</template>
-			</Dropdown>
+			</Select>
 		</div>
-		<RouterLink class="flex-row-center button-link" to="/">
-			<Button icon="pi pi-home" aria-label="Home" />
-		</RouterLink>
-		<RouterLink v-if="token" class="flex-row-center button-link" to="/configure">
-			<Button icon="pi pi-wrench" aria-label="Configure" severity="info" />
-		</RouterLink>
-		<RouterLink class="flex-row-center button-link" to="/settings">
-			<Button icon="pi pi-cog" aria-label="Settings" severity="secondary" />
-		</RouterLink>
+		<Button asChild v-slot="slotProps" aria-label="Home">
+			<RouterLink :class="slotProps.class" class="flex-row-center button-link" to="/">
+				<i class="pi pi-home"></i>
+			</RouterLink>
+		</Button>
+		<Button v-if="token" asChild v-slot="slotProps" aria-label="Configure" severity="info">
+			<RouterLink :class="slotProps.class" class="flex-row-center button-link" to="/configure">
+				<i class="pi pi-wrench"></i>
+			</RouterLink>
+		</Button>
+		<Button asChild v-slot="slotProps" aria-label="Settings" severity="secondary">
+			<RouterLink :class="slotProps.class" class="flex-row-center button-link" to="/settings">
+				<i class="pi pi-cog"></i>
+			</RouterLink>
+		</Button>
 		<a
 			class="nav-github"
 			target="_blank"
@@ -105,6 +112,7 @@ const selectedLang = computed({
 			<a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0 License</a>
 		</p>
 	</footer>
+	<ScrollTop />
 	<Toast position="bottom-right" />
 </template>
 

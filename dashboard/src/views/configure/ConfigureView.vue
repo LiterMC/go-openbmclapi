@@ -218,7 +218,7 @@ async function onCreateCluster(event: MouseEvent): Promise<void> {
 	if (changingConfig.clusters[newName]) {
 		return
 	}
-	changingConfig.clusters[newName] = {}
+	(changingConfig.clusters[newName] as any) = {}
 	newClusterName.value = ''
 }
 
@@ -534,7 +534,7 @@ onMounted(() => {
 													<Button
 														icon="pi pi-plus"
 														severity="success"
-														@click="onAddClusterPublicHost(name)"
+														@click="onAddClusterPublicHost(name as string)"
 													/>
 												</InputGroupAddon>
 											</InputGroup>
@@ -595,7 +595,7 @@ onMounted(() => {
 										icon="pi pi-trash"
 										:label="tr('button.remove')"
 										severity="danger"
-										@click="onRemoveCluster(name)"
+										@click="onRemoveCluster(name as string)"
 									/>
 								</div>
 							</AccordionContent>

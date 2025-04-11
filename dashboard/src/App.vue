@@ -73,17 +73,17 @@ const selectedLang = computed({
 			</Select>
 		</div>
 		<Button asChild v-slot="slotProps" aria-label="Home">
-			<RouterLink :class="slotProps.class" class="flex-row-center button-link" to="/">
+			<RouterLink :class="(slotProps as any).class" class="flex-row-center button-link" to="/">
 				<i class="pi pi-home"></i>
 			</RouterLink>
 		</Button>
 		<Button v-if="token" asChild v-slot="slotProps" aria-label="Configure" severity="info">
-			<RouterLink :class="slotProps.class" class="flex-row-center button-link" to="/configure">
+			<RouterLink :class="(slotProps as any).class" class="flex-row-center button-link" to="/configure">
 				<i class="pi pi-wrench"></i>
 			</RouterLink>
 		</Button>
 		<Button asChild v-slot="slotProps" aria-label="Settings" severity="secondary">
-			<RouterLink :class="slotProps.class" class="flex-row-center button-link" to="/settings">
+			<RouterLink :class="(slotProps as any).class" class="flex-row-center button-link" to="/settings">
 				<i class="pi pi-cog"></i>
 			</RouterLink>
 		</Button>

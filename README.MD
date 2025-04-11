@@ -63,7 +63,7 @@ A: 请确认中间所有的反向代理都支持 WebSocket
 ### 无依赖直接运行
 
 1. 从 [Github Release](https://github.com/LiterMC/go-openbmclapi/releases/latest) 找到**适合您服务器平台**的程序并下载到节点服务器上
-2. 配置配置文件, 可以直接使用与bangbang93的openbmclapi相同的环境变量配置, 也可以从`config.yaml`进行配置 _(下文有讲)_
+2. 配置 `config.yaml` 配置文件 _(下文有讲)_
 3. 运行程序
 
 ### 从docker运行
@@ -101,7 +101,7 @@ A: 请确认中间所有的反向代理都支持 WebSocket
 
 ### 从源代码运行
 
-1. 确保您的服务器上装有 `go 1.21+` 以及 `node & npm`
+1. 确保您的服务器上装有 `go 1.23+` 以及 `node & npm`
 2. 下载本仓库 _(可以使用`git clone https://github.com/LiterMC/go-openbmclapi.git`)_
 3. cd 进入本仓库
 4. 配置配置文件或环境变量

@@ -68,13 +68,17 @@
 			"logs": "Logs",
 			"clusters": "Clusters",
 			"storages": "Storages",
+			"tunneler": "Tunneler",
+			"cache": "Cache",
+			"serve_limit": "Serve Limit",
+
 			"item": {
 				"public_host": "Public Host",
 				"public_port": "Public Port",
 				"host": "Host",
 				"port": "Port",
 				"use_cert": "Use Certification",
-				"trusted_x_forwarded_for": "Using Proxy",
+				"trusted_x_forwarded_for": "Trust X-Forwarded-For",
 
 				"only_gc_when_start": "Only cleanup when start",
 				"sync_interval": "Synchronize Interval",
@@ -92,14 +96,48 @@
 					"public_hosts": "Public Hostnames",
 					"server": "Central Server",
 					"skip_signature_check": "Skip Signature Check",
-					"storages": "Storages"
+					"storages": "Using Storages"
+				},
+
+				"storage": {
+					"type": "Storage Type",
+					"weight": "Weight",
+					"cache_path": "Path",
+					"path": "Path",
+					"redirect_base": "Redirect Base URL",
+					"pre_gen_measures": "Pre-generate mesaures",
+					"max_conn": "Max Connection",
+					"max_upload_rate": "Max Upload Rate",
+					"max_download_rate": "Max Download Rate",
+					"follow_redirect": "Follow Redirect",
+					"redirect_link_cache": "Redirect Link Cache Duration"
+				},
+
+				"tunneler": {
+					"enable": "Enable Tunneler",
+					"tunnel_program": "Tunnel Program",
+					"output_regex": "Output Regex"
+				},
+
+				"cache": {
+					"type": "Cache Type"
+				},
+
+				"serve_limit": {
+					"enable": "Enable Serve Limit",
+					"max_conn": "Max Connection",
+					"upload_rate": "Max Upload Rate"
 				}
 			}
 		}
 	},
 	"button": {
 		"enable": "Enable",
-		"disable": "Disable"
+		"disable": "Disable",
+		"save": "Save",
+		"saved": "Saved",
+		"refresh": "Refresh",
+		"remove": "Remove"
 	},
 	"message": {
 		"server": {

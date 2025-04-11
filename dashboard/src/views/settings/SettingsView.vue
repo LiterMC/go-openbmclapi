@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, inject, onMounted, type Ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import Card from 'primevue/card'
 import Calendar from 'primevue/calendar'
-import Dropdown from 'primevue/dropdown'
+import Card from 'primevue/card'
 import InputIcon from 'primevue/inputicon'
-import InputSwitch from 'primevue/inputswitch'
+import Select from 'primevue/select'
+import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
 import {
 	getSubscribePublicKey,
@@ -214,7 +214,7 @@ onMounted(() => {
 			<template #content>
 				<div class="flex-row-center settings-elem">
 					<label class="settings-label">{{ tr('title.language') }}</label>
-					<Dropdown
+					<Select
 						v-model="selectedLang"
 						class="lang-selector"
 						:options="languages"
@@ -229,7 +229,7 @@ onMounted(() => {
 						<template #option="slotProps">
 							{{ langNameMap[slotProps.option.toString()] }}
 						</template>
-					</Dropdown>
+					</Select>
 				</div>
 			</template>
 		</Card>
@@ -251,7 +251,7 @@ onMounted(() => {
 			<template #title>
 				<div class="flex-row-center settings-group-title">
 					<label>{{ tr('title.notification') }}</label>
-					<InputSwitch
+					<ToggleSwitch
 						v-model="enableNotify"
 						@click.prevent="onEnableNotify"
 						:disabled="requestingPermission"
@@ -261,35 +261,35 @@ onMounted(() => {
 			<template #content>
 				<div class="settings-elem">
 					<label class="settings-label">{{ tr('title.notify.when.disabled') }}</label>
-					<InputSwitch
+					<ToggleSwitch
 						v-model="settings.notifyWhenDisabled"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
 					<label class="settings-label">{{ tr('title.notify.when.enabled') }}</label>
-					<InputSwitch
+					<ToggleSwitch
 						v-model="settings.notifyWhenEnabled"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
 					<label class="settings-label">{{ tr('title.notify.when.sync.done') }}</label>
-					<InputSwitch
+					<ToggleSwitch
 						v-model="settings.notifyWhenSyncFinished"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
 					<label class="settings-label">{{ tr('title.notify.when.update.available') }}</label>
-					<InputSwitch
+					<ToggleSwitch
 						v-model="settings.notifyUpdates"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
 					<label class="settings-label">{{ tr('title.notify.report.daily') }}</label>
-					<InputSwitch
+					<ToggleSwitch
 						v-model="settings.dailyReport"
 						:disabled="requestingPermission || !enableNotify"
 					/>
@@ -340,11 +340,11 @@ onMounted(() => {
 	justify-content: space-between;
 	width: 100%;
 	padding: 0.4rem 1rem;
-	background-color: var(--p-surface-100);
+	background-color: var(--table-row-bg-a);
 }
 
 .settings-elem:nth-child(even) {
-	background-color: var(--p-surface-200);
+	background-color: var(--table-row-bg-b);
 }
 
 .settings-label {

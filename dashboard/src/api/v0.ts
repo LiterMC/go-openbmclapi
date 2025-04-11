@@ -620,3 +620,12 @@ export async function getConfig(token: string): Promise<Config> {
 	})
 	return res.data
 }
+
+export async function putConfig(token: string, config: Config): Promise<void> {
+	await axios.put(`/api/v0/config`, JSON.stringify(config), {
+		headers: {
+			Authorization: `Bearer ${token}`,
+			'Content-Type': 'application/json',
+		},
+	})
+}

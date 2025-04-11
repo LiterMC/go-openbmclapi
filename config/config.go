@@ -76,9 +76,10 @@ func (cfg *Config) ApplyWebManifest(manifest map[string]any) {
 func NewDefaultConfig() *Config {
 	return &Config{
 		PublicHost:           "",
-		PublicPort:           0,
+		PublicPort:           443,
 		Host:                 "0.0.0.0",
 		Port:                 4000,
+		UseCert:              false,
 		TrustedXForwardedFor: false,
 
 		OnlyGcWhenStart:   false,
@@ -103,7 +104,7 @@ func NewDefaultConfig() *Config {
 		},
 
 		Cache: CacheConfig{
-			Type:     "inmem",
+			Type:     "memory",
 			newCache: func() cache.Cache { return cache.NewInMemCache() },
 		},
 
@@ -155,9 +156,9 @@ func NewDefaultConfig() *Config {
 
 		Hijack: HijackConfig{
 			Enable:           false,
-			RequireAuth:      false,
 			EnableLocalCache: false,
 			LocalCachePath:   "hijack_cache",
+			RequireAuth:      false,
 			AuthUsers: []UserItem{
 				{
 					Username: "example-username",

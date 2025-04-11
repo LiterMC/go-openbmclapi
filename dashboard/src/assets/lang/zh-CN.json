@@ -59,11 +59,85 @@
 			"scopes": "域",
 			"auth-header": "授权标头",
 			"configure": "配置网络钩子"
+		},
+
+		"configure": "配置",
+		"configures": {
+			"hostport": "主机&端口",
+			"sync": "同步",
+			"logs": "日志",
+			"clusters": "节点",
+			"storages": "存储",
+			"tunneler": "打洞",
+			"cache": "缓存",
+			"serve_limit": "服务限制",
+
+			"item": {
+				"public_host": "公网主机名",
+				"public_port": "公网端口",
+				"host": "主机名",
+				"port": "端口",
+				"use_cert": "使用证书",
+				"trusted_x_forwarded_for": "信任 X-Forwarded-For",
+
+				"only_gc_when_start": "仅在启动时清理",
+				"sync_interval": "同步间隔",
+				"download_max_conn": "最大下载连接数",
+				"max_reconnect_count": "最大重试次数",
+
+				"log_slots": "日志槽位",
+				"enable_access_log": "启用访问日志",
+				"access_log_slots": "访问日志槽位",
+
+				"cluster": {
+					"id": "节点ID",
+					"secret": "节点密钥",
+					"byoc": "自定义证书",
+					"public_hosts": "公开主机名",
+					"server": "主控服务器",
+					"skip_signature_check": "跳过签名检查",
+					"storages": "使用存储"
+				},
+
+				"storage": {
+					"type": "存储类型",
+					"weight": "权重",
+					"cache_path": "路径",
+					"path": "路径",
+					"redirect_base": "重定向基础URL",
+					"pre_gen_measures": "预生成测速文件",
+					"max_conn": "最大连接数",
+					"max_upload_rate": "最大上传速率",
+					"max_download_rate": "最大下载速率",
+					"follow_redirect": "跟随重定向",
+					"redirect_link_cache": "重定向链接缓存时间"
+				},
+
+				"tunneler": {
+					"enable": "启用打洞",
+					"tunnel_program": "打洞程序",
+					"output_regex": "输出正则"
+				},
+
+				"cache": {
+					"type": "缓存类型"
+				},
+
+				"serve_limit": {
+					"enable": "启用服务限制",
+					"max_conn": "最大连接数",
+					"upload_rate": "最大上传速率"
+				}
+			}
 		}
 	},
 	"button": {
 		"enable": "启用",
-		"disable": "禁用"
+		"disable": "禁用",
+		"save": "保存",
+		"saved": "已保存",
+		"refresh": "刷新",
+		"remove": "移除"
 	},
 	"message": {
 		"server": {

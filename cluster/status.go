@@ -19,48 +19,22 @@
 
 package cluster
 
-const (
-	socketDisconnected = 0
-	socketConnected    = 1
-	socketConnecting   = 2
+import (
+	"github.com/LiterMC/go-openbmclapi/api"
 )
 
-const (
-	clusterDisabled = 0
-	clusterEnabled  = 1
-	clusterEnabling = 2
-	clusterKicked   = 4
-)
-
-// Disconnected returns true if the cluster is disconnected from the central server
-func (cr *Cluster) Disconnected() bool {
-	return cr.socketStatus.Load() == socketDisconnected
-}
-
-// Connected returns true if the cluster is connected to the central server
-func (cr *Cluster) Connected() bool {
-	return cr.socketStatus.Load() == socketConnected
-}
-
-// Enabled returns true if the cluster is enabled or enabling
-func (cr *Cluster) Enabled() bool {
-	s := cr.status.Load()
-	return s == clusterEnabled || s == clusterEnabling
-}
-
-// Running returns true if the cluster is completely enabled
-func (cr *Cluster) Running() bool {
-	return cr.status.Load() == clusterEnabled
+func (cr *Cluster) Status() api.ClusterStatus {
+	return (api.ClusterStatus)(cr.status.Load())
 }
 
 // Disabled returns true if the cluster is disabled manually
 func (cr *Cluster) Disabled() bool {
-	return cr.status.Load() == clusterDisabled
+	return cr.Status() == api.ClusterDisabled && !cr.shouldEnable.Load()
 }
 
 // IsKicked returns true if the cluster is kicked by the central server
 func (cr *Cluster) IsKicked() bool {
-	return cr.status.Load() == clusterKicked
+	return cr.Status() == api.ClusterDisabled && cr.shouldEnable.Load()
 }
 
 // WaitForEnable returns a channel which receives true when cluster enabled succeed, or receives false when it failed to enable
@@ -70,7 +44,7 @@ func (cr *Cluster) WaitForEnable() <-chan bool {
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 	ch := make(chan bool, 1)
-	if cr.Running() {
+	if cr.Status().Running() {
 		ch <- true
 	} else {
 		cr.enableSignals = append(cr.enableSignals, ch)

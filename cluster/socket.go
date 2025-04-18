@@ -29,6 +29,7 @@ import (
 	"github.com/LiterMC/socket.io"
 	"github.com/LiterMC/socket.io/engine.io"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
 )
@@ -39,9 +40,13 @@ import (
 //
 // See Disconnect
 func (cr *Cluster) Connect(ctx context.Context) error {
-	if !cr.Disconnected() {
+	if !cr.Status().Disconnected() {
 		return errors.New("Attempt to connect while connecting")
 	}
+
+	cr.status.Store(api.ClusterConnecting)
+	defer cr.status.CompareAndSwap(api.ClusterConnecting, api.ClusterDisconnected)
+
 	_, err := cr.GetAuthToken(ctx)
 	if err != nil {
 		return fmt.Errorf("Auth failed %w", err)
@@ -110,6 +115,8 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 	if err := cr.socket.Connect(""); err != nil {
 		return fmt.Errorf("Namespace connect error: %w", err)
 	}
+
+	cr.status.Store(api.ClusterDisabled)
 	return nil
 }
 
@@ -118,13 +125,13 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 //
 // See Connect
 func (cr *Cluster) Disconnect() error {
-	if cr.Disconnected() {
+	if cr.Status().Disconnected() {
 		return nil
 	}
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
 	err := cr.socket.Close()
-	cr.socketStatus.Store(socketDisconnected)
+	cr.status.Store(api.ClusterDisconnected)
 	cr.socket = nil
 	return err
 }
@@ -133,6 +140,6 @@ func (cr *Cluster) onDisconnected(s *engine.Socket, err error) {
 	if err != nil {
 		log.Warnf("Engine.IO %s disconnected: %v", s.ID(), err)
 	}
-	cr.socketStatus.Store(socketDisconnected)
+	cr.status.Store(api.ClusterDisconnected)
 	cr.socket = nil
 }

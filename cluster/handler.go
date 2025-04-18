@@ -39,7 +39,7 @@ import (
 func (cr *Cluster) HandleFile(rw http.ResponseWriter, req *http.Request, hash string) {
 	defer log.RecoverPanic(nil)
 
-	if !cr.Enabled() {
+	if !cr.Status().Enabled() {
 		// do not serve file if cluster is not enabled yet
 		http.Error(rw, "Cluster is not enabled yet", http.StatusServiceUnavailable)
 		return
@@ -124,7 +124,7 @@ func (cr *Cluster) HandleFile(rw http.ResponseWriter, req *http.Request, hash st
 }
 
 func (cr *Cluster) HandleMeasure(rw http.ResponseWriter, req *http.Request, size int) {
-	if !cr.Enabled() {
+	if !cr.Status().Enabled() {
 		// do not serve file if cluster is not enabled yet
 		http.Error(rw, "Cluster is not enabled yet", http.StatusServiceUnavailable)
 		return

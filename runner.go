@@ -68,6 +68,7 @@ type Runner struct {
 	client         *cluster.HTTPClient
 	database       database.DB
 	clusters       map[string]*cluster.Cluster
+	clusterManager api.ClusterManager
 	userManager    api.UserManager
 	tokenManager   api.TokenManager
 	subManager     api.SubscriptionManager

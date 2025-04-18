@@ -32,6 +32,7 @@ import (
 
 	"github.com/LiterMC/socket.io"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/internal/build"
 	"github.com/LiterMC/go-openbmclapi/log"
@@ -60,7 +61,7 @@ type Cluster struct {
 
 	mux          sync.RWMutex
 	status       atomic.Int32
-	socketStatus atomic.Int32
+	shouldEnable atomic.Bool
 	socket       *socket.Socket
 	client       *HTTPClient
 
@@ -176,24 +177,28 @@ type ConfigFlavor struct {
 // Enable send enable packet to central server
 // The context passed in only affect the logical of Enable method
 func (cr *Cluster) Enable(ctx context.Context) error {
-	if cr.status.Load() == clusterEnabled {
+	if cr.Status() == api.ClusterEnabled {
 		return nil
 	}
+
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
-	if cr.status.Load() == clusterEnabled {
+
+	if !cr.status.CompareAndSwap(api.ClusterDisabled, api.ClusterEnabling) {
 		return nil
 	}
-	defer func() {
-		enabled := cr.Running()
-		for _, ch := range cr.enableSignals {
-			ch <- enabled
-		}
-		cr.enableSignals = cr.enableSignals[:0]
-	}()
-	oldStatus := cr.status.Swap(clusterEnabling)
-	defer cr.status.CompareAndSwap(clusterEnabling, oldStatus)
-	return cr.enable(ctx)
+
+	if err := cr.enable(ctx); err != nil {
+		cr.status.Store(api.ClusterDisabled)
+		return err
+	}
+
+	enabled := cr.Status().Running()
+	for _, ch := range cr.enableSignals {
+		ch <- enabled
+	}
+	cr.enableSignals = cr.enableSignals[:0]
+	return nil
 }
 
 func (cr *Cluster) enable(ctx context.Context) error {
@@ -245,12 +250,13 @@ func (cr *Cluster) enable(ctx context.Context) error {
 	disableSignal := make(chan struct{}, 0)
 	cr.disableSignal = disableSignal
 	log.TrInfof("info.cluster.enabled")
-	cr.status.Store(clusterEnabled)
+	cr.status.Store(api.ClusterEnabled)
 	cr.socket.OnceConnect(func(_ *socket.Socket, ns string) {
 		if ns != "" {
 			return
 		}
-		if cr.status.Load() != clusterEnabled {
+		cr.status.Store(api.ClusterDisabled)
+		if !cr.shouldEnable.Load() {
 			return
 		}
 		select {
@@ -258,14 +264,24 @@ func (cr *Cluster) enable(ctx context.Context) error {
 			return
 		default:
 		}
-		cr.status.Store(clusterEnabling)
 		go cr.reEnable(disableSignal)
+	})
+	cr.socket.OnceDisconnect(func(_ *socket.Socket, ns string) {
+		if ns != "" {
+			return
+		}
+		cr.status.Store(api.ClusterDisconnected)
 	})
 	return nil
 }
 
 func (cr *Cluster) reEnable(disableSignal <-chan struct{}) {
-	tctx, cancel := context.WithTimeout(context.Background(), time.Minute*7)
+	const ReEnableTimeout = time.Minute * 5
+
+	if !cr.status.CompareAndSwap(api.ClusterDisabled, api.ClusterEnabling) {
+		return
+	}
+	tctx, cancel := context.WithTimeout(context.Background(), ReEnableTimeout)
 	go func() {
 		select {
 		case <-tctx.Done():
@@ -275,26 +291,26 @@ func (cr *Cluster) reEnable(disableSignal <-chan struct{}) {
 	}()
 	err := cr.enable(tctx)
 	cancel()
-	if err != nil {
-		log.TrErrorf("error.cluster.enable.failed", err)
-		if cr.status.Load() == clusterEnabled {
-			ctx, cancel := context.WithCancel(context.Background())
-			timer := time.AfterFunc(time.Minute, func() {
-				cancel()
-				if cr.status.CompareAndSwap(clusterEnabled, clusterEnabling) {
-					cr.reEnable(disableSignal)
-				}
-			})
-			go func() {
-				select {
-				case <-ctx.Done():
-				case <-disableSignal:
-					timer.Stop()
-					cancel()
-				}
-			}()
-		}
+	if err == nil {
+		return
 	}
+	log.TrErrorf("error.cluster.enable.failed", err)
+	if cr.Status() != api.ClusterEnabled {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	timer := time.AfterFunc(time.Minute, func() {
+		cancel()
+		cr.reEnable(disableSignal)
+	})
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-disableSignal:
+			timer.Stop()
+			cancel()
+		}
+	}()
 }
 
 // Disable send disable packet to central server
@@ -302,12 +318,12 @@ func (cr *Cluster) reEnable(disableSignal <-chan struct{}) {
 // Disable method is thread-safe, and it will wait until the first invoke exited
 // Connection will not be closed after disable
 func (cr *Cluster) Disable(ctx context.Context) error {
-	if cr.Enabled() {
+	if cr.Status().Enabled() {
 		cr.mux.Lock()
 		defer cr.mux.Unlock()
-		if cr.Enabled() {
+		if cr.Status().Enabled() {
 			defer close(cr.disableSignal)
-			defer cr.status.Store(clusterDisabled)
+			defer cr.status.Store(api.ClusterDisabled)
 			return cr.disable(ctx)
 		}
 	}
@@ -346,14 +362,14 @@ func (cr *Cluster) disable(ctx context.Context) error {
 
 // markKicked marks the cluster as kicked
 func (cr *Cluster) markKicked() {
-	if !cr.Enabled() {
+	if !cr.Status().Enabled() {
 		return
 	}
 	cr.mux.Lock()
 	defer cr.mux.Unlock()
-	if cr.Enabled() {
+	if cr.Status().Enabled() {
 		return
 	}
 	defer close(cr.disableSignal)
-	cr.status.Store(clusterKicked)
+	cr.status.Store(api.ClusterDisabled)
 }

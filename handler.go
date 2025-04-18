@@ -108,8 +108,18 @@ func (r *Runner) updateRateLimit(ctx context.Context) error {
 }
 
 func (r *Runner) GetHandler() http.Handler {
-	r.handlerAPIv0 = http.StripPrefix("/api/v0",
-		v0.NewHandler(wsUpgrader, r.configHandler, r.userManager, r.tokenManager, r.subManager, r.statManager))
+	r.handlerAPIv0 = http.StripPrefix(
+		"/api/v0",
+		v0.NewHandler(
+			wsUpgrader,
+			r.configHandler,
+			r.clusterManager,
+			r.userManager,
+			r.tokenManager,
+			r.subManager,
+			r.statManager,
+		),
+	)
 	r.hijackHandler = http.StripPrefix("/bmclapi", r.hijacker)
 
 	handler := utils.NewHttpMiddleWareHandler((http.HandlerFunc)(r.serveHTTP))

@@ -38,6 +38,7 @@ type Handler struct {
 	router        *http.ServeMux
 	wsUpgrader    *websocket.Upgrader
 	config        api.ConfigHandler
+	clusters      api.ClusterManager
 	users         api.UserManager
 	tokens        api.TokenManager
 	subscriptions api.SubscriptionManager
@@ -49,6 +50,7 @@ var _ http.Handler = (*Handler)(nil)
 func NewHandler(
 	wsUpgrader *websocket.Upgrader,
 	config api.ConfigHandler,
+	clusters api.ClusterManager,
 	users api.UserManager,
 	tokenManager api.TokenManager,
 	subManager api.SubscriptionManager,
@@ -60,6 +62,7 @@ func NewHandler(
 		handler:       utils.NewHttpMiddleWareHandler(mux),
 		wsUpgrader:    wsUpgrader,
 		config:        config,
+		clusters:      clusters,
 		users:         users,
 		tokens:        tokenManager,
 		subscriptions: subManager,

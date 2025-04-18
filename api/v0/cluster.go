@@ -36,10 +36,10 @@ func (h *Handler) buildClusterRoute(mux *http.ServeMux) {
 	mux.Handle("GET /cluster/config", permHandleFunc(api.ClusterPerm, h.routeClusterConfigGET))
 	mux.Handle("PUT /cluster/config", permHandleFunc(api.ClusterPerm, h.routeClusterConfigPUT))
 	mux.Handle("DELETE /cluster/config", permHandleFunc(api.ClusterPerm, h.routeClusterConfigDELETE))
-	// mux.Handle("POST /cluster/connect", permHandleFunc(api.ClusterPerm, h.routeClusterConnect))
-	// mux.Handle("POST /cluster/sync", permHandleFunc(api.ClusterPerm, h.routeClusterSync))
-	// mux.Handle("POST /cluster/enable", permHandleFunc(api.ClusterPerm, h.routeClusterEnable))
-	// mux.Handle("POST /cluster/disable", permHandleFunc(api.ClusterPerm, h.routeClusterDisable))
+	mux.Handle("POST /cluster/connect", permHandleFunc(api.ClusterPerm, h.routeClusterConnect))
+	mux.Handle("POST /cluster/sync", permHandleFunc(api.ClusterPerm, h.routeClusterSync))
+	mux.Handle("POST /cluster/enable", permHandleFunc(api.ClusterPerm, h.routeClusterEnable))
+	mux.Handle("POST /cluster/disable", permHandleFunc(api.ClusterPerm, h.routeClusterDisable))
 }
 
 const configClustersPath = "clusters"
@@ -190,5 +190,29 @@ func (h *Handler) routeClusterConfigDELETE(rw http.ResponseWriter, req *http.Req
 		return
 	}
 	// TODO: disable cluster
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) routeClusterConnect(rw http.ResponseWriter, req *http.Request) {
+	clusterId := req.URL.Query().Get("cluster_id")
+	_ = clusterId
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) routeClusterSync(rw http.ResponseWriter, req *http.Request) {
+	clusterId := req.URL.Query().Get("cluster_id")
+	_ = clusterId
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) routeClusterEnable(rw http.ResponseWriter, req *http.Request) {
+	clusterId := req.URL.Query().Get("cluster_id")
+	_ = clusterId
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) routeClusterDisable(rw http.ResponseWriter, req *http.Request) {
+	clusterId := req.URL.Query().Get("cluster_id")
+	_ = clusterId
 	rw.WriteHeader(http.StatusNoContent)
 }

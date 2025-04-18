@@ -33,7 +33,7 @@ import (
 type ClusterOptions struct {
 	Id                 string   `json:"id" yaml:"id"`
 	Secret             string   `json:"secret" yaml:"secret"`
-	Byoc               bool     `json:"byoc"`
+	Byoc               bool     `json:"byoc" yaml:"byoc"`
 	PublicHosts        []string `json:"public_hosts" yaml:"public-hosts"`
 	Server             string   `json:"server" yaml:"server"`
 	SkipSignatureCheck bool     `json:"skip_signature_check" yaml:"skip-signature-check"`

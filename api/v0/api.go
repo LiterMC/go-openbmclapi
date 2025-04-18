@@ -85,6 +85,7 @@ func (h *Handler) buildRoute() {
 	})
 
 	h.buildAuthRoute(mux)
+	h.buildClusterRoute(mux)
 	h.buildConfigureRoute(mux)
 	h.buildDebugRoute(mux)
 	h.buildStatRoute(mux)
@@ -143,6 +144,10 @@ func parseRequestBody(rw http.ResponseWriter, req *http.Request, ptr any) (parse
 		})
 		return
 	}
+}
+
+func calcSha256ETag(data []byte) string {
+	return `"sha256:` + utils.BytesAsSha256(data) + `"`
 }
 
 func writeJson(rw http.ResponseWriter, code int, data any) (err error) {

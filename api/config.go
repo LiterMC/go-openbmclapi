@@ -20,20 +20,22 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
+
+	"github.com/LiterMC/go-openbmclapi/config"
 )
 
 var ErrPreconditionFailed = errors.New("Precondition Failed")
 
 type ConfigHandler interface {
-	json.Marshaler
-	json.Unmarshaler
+	GetConfig() *config.Config
+
+	MarshalJSON() (data []byte, err error)
+	UnmarshalJSON(data []byte) error
 	UnmarshalYAML(data []byte) error
-	MarshalJSONPath(path string) ([]byte, error)
+	MarshalJSONPath(path string) (data []byte, err error)
 	UnmarshalJSONPath(path string, data []byte) error
 
-	Fingerprint() string
-	// DoLockedAction will execute callback if the fingerprint matches, or return ErrPreconditionFailed
-	DoLockedAction(fingerprint string, callback func(ConfigHandler) error) error
+	DoReadLockedAction(callback func(ConfigHandler) error) error
+	DoWriteLockedAction(callback func(ConfigHandler) error) error
 }

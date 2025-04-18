@@ -20,7 +20,6 @@
 package v0
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -35,12 +34,6 @@ func (h *Handler) buildConfigureRoute(mux *http.ServeMux) {
 	mux.Handle("GET /config/{path}", permHandleFunc(api.FullConfigPerm, h.routeConfigGETPath))
 	mux.Handle("PUT /config", permHandleFunc(api.FullConfigPerm, h.routeConfigPUT))
 	mux.Handle("PATCH /config/{path}", permHandleFunc(api.FullConfigPerm, h.routeConfigPATCH))
-
-	mux.Handle("GET /configure/clusters", permHandleFunc(api.ClusterPerm, h.routeConfigureClustersGET))
-	mux.Handle("GET /configure/cluster/{cluster_id}", permHandleFunc(api.ClusterPerm, h.routeConfigureClusterGET))
-	mux.Handle("PUT /configure/cluster/{cluster_id}", permHandleFunc(api.ClusterPerm, h.routeConfigureClusterPUT))
-	mux.Handle("PATCH /configure/cluster/{cluster_id}/{path}", permHandleFunc(api.ClusterPerm, h.routeConfigureClusterPATCH))
-	mux.Handle("DELETE /configure/cluster/{cluster_id}", permHandleFunc(api.ClusterPerm, h.routeConfigureClusterDELETE))
 
 	mux.Handle("GET /configure/storages", permHandleFunc(api.StoragePerm, h.routeConfigureStoragesGET))
 	mux.Handle("GET /configure/storage/{storage_index}", permHandleFunc(api.StoragePerm, h.routeConfigureStorageGET))
@@ -59,6 +52,12 @@ func (h *Handler) routeConfigGET(rw http.ResponseWriter, req *http.Request) {
 		})
 		return
 	}
+	etag := calcSha256ETag(buf)
+	rw.Header().Set("ETag", etag)
+	if req.Header.Get("If-None-Match") == etag {
+		rw.WriteHeader(http.StatusNotModified)
+		return
+	}
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(buf)
 }
@@ -74,12 +73,16 @@ func (h *Handler) routeConfigPUT(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	etag := req.Header.Get("If-Match")
-	if len(etag) > 2 && etag[0] == '"' && etag[len(etag)-1] == '"' {
-		etag = etag[1 : len(etag)-1]
-	} else {
-		etag = ""
-	}
-	err = h.config.DoLockedAction(etag, func(config api.ConfigHandler) error {
+	err = h.config.DoWriteLockedAction(func(config api.ConfigHandler) error {
+		if etag != "" {
+			buf, err := config.GetConfig().MarshalJSON()
+			if err != nil {
+				return err
+			}
+			if etag != calcSha256ETag(buf) {
+				return api.ErrPreconditionFailed
+			}
+		}
 		switch contentType {
 		case "application/json":
 			buf, err := io.ReadAll(req.Body)
@@ -98,6 +101,10 @@ func (h *Handler) routeConfigPUT(rw http.ResponseWriter, req *http.Request) {
 		}
 	})
 	if err != nil {
+		if err == api.ErrPreconditionFailed {
+			rw.WriteHeader(http.StatusPreconditionFailed)
+			return
+		}
 		if err == errUnknownContent {
 			writeJson(rw, http.StatusBadRequest, Map{
 				"error":        "Unexpected Content-Type",
@@ -144,12 +151,16 @@ func (h *Handler) routeConfigPATCH(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	etag := req.Header.Get("If-Match")
-	if len(etag) > 2 && etag[0] == '"' && etag[len(etag)-1] == '"' {
-		etag = etag[1 : len(etag)-1]
-	} else {
-		etag = ""
-	}
-	err = h.config.DoLockedAction(etag, func(config api.ConfigHandler) error {
+	err = h.config.DoWriteLockedAction(func(config api.ConfigHandler) error {
+		if etag != "" {
+			buf, err := config.GetConfig().MarshalJSON()
+			if err != nil {
+				return err
+			}
+			if etag != calcSha256ETag(buf) {
+				return api.ErrPreconditionFailed
+			}
+		}
 		switch contentType {
 		case "application/json":
 			buf, err := io.ReadAll(req.Body)
@@ -162,6 +173,10 @@ func (h *Handler) routeConfigPATCH(rw http.ResponseWriter, req *http.Request) {
 		}
 	})
 	if err != nil {
+		if err == api.ErrPreconditionFailed {
+			rw.WriteHeader(http.StatusPreconditionFailed)
+			return
+		}
 		if err == errUnknownContent {
 			writeJson(rw, http.StatusBadRequest, Map{
 				"error":        "Unexpected Content-Type",
@@ -170,170 +185,6 @@ func (h *Handler) routeConfigPATCH(rw http.ResponseWriter, req *http.Request) {
 			})
 			return
 		}
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":   "UnmarshalError",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.WriteHeader(http.StatusNoContent)
-}
-
-const configClustersPath = "clusters"
-
-func (h *Handler) routeConfigureClustersGET(rw http.ResponseWriter, req *http.Request) {
-	data, err := h.config.MarshalJSONPath(configClustersPath)
-	if err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":   "MarshalJSONError",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.Header().Set("Content-Type", "application/json")
-	rw.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	rw.WriteHeader(http.StatusOK)
-	rw.Write(data)
-}
-
-func (h *Handler) routeConfigureClusterGET(rw http.ResponseWriter, req *http.Request) {
-	clusterId := req.PathValue("cluster_id")
-	path := configClustersPath + "." + clusterId
-	data, err := h.config.MarshalJSONPath(path)
-	if err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":   "MarshalJSONError",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.Header().Set("Content-Type", "application/json")
-	rw.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	rw.WriteHeader(http.StatusOK)
-	rw.Write(data)
-}
-
-func (h *Handler) routeConfigureClusterPUT(rw http.ResponseWriter, req *http.Request) {
-	clusterId := req.PathValue("cluster_id")
-	path := configClustersPath + "." + clusterId
-	contentType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
-	if err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":        "Unexpected Content-Type",
-			"content-type": req.Header.Get("Content-Type"),
-			"message":      err.Error(),
-		})
-		return
-	}
-	etag := req.Header.Get("If-Match")
-	if len(etag) > 2 && etag[0] == '"' && etag[len(etag)-1] == '"' {
-		etag = etag[1 : len(etag)-1]
-	} else {
-		etag = ""
-	}
-	err = h.config.DoLockedAction(etag, func(config api.ConfigHandler) error {
-		switch contentType {
-		case "application/json":
-			buf, err := io.ReadAll(req.Body)
-			if err != nil {
-				return fmt.Errorf("Failed to read request body: %w", err)
-			}
-			return config.UnmarshalJSONPath(path, buf)
-		default:
-			return errUnknownContent
-		}
-	})
-	if err != nil {
-		if err == errUnknownContent {
-			writeJson(rw, http.StatusBadRequest, Map{
-				"error":        "Unexpected Content-Type",
-				"content-type": req.Header.Get("Content-Type"),
-				"message":      "Expected application/json, application/x-yaml",
-			})
-			return
-		}
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":   "UnmarshalError",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) routeConfigureClusterPATCH(rw http.ResponseWriter, req *http.Request) {
-	clusterId := req.PathValue("cluster_id")
-	path := configClustersPath + "." + clusterId + "." + req.PathValue("path")
-	contentType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
-	if err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":        "Unexpected Content-Type",
-			"content-type": req.Header.Get("Content-Type"),
-			"message":      err.Error(),
-		})
-		return
-	}
-	etag := req.Header.Get("If-Match")
-	if len(etag) > 2 && etag[0] == '"' && etag[len(etag)-1] == '"' {
-		etag = etag[1 : len(etag)-1]
-	} else {
-		etag = ""
-	}
-	err = h.config.DoLockedAction(etag, func(config api.ConfigHandler) error {
-		switch contentType {
-		case "application/json":
-			buf, err := io.ReadAll(req.Body)
-			if err != nil {
-				return fmt.Errorf("Failed to read request body: %w", err)
-			}
-			return config.UnmarshalJSONPath(path, buf)
-		default:
-			return errUnknownContent
-		}
-	})
-	if err != nil {
-		if err == errUnknownContent {
-			writeJson(rw, http.StatusBadRequest, Map{
-				"error":        "Unexpected Content-Type",
-				"content-type": req.Header.Get("Content-Type"),
-				"message":      "Expected application/json, application/x-yaml",
-			})
-			return
-		}
-		writeJson(rw, http.StatusBadRequest, Map{
-			"error":   "UnmarshalError",
-			"message": err.Error(),
-		})
-		return
-	}
-	rw.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) routeConfigureClusterDELETE(rw http.ResponseWriter, req *http.Request) {
-	// TODO: cursed marshal/unmarshal implementions for these, need improve later
-	clusterId := req.PathValue("cluster_id")
-	etag := req.Header.Get("If-Match")
-	if len(etag) > 2 && etag[0] == '"' && etag[len(etag)-1] == '"' {
-		etag = etag[1 : len(etag)-1]
-	} else {
-		etag = ""
-	}
-	err := h.config.DoLockedAction(etag, func(config api.ConfigHandler) error {
-		buf, err := h.config.MarshalJSONPath(configClustersPath)
-		if err != nil {
-			return err
-		}
-		var data map[string]any
-		if err := json.Unmarshal(buf, &data); err != nil {
-			return err
-		}
-		delete(data, clusterId)
-		if buf, err = json.Marshal(data); err != nil {
-			return err
-		}
-		return config.UnmarshalJSONPath(configClustersPath, buf)
-	})
-	if err != nil {
 		writeJson(rw, http.StatusBadRequest, Map{
 			"error":   "UnmarshalError",
 			"message": err.Error(),

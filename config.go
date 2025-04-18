@@ -37,7 +37,6 @@ import (
 	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
-	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
 func migrateConfig(data []byte, cfg *config.Config) {
@@ -200,6 +199,10 @@ type ConfigHandler struct {
 
 var _ api.ConfigHandler = (*ConfigHandler)(nil)
 
+func (c *ConfigHandler) GetConfig() *config.Config {
+	return c.r.Config
+}
+
 func (c *ConfigHandler) update(newConfig *config.Config) error {
 	r := c.r
 	oldConfig := r.Config
@@ -238,6 +241,12 @@ func (c *ConfigHandler) doUpdateProcesses(ctx context.Context) error {
 }
 
 func (c *ConfigHandler) MarshalJSON() ([]byte, error) {
+	c.mux.RLock()
+	defer c.mux.RUnlock()
+	return c.marshalJSONLocked()
+}
+
+func (c *ConfigHandler) marshalJSONLocked() ([]byte, error) {
 	return c.r.Config.MarshalJSON()
 }
 
@@ -261,7 +270,7 @@ func (c *ConfigHandler) UnmarshalYAML(data []byte) error {
 
 func (c *ConfigHandler) MarshalJSONPath(path string) ([]byte, error) {
 	names := strings.Split(path, ".")
-	data, err := c.r.Config.MarshalJSON()
+	data, err := c.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +288,11 @@ func (c *ConfigHandler) MarshalJSONPath(path string) ([]byte, error) {
 		accessed += n + "."
 		x = mc[n]
 	}
-	return json.Marshal(x)
+	buf, err := json.Marshal(x)
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
 
 func (c *ConfigHandler) UnmarshalJSONPath(path string, data []byte) error {
@@ -316,23 +329,14 @@ func (c *ConfigHandler) UnmarshalJSONPath(path string, data []byte) error {
 	return c.UnmarshalJSON(dt)
 }
 
-func (c *ConfigHandler) Fingerprint() string {
+func (c *ConfigHandler) DoReadLockedAction(callback func(api.ConfigHandler) error) error {
 	c.mux.RLock()
 	defer c.mux.RUnlock()
-	return c.fingerprintLocked()
+	return callback(c)
 }
 
-func (c *ConfigHandler) fingerprintLocked() string {
-	data, err := c.MarshalJSON()
-	if err != nil {
-		log.Panicf("ConfigHandler.Fingerprint: MarshalJSON: %v", err)
-	}
-	return utils.BytesAsSha256(data)
-}
-
-func (c *ConfigHandler) DoLockedAction(fingerprint string, callback func(api.ConfigHandler) error) error {
-	if c.fingerprintLocked() != fingerprint {
-		return api.ErrPreconditionFailed
-	}
+func (c *ConfigHandler) DoWriteLockedAction(callback func(api.ConfigHandler) error) error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
 	return callback(c)
 }

@@ -44,6 +44,7 @@ import (
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/lang"
 	"github.com/LiterMC/go-openbmclapi/limited"
 	"github.com/LiterMC/go-openbmclapi/log"
@@ -73,20 +74,7 @@ type FileInfo struct {
 	Mtime int64  `json:"mtime" avro:"mtime"`
 }
 
-type RequestPath struct {
-	*http.Request
-	Cluster *Cluster
-	Path    string
-}
-
-type StorageFileInfo struct {
-	Hash     string
-	Size     int64
-	Storages []storage.Storage
-	URLs     map[string]RequestPath
-}
-
-func (cr *Cluster) GetFileList(ctx context.Context, fileMap map[string]*StorageFileInfo, forceAll bool) error {
+func (cr *Cluster) GetFileList(ctx context.Context, fileMap map[string]*api.StorageFileInfo, forceAll bool) error {
 	var query url.Values
 	lastMod := cr.fileListLastMod
 	if forceAll {
@@ -139,11 +127,11 @@ func (cr *Cluster) GetFileList(ctx context.Context, fileMap map[string]*StorageF
 				}
 			}
 		} else {
-			ff := &StorageFileInfo{
+			ff := &api.StorageFileInfo{
 				Hash:     f.Hash,
 				Size:     f.Size,
 				Storages: make([]storage.Storage, len(cr.storages)),
-				URLs:     make(map[string]RequestPath),
+				URLs:     make(map[string]api.RequestPath),
 			}
 			for i, s := range cr.storages {
 				ff.Storages[i] = cr.storageManager.Storages[s]
@@ -153,7 +141,7 @@ func (cr *Cluster) GetFileList(ctx context.Context, fileMap map[string]*StorageF
 			if err != nil {
 				return err
 			}
-			ff.URLs[req.URL.String()] = RequestPath{
+			ff.URLs[req.URL.String()] = api.RequestPath{
 				Request: req,
 				Cluster: cr,
 				Path:    f.Path,
@@ -178,18 +166,18 @@ var emptyStr string
 func checkFile(
 	ctx context.Context,
 	manager *storage.Manager,
-	files map[string]*StorageFileInfo,
+	files map[string]*api.StorageFileInfo,
 	heavy bool,
-	missing map[string]*StorageFileInfo,
+	missing map[string]*api.StorageFileInfo,
 	pg *mpb.Progress,
 ) (err error) {
 	var missingCount atomic.Int32
-	addMissing := func(f *StorageFileInfo, sto storage.Storage) {
+	addMissing := func(f *api.StorageFileInfo, sto storage.Storage) {
 		missingCount.Add(1)
 		if info, ok := missing[f.Hash]; ok {
 			info.Storages = append(info.Storages, sto)
 		} else {
-			info := new(StorageFileInfo)
+			info := new(api.StorageFileInfo)
 			*info = *f
 			info.Storages = []storage.Storage{sto}
 			missing[f.Hash] = info
@@ -310,7 +298,7 @@ func checkFile(
 				return ctx.Err()
 			}
 			wg.Add(1)
-			go func(f *StorageFileInfo, buf []byte, free func()) {
+			go func(f *api.StorageFileInfo, buf []byte, free func()) {
 				defer log.RecoverPanic(nil)
 				defer wg.Done()
 				miss := true
@@ -361,7 +349,7 @@ type syncStats struct {
 func (c *HTTPClient) SyncFiles(
 	ctx context.Context,
 	manager *storage.Manager,
-	files map[string]*StorageFileInfo,
+	files map[string]*api.StorageFileInfo,
 	heavy bool,
 	slots int,
 ) error {
@@ -370,7 +358,7 @@ func (c *HTTPClient) SyncFiles(
 	log.SetLogOutput(pg)
 	defer log.SetLogOutput(nil)
 
-	missingMap := make(map[string]*StorageFileInfo)
+	missingMap := make(map[string]*api.StorageFileInfo)
 	if err := checkFile(ctx, manager, files, heavy, missingMap, pg); err != nil {
 		return err
 	}
@@ -456,7 +444,7 @@ func (c *HTTPClient) SyncFiles(
 				}
 				return
 			}
-			go func(info *StorageFileInfo, fileRes <-chan *os.File) {
+			go func(info *api.StorageFileInfo, fileRes <-chan *os.File) {
 				defer log.RecordPanic()
 				select {
 				case srcFd := <-fileRes:
@@ -532,7 +520,7 @@ func (c *HTTPClient) SyncFiles(
 	return nil
 }
 
-func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *StorageFileInfo) (<-chan *os.File, error) {
+func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *api.StorageFileInfo) (<-chan *os.File, error) {
 	const maxRetryCount = 10
 
 	hashMethod, err := getHashMethod(len(f.Hash))
@@ -546,7 +534,7 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 	}
 
 	reqInd := 0
-	reqs := make([]RequestPath, 0, len(f.URLs))
+	reqs := make([]api.RequestPath, 0, len(f.URLs))
 	for _, rq := range f.URLs {
 		reqs = append(reqs, rq)
 	}
@@ -739,7 +727,7 @@ func (c *HTTPClient) fetchFileWithBuf(
 func (c *HTTPClient) Gc(
 	ctx context.Context,
 	manager *storage.Manager,
-	files map[string]*StorageFileInfo,
+	files map[string]*api.StorageFileInfo,
 ) error {
 	errs := make([]error, len(manager.Storages))
 	var wg sync.WaitGroup

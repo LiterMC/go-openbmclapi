@@ -21,8 +21,10 @@ package api
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/LiterMC/go-openbmclapi/config"
+	"github.com/LiterMC/go-openbmclapi/storage"
 )
 
 type ClusterStatus int32
@@ -69,6 +71,22 @@ type Cluster interface {
 	Disconnect(context.Context) error
 	Enable(context.Context) error
 	Disable(context.Context) error
+
+	GetFileList(ctx context.Context, fileMap map[string]*StorageFileInfo, forceAll bool) error
+	ReportDownload(ctx context.Context, response *http.Response, err error) error
+}
+
+type StorageFileInfo struct {
+	Hash     string
+	Size     int64
+	Storages []storage.Storage
+	URLs     map[string]RequestPath
+}
+
+type RequestPath struct {
+	*http.Request
+	Cluster Cluster
+	Path    string
 }
 
 type ClusterManager interface {

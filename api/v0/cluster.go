@@ -29,6 +29,7 @@ import (
 	"strconv"
 
 	"github.com/LiterMC/go-openbmclapi/api"
+	"github.com/LiterMC/go-openbmclapi/cluster"
 	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/log"
 )
@@ -203,7 +204,20 @@ func (h *Handler) routeClusterConfigDELETE(rw http.ResponseWriter, req *http.Req
 		})
 		return
 	}
-	// TODO: disable cluster
+	cluster := h.clusters.GetCluster(clusterId)
+	if cluster == nil {
+		writeJson(rw, http.StatusNotFound, Map{
+			"error": "ClusterNotFound",
+		})
+		return
+	}
+	go func() {
+		err := cluster.Disable(context.Background())
+		if err != nil {
+			log.Errorf("API Disable Error: %v", err)
+		}
+		cluster.Disconnect(context.Background())
+	}()
 	rw.WriteHeader(http.StatusNoContent)
 }
 
@@ -227,22 +241,22 @@ func (h *Handler) routeClusterConnect(rw http.ResponseWriter, req *http.Request)
 
 func (h *Handler) routeClusterSync(rw http.ResponseWriter, req *http.Request) {
 	clusterId := req.URL.Query().Get("cluster_id")
-	cluster := h.clusters.GetCluster(clusterId)
+	clu := h.clusters.GetCluster(clusterId)
 	fileMap := make(map[string]*cluster.StorageFileInfo)
-	if err := cr.GetFileList(ctx, fileMap, false); err != nil {
+	if err := clu.GetFileList(req.Context(), fileMap, false); err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "FileListFetchError",
 			"message": err.Error(),
 		})
 		return
 	}
-	writeJson(rw, http.StatusOK, Map{
-		"count": len(fileMap),
-	})
 	go func() {
 		// TODO: sync file
 		// need make sure no conflict with timed sync
 	}()
+	writeJson(rw, http.StatusOK, Map{
+		"count": len(fileMap),
+	})
 }
 
 func (h *Handler) routeClusterEnable(rw http.ResponseWriter, req *http.Request) {

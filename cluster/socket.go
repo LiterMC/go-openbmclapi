@@ -124,7 +124,7 @@ func (cr *Cluster) Connect(ctx context.Context) error {
 // Disconnect will not disable the cluster
 //
 // See Connect
-func (cr *Cluster) Disconnect() error {
+func (cr *Cluster) Disconnect(context.Context) error {
 	if cr.Status().Disconnected() {
 		return nil
 	}

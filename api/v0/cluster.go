@@ -20,6 +20,7 @@
 package v0
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,10 +30,12 @@ import (
 
 	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/config"
+	"github.com/LiterMC/go-openbmclapi/log"
 )
 
 func (h *Handler) buildClusterRoute(mux *http.ServeMux) {
 	mux.Handle("GET /cluster/list", permHandleFunc(api.ClusterPerm, h.routeClusterList))
+	mux.Handle("GET /cluster/status", permHandleFunc(api.ClusterPerm, h.routeClusterStatus))
 	mux.Handle("GET /cluster/config", permHandleFunc(api.ClusterPerm, h.routeClusterConfigGET))
 	mux.Handle("PUT /cluster/config", permHandleFunc(api.ClusterPerm, h.routeClusterConfigPUT))
 	mux.Handle("DELETE /cluster/config", permHandleFunc(api.ClusterPerm, h.routeClusterConfigDELETE))
@@ -41,8 +44,6 @@ func (h *Handler) buildClusterRoute(mux *http.ServeMux) {
 	mux.Handle("POST /cluster/enable", permHandleFunc(api.ClusterPerm, h.routeClusterEnable))
 	mux.Handle("POST /cluster/disable", permHandleFunc(api.ClusterPerm, h.routeClusterDisable))
 }
-
-const configClustersPath = "clusters"
 
 func (h *Handler) routeClusterList(rw http.ResponseWriter, req *http.Request) {
 	data, err := json.Marshal(h.config.GetConfig().Clusters)
@@ -63,6 +64,21 @@ func (h *Handler) routeClusterList(rw http.ResponseWriter, req *http.Request) {
 	rw.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(data)
+}
+
+func (h *Handler) routeClusterStatus(rw http.ResponseWriter, req *http.Request) {
+	type clusterStatus struct {
+		Status api.ClusterStatus `json:"status"`
+		Sync   bool              `json:"sync"`
+	}
+	data := make(map[string]*clusterStatus)
+	for _, cluster := range h.clusters.GetClusters() {
+		data[cluster.Name()] = &clusterStatus{
+			Status: cluster.Status(),
+			Sync:   false, // TODO
+		}
+	}
+	writeJson(rw, http.StatusOK, data)
 }
 
 func (h *Handler) routeClusterConfigGET(rw http.ResponseWriter, req *http.Request) {
@@ -195,7 +211,19 @@ func (h *Handler) routeClusterConfigDELETE(rw http.ResponseWriter, req *http.Req
 
 func (h *Handler) routeClusterConnect(rw http.ResponseWriter, req *http.Request) {
 	clusterId := req.URL.Query().Get("cluster_id")
-	_ = clusterId
+	cluster := h.clusters.GetCluster(clusterId)
+	if cluster == nil {
+		writeJson(rw, http.StatusNotFound, Map{
+			"error": "ClusterNotFound",
+		})
+		return
+	}
+	go func() {
+		err := cluster.Connect(context.Background())
+		if err != nil {
+			log.Errorf("API Connect Error: %v", err)
+		}
+	}()
 	rw.WriteHeader(http.StatusNoContent)
 }
 
@@ -207,12 +235,37 @@ func (h *Handler) routeClusterSync(rw http.ResponseWriter, req *http.Request) {
 
 func (h *Handler) routeClusterEnable(rw http.ResponseWriter, req *http.Request) {
 	clusterId := req.URL.Query().Get("cluster_id")
-	_ = clusterId
+	cluster := h.clusters.GetCluster(clusterId)
+	if cluster == nil {
+		writeJson(rw, http.StatusNotFound, Map{
+			"error": "ClusterNotFound",
+		})
+		return
+	}
+	go func() {
+		err := cluster.Enable(context.Background())
+		if err != nil {
+			log.Errorf("API Enable Error: %v", err)
+		}
+	}()
 	rw.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) routeClusterDisable(rw http.ResponseWriter, req *http.Request) {
 	clusterId := req.URL.Query().Get("cluster_id")
-	_ = clusterId
+	cluster := h.clusters.GetCluster(clusterId)
+	if cluster == nil {
+		writeJson(rw, http.StatusNotFound, Map{
+			"error": "ClusterNotFound",
+		})
+		return
+	}
+	go func() {
+		err := cluster.Disable(context.Background())
+		if err != nil {
+			log.Errorf("API Disable Error: %v", err)
+		}
+		cluster.Disconnect(context.Background())
+	}()
 	rw.WriteHeader(http.StatusNoContent)
 }

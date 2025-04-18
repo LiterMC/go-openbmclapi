@@ -21,6 +21,8 @@ package api
 
 import (
 	"context"
+
+	"github.com/LiterMC/go-openbmclapi/config"
 )
 
 type ClusterStatus int32
@@ -61,14 +63,19 @@ type Cluster interface {
 	Host() string
 	Port() uint16
 	PublicHosts() []string
+	Options() *config.ClusterOptions
 
 	Status() ClusterStatus
 	Connect(context.Context) error
 	Disconnect(context.Context) error
 	Enable(context.Context) error
-	Disable(ctx context.Context) error
+	Disable(context.Context) error
 }
 
 type ClusterManager interface {
-	//
+	GetClusters() []Cluster
+	GetCluster(name string) Cluster
+	AddCluster(name string, opts *config.ClusterOptions) error
+	UpdateCluster(name string, opts *config.ClusterOptions) error
+	RemoveCluster(name string) bool
 }

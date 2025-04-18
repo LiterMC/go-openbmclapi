@@ -70,6 +70,8 @@ type Cluster struct {
 	fileListLastMod int64
 }
 
+var _ api.Cluster = (*Cluster)(nil)
+
 func NewCluster(
 	name string, opts config.ClusterOptions, gcfg config.ClusterGeneralConfig,
 	storageManager *storage.Manager,

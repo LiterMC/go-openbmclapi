@@ -242,7 +242,7 @@ func (s *WebDavStorage) putFileWithClient(cli *http.Client, path string, r io.Re
 	if err != nil {
 		return err
 	}
-	log.Debugf("Putting %q", target)
+	log.Debugf("Putting webdav %q", target)
 
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, io.NopCloser(r))
 	if err != nil {
@@ -251,6 +251,9 @@ func (s *WebDavStorage) putFileWithClient(cli *http.Client, path string, r io.Re
 	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
 	req.Header.Set("User-Agent", build.ClusterUserAgentFull)
 	req.ContentLength = size
+	if size >= 1024 {
+		req.Header.Set("Expect", "100-continue")
+	}
 
 	res, err := cli.Do(req)
 	if err != nil {
@@ -473,6 +476,7 @@ func (s *WebDavStorage) serveDownload(rw http.ResponseWriter, req *http.Request,
 				size = newSize
 			}
 		}
+
 		location := resp.Header.Get("Location")
 		rwh.Set("Location", location)
 		copyHeader("ETag", rwh, resp.Header)

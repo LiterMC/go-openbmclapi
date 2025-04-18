@@ -42,7 +42,7 @@ type GithubRelease struct {
 	Body    string         `json:"body"`
 }
 
-func Check(cli *http.Client, auth string) (_ *GithubRelease, err error) {
+func Check(cli *http.Client, auth string) (*GithubRelease, error) {
 	if CurrentBuildTag == nil {
 		return
 	}
@@ -52,7 +52,7 @@ func Check(cli *http.Client, auth string) (_ *GithubRelease, err error) {
 
 	req, err := http.NewRequest(http.MethodGet, lastetReleaseEndPoint, nil)
 	if err != nil {
-		return
+		return nil, err
 	}
 	if auth != "" {
 		req.Header.Set("Authorization", auth)
@@ -65,13 +65,13 @@ func Check(cli *http.Client, auth string) (_ *GithubRelease, err error) {
 	}
 	if err != nil {
 		if req, err = http.NewRequest(http.MethodGet, cdnURL+lastetReleaseEndPoint, nil); err != nil {
-			return
+			return nil, err
 		}
 		tctx, cancel := context.WithTimeout(ctx, time.Second*10)
 		resp, err = cli.Do(req.WithContext(tctx))
 		cancel()
 		if err != nil {
-			return
+			return nil, err
 		}
 	}
 	defer resp.Body.Close()
@@ -80,10 +80,10 @@ func Check(cli *http.Client, auth string) (_ *GithubRelease, err error) {
 	}
 	release := new(GithubRelease)
 	if err = json.NewDecoder(resp.Body).Decode(release); err != nil {
-		return
+		return nil, err
 	}
 	if !CurrentBuildTag.Less(&release.Tag) {
-		return
+		return nil, nil
 	}
 	return release, nil
 }
@@ -93,12 +93,12 @@ type ReleaseVersion struct {
 	Build               int
 }
 
-var CurrentBuildTag = func() (v *ReleaseVersion) {
-	v = new(ReleaseVersion)
+var CurrentBuildTag = func() *ReleaseVersion {
+	v := new(ReleaseVersion)
 	if v.UnmarshalText(([]byte)(build.BuildVersion)) != nil {
 		return nil
 	}
-	return
+	return v
 }()
 
 func (v ReleaseVersion) String() string {

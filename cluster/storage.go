@@ -660,6 +660,24 @@ func (c *HTTPClient) fetchFile(ctx context.Context, stats *syncStats, f *Storage
 	return fileRes, nil
 }
 
+type fileSizeMismatchError struct {
+	Has  int64
+	Want int64
+}
+
+func (e *fileSizeMismatchError) Error() string {
+	return fmt.Sprintf("File size wrong, got %d, expect %d", e.Has, e.Want)
+}
+
+type fileHashMismatchError struct {
+	Has  string
+	Want string
+}
+
+func (e *fileHashMismatchError) Error() string {
+	return fmt.Sprintf("File hash not match, got %s, expect %s", e.Has, e.Want)
+}
+
 func (c *HTTPClient) fetchFileWithBuf(
 	ctx context.Context, req *http.Request,
 	size int64, hashMethod crypto.Hash, hash string,
@@ -683,7 +701,7 @@ func (c *HTTPClient) fetchFileWithBuf(
 		case "":
 			r = res.Body
 			if res.ContentLength >= 0 && res.ContentLength != size {
-				err = fmt.Errorf("File size wrong, got %d, expect %d", res.ContentLength, size)
+				err = &fileSizeMismatchError{Has: res.ContentLength, Want: size}
 			}
 		case "gzip":
 			r, err = gzip.NewReader(res.Body)
@@ -703,7 +721,7 @@ func (c *HTTPClient) fetchFileWithBuf(
 	if n, err := io.CopyBuffer(rw, r, buf); err != nil {
 		return utils.ErrorFromRedirect(err, res)
 	} else if n != size {
-		return utils.ErrorFromRedirect(fmt.Errorf("File size wrong, got %d, expect %d", n, size), res)
+		return utils.ErrorFromRedirect(&fileSizeMismatchError{Has: n, Want: size}, res)
 	}
 	if _, err := rw.Seek(io.SeekStart, 0); err != nil {
 		return err
@@ -713,7 +731,7 @@ func (c *HTTPClient) fetchFileWithBuf(
 		return err
 	}
 	if hs := hex.EncodeToString(hw.Sum(buf[:0])); hs != hash {
-		return utils.ErrorFromRedirect(fmt.Errorf("File hash not match, got %s, expect %s", hs, hash), res)
+		return utils.ErrorFromRedirect(&fileHashMismatchError{Has: hs, Want: hash}, res)
 	}
 	return
 }
@@ -733,7 +751,10 @@ func (c *HTTPClient) Gc(
 				info, ok := files[hash]
 				ok = ok && slices.Contains(info.Storages, s)
 				if !ok {
-					s.Remove(hash)
+					log.Debugf("removing expired file: %s", hash)
+					if err := s.Remove(hash); err != nil {
+						log.Warnf("Cannot remove file %s/%s: %v", s, hash, err)
+					}
 				}
 				return nil
 			})
@@ -746,13 +767,12 @@ func (c *HTTPClient) Gc(
 func getHashMethod(l int) (hashMethod crypto.Hash, err error) {
 	switch l {
 	case 32:
-		hashMethod = crypto.MD5
+		return crypto.MD5, nil
 	case 40:
-		hashMethod = crypto.SHA1
+		return crypto.SHA1, nil
 	default:
-		err = fmt.Errorf("Unknown hash length %d", l)
+		return 0, fmt.Errorf("Unexpected hash length %d", l)
 	}
-	return
 }
 
 func joinStorageIDs(storages []storage.Storage) string {

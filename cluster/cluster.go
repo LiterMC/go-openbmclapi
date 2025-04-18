@@ -203,6 +203,14 @@ func (cr *Cluster) Enable(ctx context.Context) error {
 	return nil
 }
 
+type enableError struct {
+	Err any
+}
+
+func (e *enableError) Error() string {
+	return fmt.Sprintf("Enable Failed: %v", e.Err)
+}
+
 func (cr *Cluster) enable(ctx context.Context) error {
 	storageStr := cr.storageManager.GetFlavorString(cr.storages)
 
@@ -241,13 +249,13 @@ func (cr *Cluster) enable(ctx context.Context) error {
 					log.TrWarnf("warn.cluster.detected.hash.mismatch", hash)
 					cr.storageManager.RemoveForAll(hash)
 				}
-				return fmt.Errorf("Enable failed: %v", msg)
+				return &enableError{msg}
 			}
 		}
-		return fmt.Errorf("Enable failed: %v", ero)
+		return &enableError{ero}
 	}
 	if v := data[1]; !v.(bool) {
-		return fmt.Errorf("FATAL: Enable ack non true value, got (%T) %#v", v, v)
+		return fmt.Errorf("FATAL: Enable acked non true value, got (%T) %#v", v, v)
 	}
 	disableSignal := make(chan struct{}, 0)
 	cr.disableSignal = disableSignal
@@ -329,9 +337,13 @@ func (cr *Cluster) Disable(ctx context.Context) error {
 			return cr.disable(ctx)
 		}
 	}
+	// sync disable
 	cr.mux.RLock()
 	disableCh := cr.disableSignal
 	cr.mux.RUnlock()
+	if disableCh == nil {
+		return nil
+	}
 	select {
 	case <-disableCh:
 	case <-ctx.Done():

@@ -114,7 +114,7 @@ func (h *Handler) routeClusterConfigPUT(rw http.ResponseWriter, req *http.Reques
 	clusterId := req.URL.Query().Get("cluster_id")
 	contentType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
 	if err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
+		writeJson(rw, http.StatusUnsupportedMediaType, Map{
 			"error":        "Unexpected Content-Type",
 			"content-type": req.Header.Get("Content-Type"),
 			"message":      err.Error(),
@@ -122,7 +122,7 @@ func (h *Handler) routeClusterConfigPUT(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 	etag := req.Header.Get("If-Match")
-	err = h.config.DoWriteLockedAction(func(cfg api.ConfigHandler) error {
+	if err := h.config.DoWriteLockedAction(func(cfg api.ConfigHandler) error {
 		clustersCfg := cfg.GetConfig().Clusters
 		if etag != "" {
 			ccfg, ok := clustersCfg[clusterId]
@@ -150,14 +150,13 @@ func (h *Handler) routeClusterConfigPUT(rw http.ResponseWriter, req *http.Reques
 		}
 		clustersCfg[clusterId] = clusterCfg
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		if err == api.ErrPreconditionFailed {
 			rw.WriteHeader(http.StatusPreconditionFailed)
 			return
 		}
 		if err == errUnknownContent {
-			writeJson(rw, http.StatusBadRequest, Map{
+			writeJson(rw, http.StatusUnsupportedMediaType, Map{
 				"error":        "Unexpected Content-Type",
 				"content-type": req.Header.Get("Content-Type"),
 				"message":      "Expected application/json",
@@ -176,7 +175,7 @@ func (h *Handler) routeClusterConfigPUT(rw http.ResponseWriter, req *http.Reques
 func (h *Handler) routeClusterConfigDELETE(rw http.ResponseWriter, req *http.Request) {
 	clusterId := req.URL.Query().Get("cluster_id")
 	etag := req.Header.Get("If-Match")
-	err := h.config.DoWriteLockedAction(func(config api.ConfigHandler) error {
+	if err := h.config.DoWriteLockedAction(func(config api.ConfigHandler) error {
 		clustersCfg := h.config.GetConfig().Clusters
 		if etag != "" {
 			buf, err := json.Marshal(clustersCfg)
@@ -193,8 +192,7 @@ func (h *Handler) routeClusterConfigDELETE(rw http.ResponseWriter, req *http.Req
 		}
 		delete(clustersCfg, clusterId)
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		if err == api.ErrPreconditionFailed {
 			rw.WriteHeader(http.StatusPreconditionFailed)
 			return
@@ -229,8 +227,22 @@ func (h *Handler) routeClusterConnect(rw http.ResponseWriter, req *http.Request)
 
 func (h *Handler) routeClusterSync(rw http.ResponseWriter, req *http.Request) {
 	clusterId := req.URL.Query().Get("cluster_id")
-	_ = clusterId
-	rw.WriteHeader(http.StatusNoContent)
+	cluster := h.clusters.GetCluster(clusterId)
+	fileMap := make(map[string]*cluster.StorageFileInfo)
+	if err := cr.GetFileList(ctx, fileMap, false); err != nil {
+		writeJson(rw, http.StatusInternalServerError, Map{
+			"error":   "FileListFetchError",
+			"message": err.Error(),
+		})
+		return
+	}
+	writeJson(rw, http.StatusOK, Map{
+		"count": len(fileMap),
+	})
+	go func() {
+		// TODO: sync file
+		// need make sure no conflict with timed sync
+	}()
 }
 
 func (h *Handler) routeClusterEnable(rw http.ResponseWriter, req *http.Request) {

@@ -65,7 +65,7 @@ func (h *Handler) routeConfigGET(rw http.ResponseWriter, req *http.Request) {
 func (h *Handler) routeConfigPUT(rw http.ResponseWriter, req *http.Request) {
 	contentType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
 	if err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
+		writeJson(rw, http.StatusUnsupportedMediaType, Map{
 			"error":        "Unexpected Content-Type",
 			"content-type": req.Header.Get("Content-Type"),
 			"message":      err.Error(),
@@ -73,7 +73,7 @@ func (h *Handler) routeConfigPUT(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	etag := req.Header.Get("If-Match")
-	err = h.config.DoWriteLockedAction(func(config api.ConfigHandler) error {
+	if err := h.config.DoWriteLockedAction(func(config api.ConfigHandler) error {
 		if etag != "" {
 			buf, err := config.GetConfig().MarshalJSON()
 			if err != nil {
@@ -99,14 +99,13 @@ func (h *Handler) routeConfigPUT(rw http.ResponseWriter, req *http.Request) {
 		default:
 			return errUnknownContent
 		}
-	})
-	if err != nil {
+	}); err != nil {
 		if err == api.ErrPreconditionFailed {
 			rw.WriteHeader(http.StatusPreconditionFailed)
 			return
 		}
 		if err == errUnknownContent {
-			writeJson(rw, http.StatusBadRequest, Map{
+			writeJson(rw, http.StatusUnsupportedMediaType, Map{
 				"error":        "Unexpected Content-Type",
 				"content-type": req.Header.Get("Content-Type"),
 				"message":      "Expected application/json, application/x-yaml",
@@ -143,7 +142,7 @@ func (h *Handler) routeConfigPATCH(rw http.ResponseWriter, req *http.Request) {
 	path := req.PathValue("path")
 	contentType, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
 	if err != nil {
-		writeJson(rw, http.StatusBadRequest, Map{
+		writeJson(rw, http.StatusUnsupportedMediaType, Map{
 			"error":        "Unexpected Content-Type",
 			"content-type": req.Header.Get("Content-Type"),
 			"message":      err.Error(),
@@ -151,7 +150,7 @@ func (h *Handler) routeConfigPATCH(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	etag := req.Header.Get("If-Match")
-	err = h.config.DoWriteLockedAction(func(config api.ConfigHandler) error {
+	if err := h.config.DoWriteLockedAction(func(config api.ConfigHandler) error {
 		if etag != "" {
 			buf, err := config.GetConfig().MarshalJSON()
 			if err != nil {
@@ -171,14 +170,13 @@ func (h *Handler) routeConfigPATCH(rw http.ResponseWriter, req *http.Request) {
 		default:
 			return errUnknownContent
 		}
-	})
-	if err != nil {
+	}); err != nil {
 		if err == api.ErrPreconditionFailed {
 			rw.WriteHeader(http.StatusPreconditionFailed)
 			return
 		}
 		if err == errUnknownContent {
-			writeJson(rw, http.StatusBadRequest, Map{
+			writeJson(rw, http.StatusUnsupportedMediaType, Map{
 				"error":        "Unexpected Content-Type",
 				"content-type": req.Header.Get("Content-Type"),
 				"message":      "Expected application/json, application/x-yaml",

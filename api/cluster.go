@@ -35,7 +35,6 @@ const (
 	ClusterEnabled
 )
 
-
 // Disconnected returns true if the cluster is disconnected from the central server
 func (s ClusterStatus) Disconnected() bool {
 	return s <= ClusterConnecting

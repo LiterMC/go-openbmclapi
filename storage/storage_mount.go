@@ -149,7 +149,7 @@ func (s *MountStorage) Open(hash string) (io.ReadCloser, error) {
 }
 
 func (s *MountStorage) Create(hash string, r io.ReadSeeker) error {
-	fd, err := os.Create(s.hashToPath(hash))
+	fd, err := os.OpenFile(s.hashToPath(hash), os.O_RDWR|os.O_CREATE|os.O_EXCL|os.O_TRUNC, 0666)
 	if err != nil {
 		return err
 	}

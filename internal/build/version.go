@@ -27,6 +27,8 @@ const ClusterVersion = "1.13.1"
 
 var BuildVersion string = "dev"
 
-var ClusterUserAgent string = fmt.Sprintf("openbmclapi-cluster/%s", ClusterVersion)
-var ClusterUserAgentFull string = fmt.Sprintf("%s go-openbmclapi-cluster/%s", ClusterUserAgent, BuildVersion)
-var HeaderXPoweredBy = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", BuildVersion)
+var (
+	ClusterUserAgent     = fmt.Sprintf("openbmclapi-cluster/%s", ClusterVersion)
+	ClusterUserAgentFull = fmt.Sprintf("%s go-openbmclapi-cluster/%s", ClusterUserAgent, BuildVersion)
+	HeaderXPoweredBy     = fmt.Sprintf("go-openbmclapi/%s; url=https://github.com/LiterMC/go-openbmclapi", BuildVersion)
+)

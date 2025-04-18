@@ -387,7 +387,7 @@ func (r *Runner) StopServer(ctx context.Context) {
 	log.TrWarnf("warn.server.closed")
 }
 
-func (r *Runner) UpdateFileRecords(files map[string]*cluster.StorageFileInfo, oldfileset map[string]int64) {
+func (r *Runner) UpdateFileRecords(files map[string]*api.StorageFileInfo, oldfileset map[string]int64) {
 	if !r.Config.Hijack.Enable {
 		return
 	}
@@ -431,7 +431,7 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 		}
 	}
 
-	fileMap := make(map[string]*cluster.StorageFileInfo)
+	fileMap := make(map[string]*api.StorageFileInfo)
 	for _, cr := range r.clusters {
 		log.TrInfof("info.filelist.fetching", cr.ID())
 		if err := cr.GetFileList(ctx, fileMap, true); err != nil {
@@ -469,7 +469,7 @@ func (r *Runner) InitSynchronizer(ctx context.Context) {
 	// }
 
 	createInterval(ctx, func() {
-		fileMap := make(map[string]*cluster.StorageFileInfo)
+		fileMap := make(map[string]*api.StorageFileInfo)
 		for _, cr := range r.clusters {
 			log.TrInfof("info.filelist.fetching", cr.ID())
 			if err := cr.GetFileList(ctx, fileMap, false); err != nil {

@@ -44,7 +44,7 @@ type GithubRelease struct {
 
 func Check(cli *http.Client, auth string) (*GithubRelease, error) {
 	if CurrentBuildTag == nil {
-		return
+		return nil, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)

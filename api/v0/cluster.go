@@ -29,7 +29,6 @@ import (
 	"strconv"
 
 	"github.com/LiterMC/go-openbmclapi/api"
-	"github.com/LiterMC/go-openbmclapi/cluster"
 	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/log"
 )
@@ -242,7 +241,7 @@ func (h *Handler) routeClusterConnect(rw http.ResponseWriter, req *http.Request)
 func (h *Handler) routeClusterSync(rw http.ResponseWriter, req *http.Request) {
 	clusterId := req.URL.Query().Get("cluster_id")
 	clu := h.clusters.GetCluster(clusterId)
-	fileMap := make(map[string]*cluster.StorageFileInfo)
+	fileMap := make(map[string]*api.StorageFileInfo)
 	if err := clu.GetFileList(req.Context(), fileMap, false); err != nil {
 		writeJson(rw, http.StatusInternalServerError, Map{
 			"error":   "FileListFetchError",

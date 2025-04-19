@@ -128,6 +128,10 @@
 					"max_conn": "最大连接数",
 					"upload_rate": "最大上传速率"
 				}
+			},
+
+			"confirm": {
+				"remove": "移除确认"
 			}
 		}
 	},
@@ -137,7 +141,9 @@
 		"save": "保存",
 		"saved": "已保存",
 		"refresh": "刷新",
-		"remove": "移除"
+		"remove": "移除",
+		"cancel": "取消",
+		"undo": "撤销"
 	},
 	"message": {
 		"server": {
@@ -171,6 +177,11 @@
 			},
 			"filelist": {
 				"cant.fetch": "无法获取文件列表"
+			}
+		},
+		"configures": {
+			"confirm": {
+				"remove": "您确认删除节点 <b><code>{0}</code></b> 吗?"
 			}
 		}
 	},

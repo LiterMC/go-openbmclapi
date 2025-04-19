@@ -55,6 +55,23 @@ export interface TokenRes {
 	token: string
 }
 
+export enum UserPermission {
+	BASIC = 1 << 0,
+	SUBSCRIBE = 1 << 1,
+	LOG = 1 << 2,
+	DEBUG = 1 << 3,
+	FULL_CONFIG = 1 << 4,
+	CLUSTER = 1 << 5,
+	STORAGE = 1 << 6,
+	BYPASS_LIMIT = 1 << 7,
+	ROOT = 1 << 31
+}
+
+export interface UserInfoRes {
+	name: string
+	permissions: number
+}
+
 export interface PingRes {
 	version: string
 	time: string
@@ -92,6 +109,15 @@ async function requestToken(
 		},
 	)
 	return res.data.token
+}
+
+export async function getUserInfo(token: string): Promise<UserInfoRes> {
+	const res = await axios.get<UserInfoRes>(`/api/v0/user_info`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+	return res.data
 }
 
 export async function ping(token?: string): Promise<PingRes> {

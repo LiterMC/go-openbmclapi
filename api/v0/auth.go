@@ -176,6 +176,7 @@ func (h *Handler) buildAuthRoute(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login", h.routeLogin)
 	mux.Handle("POST /requestToken", authHandleFunc(h.routeRequestToken))
 	mux.Handle("POST /logout", authHandleFunc(h.routeLogout))
+	mux.Handle("GET /user_info", authHandleFunc(h.routeUserInfo))
 }
 
 func (h *Handler) routeChallenge(rw http.ResponseWriter, req *http.Request) {
@@ -283,4 +284,12 @@ func (h *Handler) routeLogout(rw http.ResponseWriter, req *http.Request) {
 	tid := req.Context().Value(tokenIdKey).(string)
 	h.tokens.InvalidToken(tid)
 	rw.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) routeUserInfo(rw http.ResponseWriter, req *http.Request) {
+	user := getLoggedUser(req)
+	writeJson(rw, http.StatusOK, Map{
+		"name": user.Username,
+		"permissions": user.Permissions,
+	})
 }

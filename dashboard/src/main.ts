@@ -1,6 +1,7 @@
 import { createApp, ref, watch, inject, type Ref } from 'vue'
 import vueCookies, { type VueCookies } from 'vue-cookies'
 import PrimeVue from 'primevue/config'
+import ConfirmationService from 'primevue/confirmationservice'
 import FocusTrap from 'primevue/focustrap'
 import ToastService from 'primevue/toastservice'
 import Lara from '@primeuix/themes/lara'
@@ -42,6 +43,7 @@ app.use(PrimeVue, {
 		},
 	},
 })
+app.use(ConfirmationService)
 app.use(ToastService)
 app.directive('focustrap', FocusTrap)
 

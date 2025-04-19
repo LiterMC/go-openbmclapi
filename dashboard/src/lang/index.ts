@@ -77,7 +77,6 @@ export function setLang(lang: Lang | string): Lang | null {
 }
 
 export function tr(key: string, ...values: unknown[]): string {
-	// console.debug('translating:', key)
 	const item = currentLang.value
 	let cur: string | LangMap | null = currentTr.value
 	if (!cur || (key && typeof cur === 'string')) {
@@ -98,8 +97,12 @@ export function tr(key: string, ...values: unknown[]): string {
 	if (typeof cur !== 'string') {
 		return `{{${key}}}`
 	}
-	// TODO: apply values
-	return cur
+	return cur.replace(/(\\)?({(0|[1-9][0-9]+)})/g, (raw, escape, slotRaw, n) => {
+		if (escape) {
+			return slotRaw
+		}
+		return values[parseInt(n)]
+	})
 }
 
 export const langNameMap: { [key: string]: string } = {

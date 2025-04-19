@@ -45,6 +45,11 @@ const router = createRouter({
 			name: 'configure',
 			component: () => import('@/views/configure/ConfigureView.vue'),
 		},
+		{
+			path: '/configure/clusters',
+			name: 'configure/clusters',
+			component: () => import('@/views/configure/ClustersView.vue'),
+		},
 	],
 	scrollBehavior(to, from, savedPosition) {
 		return savedPosition || { top: 0 }

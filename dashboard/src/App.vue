@@ -3,6 +3,7 @@ import { computed, inject, nextTick, type Ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import axios from 'axios'
 import Button from 'primevue/button'
+import ConfirmDialog from 'primevue/confirmdialog'
 import ScrollTop from 'primevue/scrolltop'
 import Select from 'primevue/select'
 import Toast from 'primevue/toast'
@@ -111,6 +112,13 @@ const selectedLang = computed({
 			<a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0 License</a>
 		</p>
 	</footer>
+
+	<ConfirmDialog>
+		<template #message="{ message: { message, icon } }">
+			<span v-if="icon" :class="['p-confirmdialog-icon', icon]"></span>
+			<div v-html="message" class="p-confirmdialog-message"></div>
+		</template>
+	</ConfirmDialog>
 	<ScrollTop />
 	<Toast position="bottom-right" />
 </template>

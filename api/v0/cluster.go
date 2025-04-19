@@ -211,8 +211,7 @@ func (h *Handler) routeClusterConfigDELETE(rw http.ResponseWriter, req *http.Req
 		return
 	}
 	go func() {
-		err := cluster.Disable(context.Background())
-		if err != nil {
+		if err := cluster.Disable(context.Background()); err != nil {
 			log.Errorf("API Disable Error: %v", err)
 		}
 		cluster.Disconnect(context.Background())

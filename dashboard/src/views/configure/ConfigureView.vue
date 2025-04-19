@@ -162,10 +162,6 @@ const config = reactive<Config>({
 
 const changingConfig = reactive<Config>(JSON.parse(JSON.stringify(config)))
 const configChanged = computed(() => JSON.stringify(changingConfig) !== JSON.stringify(config)) // TODO: use deep equal
-const changingClusterPublicHost = reactive<{ [name: string]: string }>({})
-
-const newClusterNameInput = ref()
-const newClusterName = ref('')
 
 async function refreshConfig(): Promise<void> {
 	if (!token.value) {
@@ -182,7 +178,6 @@ async function refreshConfig(): Promise<void> {
 		const configValue = await getConfig(token.value)
 		Object.assign(config, configValue)
 		Object.assign(changingConfig, JSON.parse(JSON.stringify(configValue)))
-		Object.keys(changingClusterPublicHost).forEach((name) => delete changingClusterPublicHost[name])
 	} finally {
 		loading.value = false
 	}
@@ -206,46 +201,6 @@ async function onSaveConfig(): Promise<void> {
 	}
 }
 
-async function onCreateCluster(event: MouseEvent): Promise<void> {
-	if (event.target === newClusterNameInput.value.$el) {
-		return
-	}
-	const newName = newClusterName.value.trim()
-	if (newName.length === 0) {
-		newClusterNameInput.value.$el.focus()
-		return
-	}
-	if (changingConfig.clusters[newName]) {
-		return
-	}
-	(changingConfig.clusters[newName] as any) = {}
-	newClusterName.value = ''
-}
-
-async function onRemoveCluster(clusterName: string): Promise<void> {
-	const cluster = changingConfig.clusters[clusterName]
-	if (!cluster) {
-		return
-	}
-	delete changingConfig.clusters[clusterName]
-}
-
-async function onAddClusterPublicHost(clusterName: string): Promise<void> {
-	const cluster = changingConfig.clusters[clusterName]
-	if (!cluster) {
-		return
-	}
-	let hostname = changingClusterPublicHost[clusterName]
-	if (!hostname || !(hostname = hostname.trim())) {
-		return
-	}
-	if (cluster.public_hosts.includes(hostname)) {
-		return
-	}
-	changingClusterPublicHost[clusterName] = ''
-	cluster.public_hosts.push(hostname)
-}
-
 onMounted(() => {
 	refreshConfig()
 })
@@ -263,7 +218,7 @@ onMounted(() => {
 					:label="tr(configChanged ? 'button.save' : 'button.saved')"
 					severity="success"
 					rounded
-					:disabled="loading || !configChanged"
+					:disabled="saving || loading || !configChanged"
 					:loading="saving"
 					@click="onSaveConfig"
 				/>
@@ -273,6 +228,7 @@ onMounted(() => {
 					:label="tr('button.refresh')"
 					severity="secondary"
 					rounded
+					:disabled="saving || loading"
 					:loading="loading"
 					@click="refreshConfig"
 				/>
@@ -473,146 +429,6 @@ onMounted(() => {
 							{{ tr('description.configures.item.access_log_slots') }}
 						</Message>
 					</div>
-				</template>
-			</Card>
-
-			<Card class="configure-group">
-				<template #title>
-					<div class="flex-row-center configure-group-title">
-						<label>{{ tr('title.configures.clusters') }}</label>
-					</div>
-				</template>
-				<template #content>
-					<Accordion>
-						<AccordionPanel
-							v-for="(cluster, name) in changingConfig.clusters"
-							:key="name"
-							:value="name"
-						>
-							<AccordionHeader>{{ name }}</AccordionHeader>
-							<AccordionContent>
-								<div class="configure-elem">
-									<FloatLabel variant="on">
-										<InputText type="text" v-model="cluster.id" />
-										<label>{{ tr('title.configures.item.cluster.id') }}</label>
-									</FloatLabel>
-									<Message size="small" severity="secondary" variant="simple">
-										{{ tr('description.configures.item.cluster.id') }}
-									</Message>
-								</div>
-								<div class="configure-elem">
-									<FloatLabel variant="on">
-										<Password v-model="cluster.secret" :feedback="false" />
-										<label>{{ tr('title.configures.item.cluster.secret') }}</label>
-									</FloatLabel>
-									<Message size="small" severity="secondary" variant="simple">
-										{{ tr('description.configures.item.cluster.secret') }}
-									</Message>
-								</div>
-								<div class="configure-elem">
-									<div class="configure-button-elem">
-										<label>{{ tr('title.configures.item.cluster.byoc') }}</label>
-										<ToggleSwitch v-model="cluster.byoc" />
-									</div>
-									<Message size="small" severity="secondary" variant="simple">
-										{{ tr('description.configures.item.cluster.byoc') }}
-									</Message>
-								</div>
-								<div class="configure-elem">
-									<Listbox :options="cluster.public_hosts" :highlightOnSelect="false">
-										<template #header>
-											<InputGroup>
-												<FloatLabel variant="on">
-													<InputText
-														v-model="changingClusterPublicHost[name]"
-														type="text"
-														style="width: 100%"
-													/>
-													<label>{{ tr('title.configures.item.cluster.public_hosts') }}</label>
-												</FloatLabel>
-												<InputGroupAddon>
-													<Button
-														icon="pi pi-plus"
-														severity="success"
-														@click="onAddClusterPublicHost(name as string)"
-													/>
-												</InputGroupAddon>
-											</InputGroup>
-										</template>
-										<template #option="{ index, option }">
-											<div
-												class="flex-row-center"
-												style="width: 100%; justify-content: space-between"
-											>
-												<div>{{ option }}</div>
-												<Button
-													icon="pi pi-minus"
-													severity="danger"
-													rounded
-													@click="cluster.public_hosts.splice(index, 1)"
-												/>
-											</div>
-										</template>
-									</Listbox>
-									<Message size="small" severity="secondary" variant="simple">
-										{{ tr('description.configures.item.cluster.public_hosts') }}
-									</Message>
-								</div>
-								<div class="configure-elem">
-									<FloatLabel variant="on">
-										<InputText type="text" v-model="cluster.server" />
-										<label>{{ tr('title.configures.item.cluster.server') }}</label>
-									</FloatLabel>
-									<Message size="small" severity="secondary" variant="simple">
-										{{ tr('description.configures.item.cluster.server') }}
-									</Message>
-								</div>
-								<div class="configure-elem">
-									<div class="configure-button-elem">
-										<label>{{ tr('title.configures.item.cluster.skip_signature_check') }}</label>
-										<ToggleSwitch v-model="cluster.skip_signature_check" />
-									</div>
-									<Message size="small" severity="secondary" variant="simple">
-										{{ tr('description.configures.item.cluster.skip_signature_check') }}
-									</Message>
-								</div>
-								<div class="configure-elem">
-									<FloatLabel variant="on">
-										<MultiSelect
-											v-model="cluster.storages"
-											:options="changingConfig.storages"
-											optionLabel="id"
-											optionValue="id"
-										/>
-										<label>{{ tr('title.configures.item.cluster.storages') }}</label>
-									</FloatLabel>
-									<Message size="small" severity="secondary" variant="simple">
-										{{ tr('description.configures.item.cluster.storages') }}
-									</Message>
-								</div>
-								<div class="configure-elem">
-									<Button
-										icon="pi pi-trash"
-										:label="tr('button.remove')"
-										severity="danger"
-										@click="onRemoveCluster(name as string)"
-									/>
-								</div>
-							</AccordionContent>
-						</AccordionPanel>
-						<AccordionPanel value="+">
-							<template #default>
-								<button class="p-accordionheader" @click="onCreateCluster">
-									<InputText
-										ref="newClusterNameInput"
-										v-model="newClusterName"
-										placeholder="Cluster Name"
-									/>
-									<i class="pi pi-plus"></i>
-								</button>
-							</template>
-						</AccordionPanel>
-					</Accordion>
 				</template>
 			</Card>
 

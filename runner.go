@@ -292,7 +292,9 @@ func (r *Runner) ListenSignals(ctx context.Context, cancel context.CancelFunc) i
 					}
 				}
 			case syscall.SIGHUP:
-				go r.ReloadConfig(ctx)
+				if ctx.Err() == nil {
+					go r.ReloadConfig(ctx)
+				}
 			default:
 				cancel()
 				if forceStop == nil {

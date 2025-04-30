@@ -56,11 +56,12 @@ type MountStorage struct {
 	basicOpt StorageOption
 	opt      MountStorageOption
 
-	supportRange atomic.Bool
-	working      atomic.Int32
-	checkMux     sync.RWMutex
-	lastCheck    time.Time
-	inited       bool
+	newMeasureMux sync.Mutex
+	supportRange  atomic.Bool
+	working       atomic.Int32
+	checkMux      sync.RWMutex
+	lastCheck     time.Time
+	inited        bool
 }
 
 var _ Storage = (*MountStorage)(nil)
@@ -267,6 +268,9 @@ func (s *MountStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 }
 
 func (s *MountStorage) createMeasureFile(size int) (err error) {
+	s.newMeasureMux.Lock()
+	defer s.newMeasureMux.Unlock()
+
 	t := filepath.Join(s.opt.Path, "measure", strconv.Itoa(size))
 	log.Debugf("Checking measure file %q", t)
 	if stat, err := os.Stat(t); err == nil {

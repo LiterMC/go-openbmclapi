@@ -130,11 +130,12 @@ type WebDavStorage struct {
 	httpCli       *http.Client
 	noRedCli      *http.Client // no redirect client
 
-	measures  *utils.SyncMap[int, struct{}]
-	working   atomic.Int32
-	checkMux  sync.RWMutex
-	lastCheck time.Time
-	inited    bool
+	measures      *utils.SyncMap[int, struct{}]
+	newMeasureMux sync.Mutex
+	working       atomic.Int32
+	checkMux      sync.RWMutex
+	lastCheck     time.Time
+	inited        bool
 }
 
 var _ Storage = (*WebDavStorage)(nil)
@@ -170,9 +171,41 @@ func webdavIsHTTPError(err error, code int) bool {
 	return strings.Contains(err.Error(), expect)
 }
 
+type AliasUserNotExistError struct {
+	User string
+}
+
+func (e *AliasUserNotExistError) Error() string {
+	return fmt.Sprintf("Alias user %s does not exist", e.User)
+}
+
 const ClusterCacheCtxKey = "go-openbmclapi.cluster.cache"
 
 func (s *WebDavStorage) Init(ctx context.Context) (err error) {
+	if alias := s.opt.Alias; alias != "" {
+		users := ctx.Value("go-openbmclapi.config.webdav-users").(map[string]*WebDavUser)
+		user, ok := users[alias]
+		if !ok {
+			return &AliasUserNotExistError{User: alias}
+		}
+		s.opt.AliasUser = user
+		var end *url.URL
+		if end, err = url.Parse(s.opt.AliasUser.EndPoint); err != nil {
+			return
+		}
+		if s.opt.EndPoint != "" {
+			var full *url.URL
+			if full, err = end.Parse(s.opt.EndPoint); err != nil {
+				return
+			}
+			s.opt.FullEndPoint = full.String()
+		} else {
+			s.opt.FullEndPoint = s.opt.AliasUser.EndPoint
+		}
+	} else {
+		s.opt.FullEndPoint = s.opt.EndPoint
+	}
+
 	if s.opt.GetEndPoint() == "" {
 		return errors.New("Webdav endpoint cannot be empty")
 	}
@@ -565,6 +598,10 @@ func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) error {
 		// TODO: is this safe?
 		return nil
 	}
+
+	s.newMeasureMux.Lock()
+	defer s.newMeasureMux.Unlock()
+
 	t := path.Join("measure", strconv.Itoa(size))
 	tsz := (int64)(size) * utils.MbChunkSize
 	if size == 0 {

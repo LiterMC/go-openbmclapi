@@ -143,35 +143,6 @@ func readAndRewriteConfig() (cfg *config.Config, err error) {
 		}
 	}
 
-	for _, so := range cfg.Storages {
-		switch opt := so.Data.(type) {
-		case *storage.WebDavStorageOption:
-			if alias := opt.Alias; alias != "" {
-				user, ok := cfg.WebdavUsers[alias]
-				if !ok {
-					log.TrErrorf("error.config.alias.user.not.exists", alias)
-					os.Exit(1)
-				}
-				opt.AliasUser = user
-				var end *url.URL
-				if end, err = url.Parse(opt.AliasUser.EndPoint); err != nil {
-					return
-				}
-				if opt.EndPoint != "" {
-					var full *url.URL
-					if full, err = end.Parse(opt.EndPoint); err != nil {
-						return
-					}
-					opt.FullEndPoint = full.String()
-				} else {
-					opt.FullEndPoint = opt.AliasUser.EndPoint
-				}
-			} else {
-				opt.FullEndPoint = opt.EndPoint
-			}
-		}
-	}
-
 	var buf bytes.Buffer
 	encoder := yaml.NewEncoder(&buf)
 	encoder.SetIndent(2)

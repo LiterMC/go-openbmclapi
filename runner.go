@@ -424,11 +424,12 @@ func (r *Runner) UpdateFileRecords(files map[string]*api.StorageFileInfo, oldfil
 }
 
 func (r *Runner) InitSynchronizer(ctx context.Context) {
+	ctxWithValues := context.WithValue(ctx, "go-openbmclapi.config.webdav-users", r.Config.WebdavUsers)
 	for _, s := range r.storageManager.Storages {
 		if s.Inited() {
 			continue
 		}
-		if err := s.Init(ctx); err != nil {
+		if err := s.Init(ctxWithValues); err != nil {
 			log.Errorf("Storage %s initialize error: %v", s.String(), err)
 		}
 	}

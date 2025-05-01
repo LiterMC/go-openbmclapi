@@ -47,24 +47,24 @@ import (
 )
 
 type WebDavStorageOption struct {
-	MaxConn           int                `yaml:"max-conn"`
-	MaxUploadRate     int                `yaml:"max-upload-rate"`
-	MaxDownloadRate   int                `yaml:"max-download-rate"`
-	PreGenMeasures    bool               `yaml:"pre-gen-measures"`
-	FollowRedirect    bool               `yaml:"follow-redirect"`
-	RedirectLinkCache utils.YAMLDuration `yaml:"redirect-link-cache"`
+	MaxConn           int                `json:"max_conn" yaml:"max-conn"`
+	MaxUploadRate     int                `json:"max_upload_rate" yaml:"max-upload-rate"`
+	MaxDownloadRate   int                `json:"max_download_rate" yaml:"max-download-rate"`
+	PreGenMeasures    bool               `json:"pre_gen_measures" yaml:"pre-gen-measures"`
+	FollowRedirect    bool               `json:"follow_redirect" yaml:"follow-redirect"`
+	RedirectLinkCache utils.YAMLDuration `json:"redirect_link_cache" yaml:"redirect-link-cache"`
 
-	Alias      string `yaml:"alias,omitempty"`
-	WebDavUser `yaml:",inline,omitempty"`
+	Alias      string `json:"alias,omitempty" yaml:"alias,omitempty"`
+	WebDavUser `json:",inline,omitempty" yaml:",inline,omitempty"`
 
-	AliasUser    *WebDavUser `yaml:"-"`
-	FullEndPoint string      `yaml:"-"`
+	AliasUser    *WebDavUser `json:"-" yaml:"-"`
+	FullEndPoint string      `json:"-" yaml:"-"`
 }
 
 type WebDavUser struct {
-	EndPoint string `yaml:"endpoint,omitempty"`
-	Username string `yaml:"username,omitempty"`
-	Password string `yaml:"password,omitempty"`
+	EndPoint string `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Username string `json:"username,omitempty" yaml:"username,omitempty"`
+	Password string `json:"password,omitempty" yaml:"password,omitempty"`
 }
 
 var (
@@ -121,7 +121,8 @@ func (o *WebDavStorageOption) GetPassword() string {
 }
 
 type WebDavStorage struct {
-	opt WebDavStorageOption
+	basicOpt StorageOption
+	opt      WebDavStorageOption
 
 	cache         gocache.Cache
 	cli           *gowebdav.Client
@@ -129,31 +130,40 @@ type WebDavStorage struct {
 	httpCli       *http.Client
 	noRedCli      *http.Client // no redirect client
 
-	measures  *utils.SyncMap[int, struct{}]
-	working   atomic.Int32
-	checkMux  sync.RWMutex
-	lastCheck time.Time
+	measures      *utils.SyncMap[int, struct{}]
+	newMeasureMux sync.Mutex
+	working       atomic.Int32
+	checkMux      sync.RWMutex
+	lastCheck     time.Time
+	inited        bool
 }
 
 var _ Storage = (*WebDavStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageWebdav, StorageFactory{
-		New:       func() Storage { return new(WebDavStorage) },
+		New:       func(opt StorageOption) Storage { return NewWebDavStorage(opt) },
 		NewConfig: func() any { return new(WebDavStorageOption) },
 	})
+}
+
+func NewWebDavStorage(opt StorageOption) *WebDavStorage {
+	return &WebDavStorage{
+		basicOpt: opt,
+		opt:      *(opt.Data.(*WebDavStorageOption)),
+	}
 }
 
 func (s *WebDavStorage) String() string {
 	return fmt.Sprintf("<WebDavStorage endpoint=%q user=%s>", s.opt.GetEndPoint(), s.opt.GetUsername())
 }
 
-func (s *WebDavStorage) Options() any {
-	return &s.opt
+func (s *WebDavStorage) Id() string {
+	return s.basicOpt.Id
 }
 
-func (s *WebDavStorage) SetOptions(newOpts any) {
-	s.opt = *(newOpts.(*WebDavStorageOption))
+func (s *WebDavStorage) Options() *StorageOption {
+	return &s.basicOpt
 }
 
 func webdavIsHTTPError(err error, code int) bool {
@@ -161,9 +171,41 @@ func webdavIsHTTPError(err error, code int) bool {
 	return strings.Contains(err.Error(), expect)
 }
 
+type AliasUserNotExistError struct {
+	User string
+}
+
+func (e *AliasUserNotExistError) Error() string {
+	return fmt.Sprintf("Alias user %s does not exist", e.User)
+}
+
 const ClusterCacheCtxKey = "go-openbmclapi.cluster.cache"
 
 func (s *WebDavStorage) Init(ctx context.Context) (err error) {
+	if alias := s.opt.Alias; alias != "" {
+		users := ctx.Value("go-openbmclapi.config.webdav-users").(map[string]*WebDavUser)
+		user, ok := users[alias]
+		if !ok {
+			return &AliasUserNotExistError{User: alias}
+		}
+		s.opt.AliasUser = user
+		var end *url.URL
+		if end, err = url.Parse(s.opt.AliasUser.EndPoint); err != nil {
+			return
+		}
+		if s.opt.EndPoint != "" {
+			var full *url.URL
+			if full, err = end.Parse(s.opt.EndPoint); err != nil {
+				return
+			}
+			s.opt.FullEndPoint = full.String()
+		} else {
+			s.opt.FullEndPoint = s.opt.AliasUser.EndPoint
+		}
+	} else {
+		s.opt.FullEndPoint = s.opt.EndPoint
+	}
+
 	if s.opt.GetEndPoint() == "" {
 		return errors.New("Webdav endpoint cannot be empty")
 	}
@@ -212,7 +254,12 @@ func (s *WebDavStorage) Init(ctx context.Context) (err error) {
 		log.Info("Measure files created")
 	}
 	s.working.Store(1)
+	s.inited = true
 	return
+}
+
+func (s *WebDavStorage) Inited() bool {
+	return s.inited
 }
 
 func (s *WebDavStorage) putFile(path string, r io.ReadSeeker) error {
@@ -228,7 +275,7 @@ func (s *WebDavStorage) putFileWithClient(cli *http.Client, path string, r io.Re
 	if err != nil {
 		return err
 	}
-	log.Debugf("Putting %q", target)
+	log.Debugf("Putting webdav %q", target)
 
 	req, err := http.NewRequestWithContext(context.TODO(), http.MethodPut, target, io.NopCloser(r))
 	if err != nil {
@@ -237,6 +284,9 @@ func (s *WebDavStorage) putFileWithClient(cli *http.Client, path string, r io.Re
 	req.SetBasicAuth(s.opt.GetUsername(), s.opt.GetPassword())
 	req.Header.Set("User-Agent", build.ClusterUserAgentFull)
 	req.ContentLength = size
+	if size >= 1024 {
+		req.Header.Set("Expect", "100-continue")
+	}
 
 	res, err := cli.Do(req)
 	if err != nil {
@@ -459,6 +509,7 @@ func (s *WebDavStorage) serveDownload(rw http.ResponseWriter, req *http.Request,
 				size = newSize
 			}
 		}
+
 		location := resp.Header.Get("Location")
 		rwh.Set("Location", location)
 		copyHeader("ETag", rwh, resp.Header)
@@ -543,10 +594,14 @@ func (s *WebDavStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, 
 }
 
 func (s *WebDavStorage) createMeasureFile(ctx context.Context, size int) error {
-	if s.measures.Has(size) {
+	if s.measures.Contains(size) {
 		// TODO: is this safe?
 		return nil
 	}
+
+	s.newMeasureMux.Lock()
+	defer s.newMeasureMux.Unlock()
+
 	t := path.Join("measure", strconv.Itoa(size))
 	tsz := (int64)(size) * utils.MbChunkSize
 	if size == 0 {
@@ -621,7 +676,7 @@ func (s *WebDavStorage) checkAlive(ctx context.Context, size int) (err error) {
 }
 
 func (s *WebDavStorage) CheckUpload(ctx context.Context) (err error) {
-	const fileName = ".check"
+	const fileName = ".upload_check"
 	log.Infof("Checking upload at %s ...", s.String())
 
 	data := strconv.FormatInt(time.Now().UnixMilli(), 10)

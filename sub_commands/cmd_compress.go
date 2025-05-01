@@ -1,3 +1,5 @@
+//go:build ignore
+
 /**
  * OpenBmclAPI (Golang Edition)
  * Copyright (C) 2024 Kevin Z <zyxkad@gmail.com>
@@ -17,7 +19,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package sub_commands
 
 import (
 	"compress/gzip"

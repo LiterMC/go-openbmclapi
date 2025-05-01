@@ -16,7 +16,7 @@ defineEmits<{
 	<Card>
 		<template #title>
 			<div class="flex-row-center">
-				<lable>{{ name }}</lable>
+				<label>{{ name }}</label>
 			</div>
 		</template>
 		<template #content>

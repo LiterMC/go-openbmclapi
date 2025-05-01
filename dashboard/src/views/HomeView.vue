@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed, watch, inject, type Ref } from 'vue'
+import { ref, computed, watch, inject, onMounted, onUnmounted, type Ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useRequest } from 'vue-request'
 import Button from 'primevue/button'
@@ -36,7 +36,7 @@ const requestingPprof = ref(false)
 const logDebugLevel = bindRefToLocalStorage(ref(false), 'dashboard.log.debug.bool')
 
 const now = ref(new Date())
-setInterval(() => {
+const timeUpdater = setInterval(() => {
 	now.value = new Date()
 }, 1000)
 
@@ -228,6 +228,10 @@ onMounted(() => {
 	onTokenChanged(token.value)
 	watch(token, onTokenChanged)
 })
+
+onUnmounted(() => {
+	clearInterval(timeUpdater)
+})
 </script>
 
 <template>
@@ -266,8 +270,8 @@ onMounted(() => {
 			<div class="charts-tab">
 				<TabMenu
 					style="
-						border-top-left-radius: var(--border-radius);
-						border-top-right-radius: var(--border-radius);
+						border-top-left-radius: var(--p-content-border-radius);
+						border-top-right-radius: var(--p-content-border-radius);
 					"
 					:model="avaliableStorages"
 					v-model:activeIndex="activeStorageIndex"
@@ -366,8 +370,8 @@ onMounted(() => {
 }
 
 .charts-tab {
-	border: 1px solid var(--surface-border);
-	border-radius: var(--border-radius);
+	border: 1px solid var(--p-content-border-color);
+	border-radius: var(--p-content-border-radius);
 }
 
 .charts-tab-charts {

@@ -7,6 +7,8 @@
 :root {
 	font-size: 16px;
 	--dialog-width: 60rem;
+	--table-row-bg-a: var(--p-surface-100);
+	--table-row-bg-b: var(--p-surface-200);
 }
 
 body {
@@ -24,5 +26,12 @@ body {
 @media (max-width: 60rem) {
 	:root {
 		--dialog-width: 100vw;
+	}
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--table-row-bg-a: var(--p-surface-800);
+		--table-row-bg-b: var(--p-surface-700);
 	}
 }

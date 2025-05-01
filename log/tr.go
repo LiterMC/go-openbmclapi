@@ -17,19 +17,24 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package log
 
-const (
-	CodeClientError      = 0x01
-	CodeServerError      = 0x02
-	CodeEnvironmentError = 0x04
-	CodeUnexpectedError  = 0x08
+import (
+	"github.com/LiterMC/go-openbmclapi/lang"
 )
 
-const (
-	CodeClientOrServerError     = CodeClientError | CodeServerError
-	CodeClientOrEnvionmentError = CodeClientError | CodeEnvironmentError
-	CodeClientUnexpectedError   = CodeUnexpectedError | CodeClientError
-	CodeServerOrEnvionmentError = CodeServerError | CodeEnvironmentError
-	CodeServerUnexpectedError   = CodeUnexpectedError | CodeServerError
-)
+func TrDebugf(key string, vals ...any) {
+	Debugf(lang.Tr(key), vals...)
+}
+
+func TrInfof(key string, vals ...any) {
+	Infof(lang.Tr(key), vals...)
+}
+
+func TrWarnf(key string, vals ...any) {
+	Warnf(lang.Tr(key), vals...)
+}
+
+func TrErrorf(key string, vals ...any) {
+	Errorf(lang.Tr(key), vals...)
+}

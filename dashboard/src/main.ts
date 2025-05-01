@@ -1,8 +1,10 @@
 import { createApp, ref, watch, inject, type Ref } from 'vue'
 import vueCookies, { type VueCookies } from 'vue-cookies'
 import PrimeVue from 'primevue/config'
+import ConfirmationService from 'primevue/confirmationservice'
 import FocusTrap from 'primevue/focustrap'
 import ToastService from 'primevue/toastservice'
+import Lara from '@primeuix/themes/lara'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.vue'
 import router from './router'
@@ -10,7 +12,6 @@ import { useCookies, bindRefToCookie } from './cookies'
 import './utils/chart'
 import { ping } from '@/api/v0'
 
-import './assets/theme.css'
 import 'primeicons/primeicons.css'
 import './assets/main.css'
 
@@ -32,7 +33,17 @@ const app = createApp(App)
 app.use(router)
 app.use(vueCookies, { expires: '30d', path: import.meta.env.BASE_URL })
 
-app.use(PrimeVue, { ripple: true })
+app.use(PrimeVue, {
+	ripple: true,
+	theme: {
+		preset: Lara,
+		options: {
+			prefix: 'p',
+			darkModeSelector: 'system',
+		},
+	},
+})
+app.use(ConfirmationService)
 app.use(ToastService)
 app.directive('focustrap', FocusTrap)
 

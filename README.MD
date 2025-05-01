@@ -63,7 +63,7 @@ A: 请确认中间所有的反向代理都支持 WebSocket
 ### 无依赖直接运行
 
 1. 从 [Github Release](https://github.com/LiterMC/go-openbmclapi/releases/latest) 找到**适合您服务器平台**的程序并下载到节点服务器上
-2. 配置配置文件, 可以直接使用与bangbang93的openbmclapi相同的环境变量配置, 也可以从`config.yaml`进行配置 _(下文有讲)_
+2. 配置 `config.yaml` 配置文件 _(下文有讲)_
 3. 运行程序
 
 ### 从docker运行
@@ -79,7 +79,6 @@ A: 请确认中间所有的反向代理都支持 WebSocket
    ```sh
    curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s
    ```
-   > 注意, 新版新增使用 `openbmclapi` 用户执行程序, 可能需要执行 `sudo chown -R openbmclapi /opt/openbmclapi` 指令修复权限
 
    国内对 Github 的支持较差, 可以使用 ghproxy 等镜像站运行脚本, 本例中使用了 [crashmc.com](https://crashmc.com) 提供的 CDN:
    ```sh
@@ -89,7 +88,7 @@ A: 请确认中间所有的反向代理都支持 WebSocket
 
    如果需要下载指定版本, 只需设置 `-t|--tag` 标志即可
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s -- --tag v1.9.7-8
+   curl -fsSL https://raw.githubusercontent.com/LiterMC/go-openbmclapi/HEAD/installer/service/installer.sh | sudo bash -s -- --tag v1.13.1-2
    ```
 3. 配置`/opt/openbmclapi/config.yaml`配置文件
 4. 使用`systemctl start go-openbmclapi.service`启动服务
@@ -101,7 +100,7 @@ A: 请确认中间所有的反向代理都支持 WebSocket
 
 ### 从源代码运行
 
-1. 确保您的服务器上装有 `go 1.21+` 以及 `node & npm`
+1. 确保您的服务器上装有 `go 1.23+` 以及 `node & npm`
 2. 下载本仓库 _(可以使用`git clone https://github.com/LiterMC/go-openbmclapi.git`)_
 3. cd 进入本仓库
 4. 配置配置文件或环境变量
@@ -176,8 +175,8 @@ tunneler:
 # 缓存
 cache:
   # 缓存类型:
-  #   nocache: 不缓存
-  #   inmem: 程序内内存缓存
+  #   no-cache: 不缓存
+  #   memory: 程序内内存缓存
   #   redis: Redis 缓存
   type: redis
   # 如果使用 Redis 缓存则还需要配置用户名密码等:

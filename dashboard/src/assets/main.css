@@ -25,11 +25,11 @@ a.pi {
 }
 
 @media (max-width: 60rem) {
-	.p-dropdown .p-dropdown-label.p-inputtext {
+	.p-select .p-select-label.p-inputtext {
 		padding-left: 0.6rem;
 	}
 
-	.p-dropdown .p-dropdown-trigger {
+	.p-select .p-select-dropdown {
 		width: 2.1rem;
 	}
 }

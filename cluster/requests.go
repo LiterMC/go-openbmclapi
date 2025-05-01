@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package cluster
 
 import (
 	"bytes"
@@ -26,6 +26,8 @@ import (
 	"crypto/hmac"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -85,7 +87,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		}
 	}()
 	req, err := cr.makeReq(ctx, http.MethodGet, "/openbmclapi-agent/challenge", url.Values{
-		"clusterId": {cr.clusterId},
+		"clusterId": {cr.ID()},
 	})
 	if err != nil {
 		return
@@ -109,7 +111,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 	}
 
 	var buf [32]byte
-	hs := hmac.New(crypto.SHA256.New, ([]byte)(cr.clusterSecret))
+	hs := hmac.New(crypto.SHA256.New, ([]byte)(cr.Secret()))
 	hs.Write(([]byte)(res1.Challenge))
 	signature := hex.EncodeToString(hs.Sum(buf[:0]))
 
@@ -118,7 +120,7 @@ func (cr *Cluster) fetchToken(ctx context.Context) (token *ClusterToken, err err
 		Challenge string `json:"challenge"`
 		Signature string `json:"signature"`
 	}{
-		ClusterId: cr.clusterId,
+		ClusterId: cr.ID(),
 		Challenge: res1.Challenge,
 		Signature: signature,
 	})
@@ -158,7 +160,7 @@ func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *Cl
 		ClusterId string `json:"clusterId"`
 		Token     string `json:"token"`
 	}{
-		ClusterId: cr.clusterId,
+		ClusterId: cr.ID(),
 		Token:     oldToken,
 	})
 	if err != nil {
@@ -192,4 +194,106 @@ func (cr *Cluster) refreshToken(ctx context.Context, oldToken string) (token *Cl
 		Token:    res.Token,
 		ExpireAt: time.Now().Add((time.Duration)(res.TTL)*time.Millisecond - 10*time.Second),
 	}, nil
+}
+
+type OpenbmclapiAgentConfig struct {
+	Sync OpenbmclapiAgentSyncConfig `json:"sync"`
+}
+
+type OpenbmclapiAgentSyncConfig struct {
+	Source      string `json:"source"`
+	Concurrency int    `json:"concurrency"`
+}
+
+func (cr *Cluster) GetConfig(ctx context.Context) (cfg *OpenbmclapiAgentConfig, err error) {
+	req, err := cr.makeReqWithAuth(ctx, http.MethodGet, "/openbmclapi/configuration", nil)
+	if err != nil {
+		return
+	}
+	res, err := cr.client.DoUseCache(req)
+	if err != nil {
+		return
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		err = utils.NewHTTPStatusErrorFromResponse(res)
+		return
+	}
+	cfg = new(OpenbmclapiAgentConfig)
+	if err = json.NewDecoder(res.Body).Decode(cfg); err != nil {
+		cfg = nil
+		return
+	}
+	return
+}
+
+type CertKeyPair struct {
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
+
+func (cr *Cluster) RequestCert(ctx context.Context) (ckp *CertKeyPair, err error) {
+	resCh, err := cr.socket.EmitWithAck("request-cert")
+	if err != nil {
+		return
+	}
+	var data []any
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case data = <-resCh:
+	}
+	if ero := data[0]; ero != nil {
+		err = fmt.Errorf("socket.io remote error: %v", ero)
+		return
+	}
+	pair := data[1].(map[string]any)
+	ckp = new(CertKeyPair)
+	var ok bool
+	if ckp.Cert, ok = pair["cert"].(string); !ok {
+		err = fmt.Errorf(`"cert" is not a string, got %T`, pair["cert"])
+		return
+	}
+	if ckp.Key, ok = pair["key"].(string); !ok {
+		err = fmt.Errorf(`"key" is not a string, got %T`, pair["key"])
+		return
+	}
+	return
+}
+
+func (cr *Cluster) ReportDownload(ctx context.Context, response *http.Response, err error) error {
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+
+	type ReportPayload struct {
+		Urls  []string `json:"urls"`
+		Error utils.EmbedJSON[struct {
+			Message string `json:"message"`
+		}] `json:"error"`
+	}
+	var payload ReportPayload
+	redirects := utils.GetRedirects(response)
+	payload.Urls = make([]string, len(redirects))
+	for i, u := range redirects {
+		payload.Urls[i] = u.String()
+	}
+	payload.Error.V.Message = err.Error()
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := cr.makeReqWithAuthBody(ctx, http.MethodPost, "/openbmclapi/report", nil, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := cr.client.Do(req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode/100 != 2 {
+		return utils.NewHTTPStatusErrorFromResponse(resp)
+	}
+	return nil
 }

@@ -23,10 +23,11 @@ const router = createRouter({
 			component: () => import('@/views/LoginView.vue'),
 			props: (route) => ({ next: route.query.next }),
 		},
+
 		{
 			path: '/settings',
 			name: 'settings',
-			component: () => import('@/views/SettingsView.vue'),
+			component: () => import('@/views/settings/SettingsView.vue'),
 		},
 		{
 			path: '/loglist',
@@ -37,6 +38,17 @@ const router = createRouter({
 			path: '/settings/notifications',
 			name: 'settings/notifications',
 			component: () => import('@/views/settings/NotificationsView.vue'),
+		},
+
+		{
+			path: '/configure',
+			name: 'configure',
+			component: () => import('@/views/configure/ConfigureView.vue'),
+		},
+		{
+			path: '/configure/clusters',
+			name: 'configure/clusters',
+			component: () => import('@/views/configure/ClustersView.vue'),
 		},
 	],
 	scrollBehavior(to, from, savedPosition) {

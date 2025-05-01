@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package bmclapi
 
 import (
 	"context"
@@ -33,6 +33,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/utils"
 )
@@ -52,6 +53,11 @@ func getDialerWithDNS(dnsaddr string) *net.Dialer {
 type downloadHandlerFn = func(rw http.ResponseWriter, req *http.Request, hash string)
 
 type HjProxy struct {
+	RequireAuth      bool
+	AuthUsers        []config.UserItem
+	EnableLocalCache bool
+	LocalCachePath   string
+
 	client          *http.Client
 	fileMap         database.DB
 	downloadHandler downloadHandlerFn
@@ -76,11 +82,11 @@ func NewHjProxy(client *http.Client, fileMap database.DB, downloadHandler downlo
 	return
 }
 
-func hjResponseWithCache(rw http.ResponseWriter, req *http.Request, c *cacheStat, force bool) (ok bool) {
+func (h *HjProxy) hjResponseWithCache(rw http.ResponseWriter, req *http.Request, c *cacheStat, force bool) (ok bool) {
 	if c == nil {
 		return false
 	}
-	cacheFileName := filepath.Join(config.Hijack.LocalCachePath, filepath.FromSlash(req.URL.Path))
+	cacheFileName := filepath.Join(h.LocalCachePath, filepath.FromSlash(req.URL.Path))
 	age := c.ExpiresAt - time.Now().Unix()
 	if !force && age <= 0 {
 		return false
@@ -107,15 +113,11 @@ func hjResponseWithCache(rw http.ResponseWriter, req *http.Request, c *cacheStat
 const hijackingHost = "bmclapi2.bangbang93.com"
 
 func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if !config.Hijack.Enable {
-		http.Error(rw, "Hijack is disabled in the config", http.StatusServiceUnavailable)
-		return
-	}
-	if config.Hijack.RequireAuth {
+	if h.RequireAuth {
 		needAuth := true
 		user, passwd, ok := req.BasicAuth()
 		if ok {
-			for _, u := range config.Hijack.AuthUsers {
+			for _, u := range h.AuthUsers {
 				if u.Username == user && utils.ComparePasswd(u.Password, passwd) {
 					needAuth = false
 					return
@@ -139,9 +141,9 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	nowUnix := time.Now().Unix()
 
-	cacheFileName := filepath.Join(config.Hijack.LocalCachePath, filepath.FromSlash(req.URL.Path))
+	cacheFileName := filepath.Join(h.LocalCachePath, filepath.FromSlash(req.URL.Path))
 	cached := h.getCache(req.URL.Path)
-	if hjResponseWithCache(rw, req, cached, false) {
+	if h.hjResponseWithCache(rw, req, cached, false) {
 		return
 	}
 
@@ -158,7 +160,7 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	res, err := h.client.Do(req2)
 	if err != nil {
-		if hjResponseWithCache(rw, req, cached, true) {
+		if h.hjResponseWithCache(rw, req, cached, true) {
 			return
 		}
 		http.Error(rw, "remote: "+err.Error(), http.StatusBadGateway)
@@ -178,7 +180,7 @@ func (h *HjProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	rw.WriteHeader(res.StatusCode)
 	var body io.Reader = res.Body
-	if config.Hijack.EnableLocalCache && res.StatusCode == http.StatusOK {
+	if h.EnableLocalCache && res.StatusCode == http.StatusOK {
 		if exp, ok := utils.ParseCacheControl(res.Header.Get("Cache-Control")); ok {
 			if exp > 0 {
 				os.MkdirAll(filepath.Dir(cacheFileName), 0755)
@@ -211,7 +213,7 @@ type cacheStat struct {
 
 func (h *HjProxy) loadCache() (err error) {
 	h.cache = make(map[string]*cacheStat)
-	fd, err := os.Open(filepath.Join(config.Hijack.LocalCachePath, "__cache.json"))
+	fd, err := os.Open(filepath.Join(h.LocalCachePath, "__cache.json"))
 	if err != nil {
 		return
 	}
@@ -220,7 +222,7 @@ func (h *HjProxy) loadCache() (err error) {
 }
 
 func (h *HjProxy) saveCache() (err error) {
-	fd, err := os.Create(filepath.Join(config.Hijack.LocalCachePath, "__cache.json"))
+	fd, err := os.Create(filepath.Join(h.LocalCachePath, "__cache.json"))
 	if err != nil {
 		return
 	}

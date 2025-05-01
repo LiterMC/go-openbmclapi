@@ -33,6 +33,7 @@ import (
 
 	mail "github.com/xhit/go-simple-mail/v2"
 
+	"github.com/LiterMC/go-openbmclapi/api"
 	"github.com/LiterMC/go-openbmclapi/database"
 	"github.com/LiterMC/go-openbmclapi/notify"
 )
@@ -131,9 +132,9 @@ func (p *Plugin) sendEmail(ctx context.Context, subject string, body []byte, to 
 	return m.Send(cli)
 }
 
-func (p *Plugin) sendEmailIf(ctx context.Context, subject string, body []byte, filter func(*database.EmailSubscriptionRecord) bool) (err error) {
+func (p *Plugin) sendEmailIf(ctx context.Context, subject string, body []byte, filter func(*api.EmailSubscriptionRecord) bool) (err error) {
 	var recipients []string
-	p.db.ForEachEnabledEmailSubscription(func(record *database.EmailSubscriptionRecord) error {
+	p.db.ForEachEnabledEmailSubscription(func(record *api.EmailSubscriptionRecord) error {
 		if filter(record) {
 			recipients = append(recipients, record.Addr)
 		}
@@ -153,7 +154,7 @@ func (p *Plugin) OnEnabled(e *notify.EnabledEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Enabled", buf.Bytes(), func(record *database.EmailSubscriptionRecord) bool { return record.Scopes.Enabled })
+	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Enabled", buf.Bytes(), func(record *api.EmailSubscriptionRecord) bool { return record.Scopes.Enabled })
 }
 
 func (p *Plugin) OnDisabled(e *notify.DisabledEvent) error {
@@ -164,7 +165,7 @@ func (p *Plugin) OnDisabled(e *notify.DisabledEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Disabled", buf.Bytes(), func(record *database.EmailSubscriptionRecord) bool { return record.Scopes.Disabled })
+	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Disabled", buf.Bytes(), func(record *api.EmailSubscriptionRecord) bool { return record.Scopes.Disabled })
 }
 
 func (p *Plugin) OnSyncBegin(e *notify.SyncBeginEvent) error {
@@ -175,7 +176,7 @@ func (p *Plugin) OnSyncBegin(e *notify.SyncBeginEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Sync Begin", buf.Bytes(), func(record *database.EmailSubscriptionRecord) bool { return record.Scopes.SyncBegin })
+	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Sync Begin", buf.Bytes(), func(record *api.EmailSubscriptionRecord) bool { return record.Scopes.SyncBegin })
 }
 
 func (p *Plugin) OnSyncDone(e *notify.SyncDoneEvent) error {
@@ -186,7 +187,7 @@ func (p *Plugin) OnSyncDone(e *notify.SyncDoneEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Sync Done", buf.Bytes(), func(record *database.EmailSubscriptionRecord) bool { return record.Scopes.SyncDone })
+	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Sync Done", buf.Bytes(), func(record *api.EmailSubscriptionRecord) bool { return record.Scopes.SyncDone })
 }
 
 func (p *Plugin) OnUpdateAvaliable(e *notify.UpdateAvaliableEvent) error {
@@ -197,7 +198,7 @@ func (p *Plugin) OnUpdateAvaliable(e *notify.UpdateAvaliableEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Update Avaliable", buf.Bytes(), func(record *database.EmailSubscriptionRecord) bool { return record.Scopes.Updates })
+	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Update Avaliable", buf.Bytes(), func(record *api.EmailSubscriptionRecord) bool { return record.Scopes.Updates })
 }
 
 func (p *Plugin) OnReportStatus(e *notify.ReportStatusEvent) error {
@@ -213,5 +214,5 @@ func (p *Plugin) OnReportStatus(e *notify.ReportStatusEvent) error {
 
 	tctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Daily Report", buf.Bytes(), func(record *database.EmailSubscriptionRecord) bool { return record.Scopes.DailyReport })
+	return p.sendEmailIf(tctx, "Go-OpenBMCLAPI Daily Report", buf.Bytes(), func(record *api.EmailSubscriptionRecord) bool { return record.Scopes.DailyReport })
 }

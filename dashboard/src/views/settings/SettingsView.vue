@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, inject, onMounted, type Ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import Card from 'primevue/card'
 import Calendar from 'primevue/calendar'
-import Dropdown from 'primevue/dropdown'
+import Card from 'primevue/card'
 import InputIcon from 'primevue/inputicon'
-import InputSwitch from 'primevue/inputswitch'
+import Select from 'primevue/select'
+import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
 import {
 	getSubscribePublicKey,
@@ -204,16 +204,17 @@ onMounted(() => {
 			<i class="pi pi-cog" style="font-size: 0.85em"></i>
 			{{ tr('title.settings') }}
 		</h1>
+
 		<Card class="settings-group">
 			<template #title>
 				<div class="flex-row-center settings-group-title">
-					<lable>{{ tr('title.i18n') }}</lable>
+					<label>{{ tr('title.i18n') }}</label>
 				</div>
 			</template>
 			<template #content>
 				<div class="flex-row-center settings-elem">
-					<lable class="settings-label">{{ tr('title.language') }}</lable>
-					<Dropdown
+					<label class="settings-label">{{ tr('title.language') }}</label>
+					<Select
 						v-model="selectedLang"
 						class="lang-selector"
 						:options="languages"
@@ -228,14 +229,14 @@ onMounted(() => {
 						<template #option="slotProps">
 							{{ langNameMap[slotProps.option.toString()] }}
 						</template>
-					</Dropdown>
+					</Select>
 				</div>
 			</template>
 		</Card>
 		<Card class="settings-group">
 			<template #title>
 				<div class="flex-row-center settings-group-title">
-					<lable>{{ tr('title.debugs_and_logs') }}</lable>
+					<label>{{ tr('title.debugs_and_logs') }}</label>
 				</div>
 			</template>
 			<template #content>
@@ -249,8 +250,8 @@ onMounted(() => {
 		<Card class="settings-group">
 			<template #title>
 				<div class="flex-row-center settings-group-title">
-					<lable>{{ tr('title.notification') }}</lable>
-					<InputSwitch
+					<label>{{ tr('title.notification') }}</label>
+					<ToggleSwitch
 						v-model="enableNotify"
 						@click.prevent="onEnableNotify"
 						:disabled="requestingPermission"
@@ -259,44 +260,44 @@ onMounted(() => {
 			</template>
 			<template #content>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.when.disabled') }}</lable>
-					<InputSwitch
+					<label class="settings-label">{{ tr('title.notify.when.disabled') }}</label>
+					<ToggleSwitch
 						v-model="settings.notifyWhenDisabled"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.when.enabled') }}</lable>
-					<InputSwitch
+					<label class="settings-label">{{ tr('title.notify.when.enabled') }}</label>
+					<ToggleSwitch
 						v-model="settings.notifyWhenEnabled"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.when.sync.done') }}</lable>
-					<InputSwitch
+					<label class="settings-label">{{ tr('title.notify.when.sync.done') }}</label>
+					<ToggleSwitch
 						v-model="settings.notifyWhenSyncFinished"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.when.update.available') }}</lable>
-					<InputSwitch
+					<label class="settings-label">{{ tr('title.notify.when.update.available') }}</label>
+					<ToggleSwitch
 						v-model="settings.notifyUpdates"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label">{{ tr('title.notify.report.daily') }}</lable>
-					<InputSwitch
+					<label class="settings-label">{{ tr('title.notify.report.daily') }}</label>
+					<ToggleSwitch
 						v-model="settings.dailyReport"
 						:disabled="requestingPermission || !enableNotify"
 					/>
 				</div>
 				<div class="settings-elem">
-					<lable class="settings-label" style="margin-left: 1.5rem">{{
+					<label class="settings-label" style="margin-left: 1.5rem">{{
 						tr('title.notify.report.at')
-					}}</lable>
+					}}</label>
 					<Calendar
 						class="time-input"
 						v-model="dailyReportAt"
@@ -319,7 +320,7 @@ onMounted(() => {
 		</Card>
 	</div>
 </template>
-<style>
+<style scoped>
 .settings-group {
 	width: 30rem;
 	font-size: 1rem;
@@ -339,11 +340,11 @@ onMounted(() => {
 	justify-content: space-between;
 	width: 100%;
 	padding: 0.4rem 1rem;
-	background-color: var(--surface-c);
+	background-color: var(--table-row-bg-a);
 }
 
 .settings-elem:nth-child(even) {
-	background-color: var(--surface-d);
+	background-color: var(--table-row-bg-b);
 }
 
 .settings-label {
@@ -367,7 +368,7 @@ onMounted(() => {
 		width: 100%;
 	}
 
-	.settings-group > .p-card-body {
+	.settings-group:deep() > .p-card-body {
 		padding-left: 0;
 		padding-right: 0;
 	}

@@ -65,7 +65,7 @@ const getChartData = () => {
 			{
 				label: computed(() => tr('title.hits')),
 				fill: true,
-				borderColor: documentStyle.getPropertyValue('--blue-500'),
+				borderColor: documentStyle.getPropertyValue('--p-blue-500'),
 				yAxisID: 'y',
 				tension: 0.3,
 				data: hits,
@@ -73,7 +73,7 @@ const getChartData = () => {
 			{
 				label: computed(() => tr('title.bytes')),
 				fill: true,
-				borderColor: documentStyle.getPropertyValue('--green-500'),
+				borderColor: documentStyle.getPropertyValue('--p-green-500'),
 				yAxisID: 'y1',
 				tension: 0.4,
 				data: bytes,
@@ -84,9 +84,9 @@ const getChartData = () => {
 
 const getChartOptions = () => {
 	const documentStyle = getComputedStyle(document.documentElement)
-	const textColor = documentStyle.getPropertyValue('--text-color')
-	const textColorSecondary = documentStyle.getPropertyValue('--text-color-secondary')
-	const surfaceBorder = documentStyle.getPropertyValue('--surface-border')
+	const textColor = documentStyle.getPropertyValue('--p-text-color')
+	const textColorSecondary = documentStyle.getPropertyValue('--p-text-color-secondary')
+	const surfaceBorder = documentStyle.getPropertyValue('--p-surface-border')
 
 	return {
 		stacked: false,

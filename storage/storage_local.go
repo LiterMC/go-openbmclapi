@@ -37,40 +37,54 @@ import (
 )
 
 type LocalStorageOption struct {
-	CachePath  string     `yaml:"cache-path"`
-	Compressor Compressor `yaml:"compressor"`
+	CachePath  string     `json:"cache_path" yaml:"cache-path"`
+	Compressor Compressor `json:"compressor" yaml:"compressor"`
 }
 
 type LocalStorage struct {
-	opt LocalStorageOption
+	basicOpt StorageOption
+	opt      LocalStorageOption
+	inited   bool
 }
 
 var _ Storage = (*LocalStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageLocal, StorageFactory{
-		New:       func() Storage { return new(LocalStorage) },
+		New:       func(opt StorageOption) Storage { return NewLocalStorage(opt) },
 		NewConfig: func() any { return new(LocalStorageOption) },
 	})
+}
+
+func NewLocalStorage(opt StorageOption) *LocalStorage {
+	return &LocalStorage{
+		basicOpt: opt,
+		opt:      *(opt.Data.(*LocalStorageOption)),
+	}
 }
 
 func (s *LocalStorage) String() string {
 	return fmt.Sprintf("<LocalStorage cache=%q>", s.opt.CachePath)
 }
 
-func (s *LocalStorage) Options() any {
-	return &s.opt
+func (s *LocalStorage) Id() string {
+	return s.basicOpt.Id
 }
 
-func (s *LocalStorage) SetOptions(newOpts any) {
-	s.opt = *(newOpts.(*LocalStorageOption))
+func (s *LocalStorage) Options() *StorageOption {
+	return &s.basicOpt
 }
 
 func (s *LocalStorage) Init(context.Context) (err error) {
 	if err = initCache(s.opt.CachePath); err != nil {
 		return
 	}
+	s.inited = true
 	return
+}
+
+func (s *LocalStorage) Inited() bool {
+	return s.inited
 }
 
 func initCache(base string) (err error) {
@@ -108,7 +122,7 @@ func (s *LocalStorage) Open(hash string) (io.ReadCloser, error) {
 }
 
 func (s *LocalStorage) Create(hash string, r io.ReadSeeker) error {
-	fd, err := os.Create(s.hashToPath(hash))
+	fd, err := os.OpenFile(s.hashToPath(hash), os.O_RDWR|os.O_CREATE|os.O_EXCL|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -231,7 +245,7 @@ func (s *LocalStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 }
 
 func (s *LocalStorage) CheckUpload(ctx context.Context) (err error) {
-	const fileName = ".check"
+	const fileName = ".upload_check"
 
 	data := strconv.FormatInt(time.Now().UnixMilli(), 10)
 	if err = os.WriteFile(filepath.Join(s.opt.CachePath, fileName), ([]byte)(data), 0600); err != nil {

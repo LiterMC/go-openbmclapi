@@ -77,7 +77,7 @@ onMounted(() => {
 	height: 2.7rem;
 	margin: 0.5rem;
 	padding: 0;
-	border: none;
+	border: none !important;
 	border-radius: 0.2rem;
 	font-weight: 800;
 	overflow: hidden;
@@ -89,23 +89,23 @@ onMounted(() => {
 .info-status[status='enabled'] {
 	--flash-from: #fff;
 	--flash-to: #11dfc3;
-	color: #fff;
-	background-color: #28a745;
+	color: #fff !important;
+	background-color: #28a745 !important;
 	animation: flash 1s infinite;
 }
 
 .info-status[status='disabled'] {
 	--flash-from: #fff;
 	--flash-to: #e61a05;
-	color: #fff;
-	background-color: #f89f1b;
+	color: #fff !important;
+	background-color: #f89f1b !important;
 	animation: flash 3s infinite;
 }
 
 .info-status[status='error'] {
 	--flash-from: #8a8dac;
-	color: #fff;
-	background-color: #bfadad;
+	color: #fff !important;
+	background-color: #bfadad !important;
 }
 
 .info-status::before {

@@ -43,9 +43,9 @@ import (
 var ErrNotWorking = errors.New("storage is down")
 
 type MountStorageOption struct {
-	Path           string `yaml:"path"`
-	RedirectBase   string `yaml:"redirect-base"`
-	PreGenMeasures bool   `yaml:"pre-gen-measures"`
+	Path           string `json:"path" yaml:"path"`
+	RedirectBase   string `json:"redirect_base" yaml:"redirect-base"`
+	PreGenMeasures bool   `json:"pre_gen_measures" yaml:"pre-gen-measures"`
 }
 
 func (opt *MountStorageOption) CachePath() string {
@@ -53,19 +53,27 @@ func (opt *MountStorageOption) CachePath() string {
 }
 
 type MountStorage struct {
-	opt MountStorageOption
+	basicOpt StorageOption
+	opt      MountStorageOption
 
-	supportRange atomic.Bool
-	working      atomic.Int32
-	checkMux     sync.RWMutex
-	lastCheck    time.Time
+	newMeasureMux sync.Mutex
+	supportRange  atomic.Bool
+	working       atomic.Int32
+	checkMux      sync.RWMutex
+	lastCheck     time.Time
+	inited        bool
 }
 
 var _ Storage = (*MountStorage)(nil)
 
 func init() {
 	RegisterStorageFactory(StorageMount, StorageFactory{
-		New:       func() Storage { return new(MountStorage) },
+		New: func(opt StorageOption) Storage {
+			return &MountStorage{
+				basicOpt: opt,
+				opt:      *(opt.Data.(*MountStorageOption)),
+			}
+		},
 		NewConfig: func() any { return new(MountStorageOption) },
 	})
 }
@@ -74,12 +82,12 @@ func (s *MountStorage) String() string {
 	return fmt.Sprintf("<MountStorage path=%q redirect=%q>", s.opt.Path, s.opt.RedirectBase)
 }
 
-func (s *MountStorage) Options() any {
-	return &s.opt
+func (s *MountStorage) Id() string {
+	return s.basicOpt.Id
 }
 
-func (s *MountStorage) SetOptions(newOpts any) {
-	s.opt = *(newOpts.(*MountStorageOption))
+func (s *MountStorage) Options() *StorageOption {
+	return &s.basicOpt
 }
 
 var checkerClient = &http.Client{
@@ -117,7 +125,12 @@ func (s *MountStorage) Init(ctx context.Context) (err error) {
 	}
 	s.supportRange.Store(supportRange)
 	s.working.Store(1)
+	s.inited = true
 	return
+}
+
+func (s *MountStorage) Inited() bool {
+	return s.inited
 }
 
 func (s *MountStorage) hashToPath(hash string) string {
@@ -137,7 +150,7 @@ func (s *MountStorage) Open(hash string) (io.ReadCloser, error) {
 }
 
 func (s *MountStorage) Create(hash string, r io.ReadSeeker) error {
-	fd, err := os.Create(s.hashToPath(hash))
+	fd, err := os.OpenFile(s.hashToPath(hash), os.O_RDWR|os.O_CREATE|os.O_EXCL|os.O_TRUNC, 0666)
 	if err != nil {
 		return err
 	}
@@ -255,6 +268,9 @@ func (s *MountStorage) ServeMeasure(rw http.ResponseWriter, req *http.Request, s
 }
 
 func (s *MountStorage) createMeasureFile(size int) (err error) {
+	s.newMeasureMux.Lock()
+	defer s.newMeasureMux.Unlock()
+
 	t := filepath.Join(s.opt.Path, "measure", strconv.Itoa(size))
 	log.Debugf("Checking measure file %q", t)
 	if stat, err := os.Stat(t); err == nil {

@@ -17,10 +17,11 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package main
+package sub_commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -31,19 +32,23 @@ import (
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
+	"github.com/LiterMC/go-openbmclapi/config"
 	"github.com/LiterMC/go-openbmclapi/log"
 	"github.com/LiterMC/go-openbmclapi/storage"
+	"github.com/LiterMC/go-openbmclapi/utils"
 )
 
-func cmdUploadWebdav(args []string) {
-	config = readConfig()
+func CmdUploadWebdav(args []string) {
+	cfg := readConfig()
 
-	var localOpt *storage.LocalStorageOption
-	webdavOpts := make([]*storage.WebDavStorageOption, 0, 4)
-	for _, s := range config.Storages {
-		switch s := s.Data.(type) {
+	var (
+		localOpt   storage.StorageOption
+		webdavOpts = make([]storage.StorageOption, 0, 4)
+	)
+	for _, s := range cfg.Storages {
+		switch s.Data.(type) {
 		case *storage.LocalStorageOption:
-			if localOpt == nil {
+			if localOpt.Data == nil {
 				localOpt = s
 			}
 		case *storage.WebDavStorageOption:
@@ -51,7 +56,7 @@ func cmdUploadWebdav(args []string) {
 		}
 	}
 
-	if localOpt == nil {
+	if localOpt.Data == nil {
 		log.Error("At least one local storage is required")
 		os.Exit(1)
 	}
@@ -62,8 +67,7 @@ func cmdUploadWebdav(args []string) {
 
 	ctx := context.Background()
 
-	var local storage.LocalStorage
-	local.SetOptions(localOpt)
+	local := storage.NewLocalStorage(localOpt)
 	if err := local.Init(ctx); err != nil {
 		log.Errorf("Cannot initialize %s: %v", local.String(), err)
 		os.Exit(1)
@@ -73,11 +77,10 @@ func cmdUploadWebdav(args []string) {
 	webdavs := make([]*storage.WebDavStorage, len(webdavOpts))
 	maxProc := 0
 	for i, opt := range webdavOpts {
-		if opt.MaxConn > maxProc {
-			maxProc = opt.MaxConn
+		if maxConn := opt.Data.(*storage.WebDavStorageOption).MaxConn; maxConn > maxProc {
+			maxProc = maxConn
 		}
-		s := new(storage.WebDavStorage)
-		s.SetOptions(opt)
+		s := storage.NewWebDavStorage(opt)
 		if err := s.Init(ctx); err != nil {
 			log.Errorf("Cannot initialize %s: %v", s.String(), err)
 			os.Exit(1)
@@ -234,7 +237,7 @@ func cmdUploadWebdav(args []string) {
 				bar.SetTotal(size, false)
 
 				log.Debugf("Uploading %s/%s", s.String(), hash)
-				err := s.Create(hash, ProxyReadSeeker(fd, bar, totalBar, lastInc))
+				err := s.Create(hash, utils.ProxyPBReadSeeker(fd, bar, totalBar, lastInc))
 				uploadedFiles.Add(1)
 				if err != nil {
 					log.Errorf("Cannot create %s at %s: %v", hash, s.String(), err)
@@ -247,4 +250,24 @@ func cmdUploadWebdav(args []string) {
 
 	pg.Wait()
 	log.SetLogOutput(nil)
+}
+
+func readConfig() (cfg *config.Config) {
+	const configPath = "config.yaml"
+
+	cfg = config.NewDefaultConfig()
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.TrErrorf("error.config.read.failed", err)
+			os.Exit(1)
+		}
+		log.TrErrorf("error.config.not.exists")
+		os.Exit(1)
+	}
+	if err = cfg.UnmarshalText(data); err != nil {
+		log.TrErrorf("error.config.parse.failed", err)
+		os.Exit(1)
+	}
+	return
 }

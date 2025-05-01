@@ -35,13 +35,12 @@ import (
 type Storage interface {
 	fmt.Stringer
 
-	// Options should return the pointer of the storage options
-	//  which should be able to marshal/unmarshal with yaml format
-	Options() any
-	// SetOptions will be called with the same type of the Options() result
-	SetOptions(any)
+	Id() string
+	// Options should return the pointer of the StorageOption that should not be modified.
+	Options() *StorageOption
 	// Init will be called before start to use a storage
 	Init(context.Context) error
+	Inited() bool
 	CheckUpload(context.Context) error
 
 	Size(hash string) (int64, error)
@@ -61,7 +60,7 @@ const (
 )
 
 type StorageFactory struct {
-	New       func() Storage
+	New       func(StorageOption) Storage
 	NewConfig func() any
 }
 
@@ -78,8 +77,7 @@ func RegisterStorageFactory(typ string, inst StorageFactory) {
 }
 
 func NewStorage(opt StorageOption) Storage {
-	s := storageFactories[opt.Type].New()
-	s.SetOptions(opt.Data)
+	s := storageFactories[opt.Type].New(opt)
 	return s
 }
 
@@ -97,14 +95,14 @@ func (e *UnexpectedStorageTypeError) Error() string {
 }
 
 type BasicStorageOption struct {
-	Type   string `yaml:"type"`
-	Id     string `yaml:"id"`
-	Weight uint   `yaml:"weight"`
+	Type   string `json:"type" yaml:"type"`
+	Id     string `json:"id" yaml:"id"`
+	Weight int    `json:"weight" yaml:"weight"`
 }
 
 type StorageOption struct {
-	BasicStorageOption `yaml:",inline"`
-	Data               any `yaml:"data"`
+	BasicStorageOption `json:",inline" yaml:",inline"`
+	Data               any `json:"data" yaml:"data"`
 }
 
 func (o *StorageOption) UnmarshalYAML(n *yaml.Node) (err error) {

@@ -131,7 +131,8 @@
 			},
 
 			"confirm": {
-				"remove": "移除确认"
+				"remove": "移除确认",
+				"discard": "撤销更改?"
 			}
 		}
 	},
@@ -143,7 +144,7 @@
 		"refresh": "刷新",
 		"remove": "移除",
 		"cancel": "取消",
-		"undo": "撤销"
+		"discard": "撤销"
 	},
 	"message": {
 		"server": {
@@ -181,7 +182,8 @@
 		},
 		"configures": {
 			"confirm": {
-				"remove": "您确认删除节点 <b><code>{0}</code></b> 吗?"
+				"remove": "确认删除节点 <b><code>{0}</code></b> 吗?",
+				"discard": "确认放弃更改吗?"
 			}
 		}
 	},

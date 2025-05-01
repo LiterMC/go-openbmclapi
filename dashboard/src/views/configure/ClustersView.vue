@@ -69,6 +69,10 @@ const changingClusterPublicHost = reactive<{ [name: string]: string }>({})
 const newClusterNameInput = ref()
 const newClusterName = ref('')
 
+const { data: clusterStatus } = useRequest((): Promise<ClusterStatusRes> => getClusterStatus(token.value), {
+	pollingInterval: 1000,
+})
+
 async function refreshConfig(): Promise<void> {
 	if (!token.value) {
 		toast.add({
@@ -85,6 +89,12 @@ async function refreshConfig(): Promise<void> {
 	} finally {
 		loading.value = false
 	}
+}
+
+async function onEnableCluster(clusterName: string): Promise<void> {
+}
+
+async function onDisableCluster(clusterName: string): Promise<void> {
 }
 
 async function onCreateCluster(event: MouseEvent): Promise<void> {
@@ -118,7 +128,7 @@ function confirmRemoveCluster(clusterName: string): void {
 			outlined: true
 		},
 		accept: () => onRemoveCluster(clusterName),
-	});
+	})
 }
 
 async function onRemoveCluster(clusterName: string): Promise<void> {
@@ -141,6 +151,24 @@ async function onSaveCluster(clusterName: string): Promise<void> {
 	} finally {
 		delete savingFlags[clusterName]
 	}
+}
+
+function confirmCancelClusterChange(clusterName: string): void {
+	confirm.require({
+		message: tr('message.configures.confirm.discard'),
+		header: tr('title.configures.confirm.discard'),
+		icon: 'pi pi-exclamation-triangle',
+		acceptProps: {
+			label: tr('button.discard'),
+			severity: 'warn',
+		},
+		rejectProps: {
+			label: tr('button.cancel'),
+			severity: 'secondary',
+			outlined: true
+		},
+		accept: () => onCancelClusterChange(clusterName),
+	})
 }
 
 function onCancelClusterChange(clusterName: string): void {
@@ -183,8 +211,31 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 					:key="name"
 					:value="name"
 				>
-					<AccordionHeader>{{ name }}</AccordionHeader>
+					<AccordionHeader>
+						<span>
+							<span>{{ name }}</span>
+							<sup v-if="savingClusters[name] !== 0"><i>*</i></sup>
+						</span>
+					</AccordionHeader>
 					<AccordionContent>
+						<div class="configure-elem">
+							<Button
+								v-if="clusterStatus?.[name]?.status"
+								icon="pi pi-unlock"
+								iconPos="right"
+								:label="tr('button.enable')"
+								severity="info"
+								@click="onEnableCluster(name)"
+							/>
+							<Button
+								v-else
+								icon="pi pi-ban"
+								iconPos="right"
+								:label="tr('button.disable')"
+								severity="danger"
+								@click="onDisableCluster(name)"
+							/>
+						</div>
 						<div class="configure-elem">
 							<FloatLabel variant="on">
 								<InputText type="text" v-model="cluster.id" />
@@ -305,12 +356,12 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 								<Button
 									fluid
 									icon="pi pi-undo"
-									:label="tr('button.undo')"
+									:label="tr('button.discard')"
 									:disabled="savingClusters[name] !== 1"
 									severity="warn"
 									outlined
 									:raised="savingClusters[name] === 1"
-									@click="onCancelClusterChange(name as string)"
+									@click="confirmCancelClusterChange(name as string)"
 								/>
 							</div>
 						</div>

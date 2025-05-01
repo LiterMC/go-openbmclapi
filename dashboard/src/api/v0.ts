@@ -480,6 +480,7 @@ export interface Config {
 	host: string
 	port: number
 	use_cert: boolean
+	allow_unsecure_connection: boolean
 	trusted_x_forwarded_for: boolean
 
 	only_gc_when_start: boolean
@@ -654,4 +655,28 @@ export async function putConfig(token: string, config: Config): Promise<void> {
 			'Content-Type': 'application/json',
 		},
 	})
+}
+
+export enum ClusterStatus {
+	DISCONNECTED = 0,
+	CONNECTING = 1,
+	DISABLED = 2,
+	ENABLING = 3,
+	ENABLED = 4
+}
+
+export interface ClusterStatusRes {
+	[name: string]: {
+		status: ClusterStatus
+		sync: boolean
+	}
+}
+
+export async function getClusterStatus(token: string): Promise<ClusterStatusRes> {
+	const res = await axios.get<ClusterStatusRes>(`/api/v0/cluster/status`, {
+		headers: {
+			Authorization: `Bearer ${token}`,
+		},
+	})
+	return res.data
 }

@@ -38,6 +38,7 @@ const config = reactive<Config>({
 	host: '0.0.0.0',
 	port: 4000,
 	use_cert: false,
+	allow_unsecure_connection: false,
 	trusted_x_forwarded_for: false,
 
 	only_gc_when_start: false,

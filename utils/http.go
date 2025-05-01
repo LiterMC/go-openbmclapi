@@ -405,10 +405,10 @@ func (s *HTTPTLSListener) serveHTTP(conn net.Conn) {
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
-	// host, _, err := net.SplitHostPort(req.Host)
-	// if err != nil {
-	// 	host = req.Host
-	// }
+	host, _, err := net.SplitHostPort(req.Host)
+	if err != nil {
+		host = req.Host
+	}
 	u := *req.URL
 	u.Scheme = "https"
 	if !s.DoRedirect {
@@ -429,7 +429,7 @@ func (s *HTTPTLSListener) serveHTTP(conn net.Conn) {
 		io.Copy(conn, body)
 		return
 	}
-	// u.Host = net.JoinHostPort(host, s.GetPublicPort())
+	u.Host = net.JoinHostPort(host, s.GetPublicPort())
 	resp := &http.Response{
 		StatusCode: http.StatusPermanentRedirect,
 		ProtoMajor: req.ProtoMajor,

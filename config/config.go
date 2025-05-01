@@ -38,6 +38,7 @@ type Config struct {
 	Host                 string `json:"host" yaml:"host"`
 	Port                 uint16 `json:"port" yaml:"port"`
 	UseCert              bool   `json:"use_cert" yaml:"use-cert"`
+	AllowUnsecureConn    bool   `json:"allow_unsecure_connection" yaml:"allow-unsecure-connection"`
 	TrustedXForwardedFor bool   `json:"trusted_x_forwarded_for" yaml:"trusted-x-forwarded-for"`
 
 	OnlyGcWhenStart   bool `json:"only_gc_when_start" yaml:"only-gc-when-start"`

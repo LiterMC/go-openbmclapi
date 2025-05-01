@@ -516,7 +516,9 @@ func (r *Runner) CreateHTTPListener(ctx context.Context) (*utils.HTTPTLSListener
 		}
 	}
 	log.Infof("HTTP server listening at %s", addr)
-	return utils.NewHttpTLSListener(listener, r.tlsConfig), nil
+	hl := utils.NewHttpTLSListener(listener, r.tlsConfig)
+	hl.AllowUnsecure = r.Config.AllowUnsecureConn
+	return hl, nil
 }
 
 func (r *Runner) GenerateTLSConfig() (*tls.Config, error) {

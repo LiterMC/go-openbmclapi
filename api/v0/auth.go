@@ -289,7 +289,7 @@ func (h *Handler) routeLogout(rw http.ResponseWriter, req *http.Request) {
 func (h *Handler) routeUserInfo(rw http.ResponseWriter, req *http.Request) {
 	user := getLoggedUser(req)
 	writeJson(rw, http.StatusOK, Map{
-		"name": user.Username,
+		"name":        user.Username,
 		"permissions": user.Permissions,
 	})
 }

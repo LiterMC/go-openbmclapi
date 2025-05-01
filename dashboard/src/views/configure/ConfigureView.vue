@@ -716,7 +716,6 @@ onMounted(() => {
 	</div>
 </template>
 <style scoped>
-
 .header {
 	display: flex;
 	flex-direction: row;

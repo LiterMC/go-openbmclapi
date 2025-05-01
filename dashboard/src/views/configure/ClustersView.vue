@@ -24,7 +24,7 @@ import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { type ClusterOptions } from '@/api/v0'
+import { type ClusterOptions, type ClusterStatusRes, getClusterStatus } from '@/api/v0'
 import { tr } from '@/lang'
 
 const confirm = useConfirm()
@@ -53,14 +53,20 @@ const clusters = reactive<{ [name: string]: ClusterOptions }>({
 		storages: ['test-local-storage', 'test-webdav-storage'],
 	},
 })
-const changingClusters = reactive<{ [name: string]: ClusterOptions }>(JSON.parse(JSON.stringify(clusters)))
+const changingClusters = reactive<{ [name: string]: ClusterOptions }>(
+	JSON.parse(JSON.stringify(clusters)),
+)
 const avaliableStorages = reactive<string[]>(['test-local-storage', 'test-webdav-storage'])
 
 const savingFlags = reactive<{ [name: string]: true }>({})
 const savingClusters = computed(() => {
-	const savingClusters = {}
+	const savingClusters: { [name: string]: number } = {}
 	for (const name in changingClusters) {
-		savingClusters[name] = savingFlags[name] ? 2 : JSON.stringify(changingClusters[name]) !== JSON.stringify(clusters[name]) ? 1 : 0
+		savingClusters[name] = savingFlags[name]
+			? 2
+			: JSON.stringify(changingClusters[name]) !== JSON.stringify(clusters[name])
+			? 1
+			: 0
 	}
 	return savingClusters
 })
@@ -69,9 +75,13 @@ const changingClusterPublicHost = reactive<{ [name: string]: string }>({})
 const newClusterNameInput = ref()
 const newClusterName = ref('')
 
-const { data: clusterStatus } = useRequest((): Promise<ClusterStatusRes> => getClusterStatus(token.value), {
-	pollingInterval: 1000,
-})
+const { data: clusterStatus } = useRequest(
+	async (): Promise<ClusterStatusRes | undefined> =>
+		token.value ? await getClusterStatus(token.value) : undefined,
+	{
+		pollingInterval: 1000,
+	},
+)
 
 async function refreshConfig(): Promise<void> {
 	if (!token.value) {
@@ -91,11 +101,9 @@ async function refreshConfig(): Promise<void> {
 	}
 }
 
-async function onEnableCluster(clusterName: string): Promise<void> {
-}
+async function onEnableCluster(clusterName: string): Promise<void> {}
 
-async function onDisableCluster(clusterName: string): Promise<void> {
-}
+async function onDisableCluster(clusterName: string): Promise<void> {}
 
 async function onCreateCluster(event: MouseEvent): Promise<void> {
 	if (event.target === newClusterNameInput.value.$el) {
@@ -109,7 +117,7 @@ async function onCreateCluster(event: MouseEvent): Promise<void> {
 	if (changingClusters[newName]) {
 		return
 	}
-	(changingClusters[newName] as any) = {}
+	;(changingClusters[newName] as any) = {}
 	newClusterName.value = ''
 }
 
@@ -125,7 +133,7 @@ function confirmRemoveCluster(clusterName: string): void {
 		rejectProps: {
 			label: tr('button.cancel'),
 			severity: 'secondary',
-			outlined: true
+			outlined: true,
 		},
 		accept: () => onRemoveCluster(clusterName),
 	})
@@ -165,7 +173,7 @@ function confirmCancelClusterChange(clusterName: string): void {
 		rejectProps: {
 			label: tr('button.cancel'),
 			severity: 'secondary',
-			outlined: true
+			outlined: true,
 		},
 		accept: () => onCancelClusterChange(clusterName),
 	})
@@ -194,7 +202,6 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 	changingClusterPublicHost[clusterName] = ''
 	cluster.public_hosts.push(hostname)
 }
-
 </script>
 <template>
 	<div>
@@ -206,11 +213,7 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 		</div>
 		<div class="body">
 			<Accordion>
-				<AccordionPanel
-					v-for="(cluster, name) in changingClusters"
-					:key="name"
-					:value="name"
-				>
+				<AccordionPanel v-for="(cluster, name) in changingClusters" :key="name" :value="name">
 					<AccordionHeader>
 						<span>
 							<span>{{ name }}</span>
@@ -225,7 +228,7 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 								iconPos="right"
 								:label="tr('button.enable')"
 								severity="info"
-								@click="onEnableCluster(name)"
+								@click="onEnableCluster(name as string)"
 							/>
 							<Button
 								v-else
@@ -233,7 +236,7 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 								iconPos="right"
 								:label="tr('button.disable')"
 								severity="danger"
-								@click="onDisableCluster(name)"
+								@click="onDisableCluster(name as string)"
 							/>
 						</div>
 						<div class="configure-elem">
@@ -285,10 +288,7 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 									</InputGroup>
 								</template>
 								<template #option="{ index, option }">
-									<div
-										class="flex-row-center"
-										style="width: 100%; justify-content: space-between"
-									>
+									<div class="flex-row-center" style="width: 100%; justify-content: space-between">
 										<div>{{ option }}</div>
 										<Button
 											icon="pi pi-minus"
@@ -323,10 +323,7 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 						</div>
 						<div class="configure-elem">
 							<FloatLabel variant="on">
-								<MultiSelect
-									v-model="cluster.storages"
-									:options="avaliableStorages"
-								/>
+								<MultiSelect v-model="cluster.storages" :options="avaliableStorages" />
 								<label>{{ tr('title.configures.item.cluster.storages') }}</label>
 							</FloatLabel>
 							<Message size="small" severity="secondary" variant="simple">
@@ -384,7 +381,6 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 	</div>
 </template>
 <style scoped>
-
 .header {
 	display: flex;
 	flex-direction: row;
@@ -462,4 +458,3 @@ async function onAddClusterPublicHost(clusterName: string): Promise<void> {
 	}
 }
 </style>
-

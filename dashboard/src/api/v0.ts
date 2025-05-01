@@ -64,7 +64,7 @@ export enum UserPermission {
 	CLUSTER = 1 << 5,
 	STORAGE = 1 << 6,
 	BYPASS_LIMIT = 1 << 7,
-	ROOT = 1 << 31
+	ROOT = 1 << 31,
 }
 
 export interface UserInfoRes {
@@ -662,7 +662,7 @@ export enum ClusterStatus {
 	CONNECTING = 1,
 	DISABLED = 2,
 	ENABLING = 3,
-	ENABLED = 4
+	ENABLED = 4,
 }
 
 export interface ClusterStatusRes {
